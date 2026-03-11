@@ -39,7 +39,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine version and release status
+           - name: Determine version and release status
         id: versioning
         shell: pwsh
         run: |
@@ -51,6 +51,7 @@ jobs:
             }
 
             $clean = $Version.Trim()
+
             if ($clean.StartsWith('v')) {
               $clean = $clean.Substring(1)
             }
@@ -59,13 +60,10 @@ jobs:
               $clean = $clean.Split('-', 2)[0]
             }
 
-            $parts = $clean.Split('.')
-            if ($parts.Count -eq 3) {
-              $parts += '0'
-            }
+            $parts = $clean.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
 
-            if ($parts.Count -ne 4) {
-              throw "Version '$Version' must contain 3 or 4 numeric parts. Examples: 0.2.0 or 0.2.0.0"
+            if ($parts.Count -lt 1) {
+              throw "Version '$Version' does not contain any numeric parts."
             }
 
             foreach ($p in $parts) {
@@ -77,6 +75,22 @@ jobs:
             return ($parts -join '.')
           }
 
+          function Convert-ToWindowsVersion([string]$Version) {
+            $parts = $Version.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
+
+            $result = @()
+            for ($i = 0; $i -lt 4; $i++) {
+              if ($i -lt $parts.Count) {
+                $result += [string][int]$parts[$i]
+              }
+              else {
+                $result += '0'
+              }
+            }
+
+            return ($result -join '.')
+          }
+
           if ('${{ github.ref_type }}' -eq 'tag') {
             $TagName = '${{ github.ref_name }}'
             $BaseVersion = Normalize-Version $TagName
@@ -85,32 +99,40 @@ jobs:
           }
           else {
             $BaseVersion = Normalize-Version '${{ github.event.inputs.base_version }}'
-            $TagName = "v$BaseVersion-build-$BuildNumber"
             $CreateTag = 'true'
             $IsPrerelease = if ('${{ github.event.inputs.is_prerelease }}' -eq 'true') { 'true' } else { 'false' }
           }
 
-          $FullVersion = "$BaseVersion-build-$BuildNumber"
+          $WindowsVersion = Convert-ToWindowsVersion $BaseVersion
+          $FullVersion = "$WindowsVersion-build-$BuildNumber"
+
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $TagName = '${{ github.ref_name }}'
+          }
+          else {
+            $TagName = "v$BaseVersion-build-$BuildNumber"
+          }
+
           $ReleaseStatus = if ($IsPrerelease -eq 'true') { 'Pre-release' } else { 'Stable Release' }
           $ExeName = "${{ env.APP_NAME }}-$FullVersion.exe"
-          $ArchiveName = "${{ env.APP_NAME }}-$FullVersion-windows-x64.zip"
 
           "BUILD_NUMBER=$BuildNumber" >> $env:GITHUB_ENV
           "BASE_VERSION=$BaseVersion" >> $env:GITHUB_ENV
+          "WINDOWS_VERSION=$WindowsVersion" >> $env:GITHUB_ENV
           "FULL_VERSION=$FullVersion" >> $env:GITHUB_ENV
           "TAG_NAME=$TagName" >> $env:GITHUB_ENV
           "CREATE_TAG=$CreateTag" >> $env:GITHUB_ENV
           "IS_PRERELEASE=$IsPrerelease" >> $env:GITHUB_ENV
           "RELEASE_STATUS=$ReleaseStatus" >> $env:GITHUB_ENV
           "EXE_NAME=$ExeName" >> $env:GITHUB_ENV
-          "ARCHIVE_NAME=$ArchiveName" >> $env:GITHUB_ENV
 
           "build_number=$BuildNumber" >> $env:GITHUB_OUTPUT
           "base_version=$BaseVersion" >> $env:GITHUB_OUTPUT
+          "windows_version=$WindowsVersion" >> $env:GITHUB_OUTPUT
           "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
           "tag_name=$TagName" >> $env:GITHUB_OUTPUT
           "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
-
+          
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
