@@ -1,0 +1,104 @@
+# =========================
+# Python bytecode / caches
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# =========================
+# Python packaging / build
+# =========================
+build/
+dist/
+site/
+.eggs/
+*.egg
+*.egg-info/
+pip-wheel-metadata/
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# =========================
+# Test / coverage / tooling
+# =========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.dmypy.json
+dmypy.json
+
+# =========================
+# Jupyter / notebooks
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# IDE / editor settings
+# =========================
+.idea/
+.vscode/
+*.code-workspace
+
+# =========================
+# OS-specific junk
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =========================
+# Windows logs / dumps
+# =========================
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.stackdump
+
+# =========================
+# PyInstaller
+# =========================
+__pycache__/
+*.manifest
+*.spec.bak
+*.pkg
+
+# Keep your main spec file committed if you use one:
+# !FreeCleaner.spec
+
+# =========================
+# Local app/runtime artifacts
+# =========================
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+
+# Temporary local outputs
+/tmp/
+/temp/
+
+# =========================
+# Optional local language overrides
+# Uncomment if you keep user-provided runtime translations outside version control
+# lang/custom/
+# languages/custom/
+# =========================

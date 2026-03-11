@@ -1,0 +1,125 @@
+FreeCleaner Privacy Policy
+
+Last updated: 2026-03-11
+
+FreeCleaner is designed to help users clean temporary files and other non-essential data on Windows in a simple and transparent way.
+
+This Privacy Policy explains what FreeCleaner does, what data it does and does not handle, and what that means for you as a user.
+
+1. General principle
+
+FreeCleaner is a local desktop application.
+Its main purpose is to scan selected areas of your computer and help remove temporary or non-essential files.
+
+FreeCleaner does not require an account.
+FreeCleaner does not require cloud synchronization.
+FreeCleaner does not upload your personal files to our servers.
+
+2. Data FreeCleaner does not collect
+
+FreeCleaner does not intentionally collect or transmit:
+- your personal documents,
+- photos,
+- videos,
+- passwords,
+- browser credentials,
+- payment data,
+- private messages,
+- file contents from folders that are not part of the selected cleaning flow.
+
+FreeCleaner is not designed as spyware, telemetry software, or a remote monitoring tool.
+
+3. Local file access
+
+To perform cleaning tasks, FreeCleaner may access certain folders and files on your device, such as:
+- temporary files,
+- cache folders,
+- log files,
+- recyclable non-essential data related to supported cleanup actions.
+
+This access happens locally on your computer and is used only to:
+- analyze the selected cleanup targets,
+- estimate removable space,
+- delete selected non-essential files after your confirmation,
+- display documents bundled with the app, such as the license or privacy policy.
+
+FreeCleaner does not read your private files unless they are located inside folders that you explicitly choose to inspect or clean and are relevant to the selected cleanup task.
+
+4. No automatic upload of files
+
+FreeCleaner does not automatically upload scanned files, deleted files, or file contents to external servers.
+
+If a future version introduces optional online features, those features should be described separately and this Privacy Policy should be updated accordingly.
+
+5. Diagnostics and logs
+
+FreeCleaner may create local logs or status messages to help display progress, errors, or cleanup results inside the application.
+
+Such logs are intended for local use on your device.
+They are not meant to be sent anywhere automatically.
+
+6. Administrator rights
+
+Some cleanup operations may require administrator privileges on Windows.
+
+If you choose to run FreeCleaner as administrator, the application may receive broader system access, but only within the permissions granted by Windows and only for the purpose of performing requested actions.
+
+You remain responsible for reviewing what actions you run with elevated privileges.
+
+7. User control
+
+You control how FreeCleaner is used.
+You decide:
+- whether to launch the app,
+- which cleanup actions to run,
+- whether to confirm deletion,
+- whether to open bundled documents inside the app.
+
+FreeCleaner should not silently remove data outside its intended cleanup scope.
+
+8. Third-party services
+
+FreeCleaner does not require third-party accounts to function in its local mode.
+
+If third-party components, libraries, or integrations are included in a future version, they may be subject to their own licenses and privacy terms.
+
+9. Data retention
+
+Because FreeCleaner is a local application and does not operate a required user account system, we generally do not retain your personal data on remote servers.
+
+Any temporary app state, logs, preferences, or settings are stored locally on your device unless explicitly stated otherwise.
+
+10. Security
+
+We aim to keep FreeCleaner simple and privacy-friendly.
+However, no software can guarantee absolute safety in all environments.
+
+You should always:
+- download the app from a trusted source,
+- review cleanup selections before confirming deletion,
+- keep backups of important files,
+- use the latest version when possible.
+
+11. Children’s privacy
+
+FreeCleaner is a utility application and is not specifically directed at children.
+It does not knowingly collect personal information from children through an online account system.
+
+12. Changes to this Privacy Policy
+
+This Privacy Policy may be updated over time to reflect changes in the application, legal requirements, or new features.
+
+When updated, the "Last updated" date at the top of this document should also be changed.
+
+13. Contact
+
+If you have questions about FreeCleaner or this Privacy Policy, please contact the developer or project maintainer through the official project page, repository, or distribution source where FreeCleaner is published.
+
+14. Summary in plain language
+
+In simple terms:
+- FreeCleaner works locally on your PC.
+- FreeCleaner is meant to clean temporary and non-essential files.
+- FreeCleaner does not intentionally upload your personal files.
+- You stay in control of what gets cleaned.
+- Some actions may require administrator rights.

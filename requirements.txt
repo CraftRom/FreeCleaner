@@ -1,0 +1,6 @@
+# Runtime dependencies for FreeCleaner
+customtkinter
+Pillow
+
+# Optional build dependency:
+pyinstaller

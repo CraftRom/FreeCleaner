@@ -1,0 +1,205 @@
+name: Build, Release and Notify
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+    inputs:
+      base_version:
+        description: 'Base version in Windows 4-part format (example: 0.2.0.0)'
+        required: true
+        type: string
+        default: '0.2.0.0'
+      is_prerelease:
+        description: 'Mark release as pre-release'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  build_release_notify:
+    name: Build EXE, Create Release & Upload Assets
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    env:
+      APP_NAME: FreeCleaner
+      COMPANY_NAME: FreeCleaner
+      INTERNAL_NAME: FreeCleaner
+      ORIGINAL_FILENAME: FreeCleaner.exe
+      FILE_DESCRIPTION: FreeCleaner Windows cleaner, auto system language, and persistent language preference
+      SPEC_FILE: FreeCleaner.spec
+      PYTHON_VERSION: '3.13'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version and release status
+        id: versioning
+        shell: pwsh
+        run: |
+          $BuildNumber = [int]'${{ github.run_number }}'
+
+          function Normalize-Version([string]$Version) {
+            if ([string]::IsNullOrWhiteSpace($Version)) {
+              throw 'Version cannot be empty.'
+            }
+
+            $clean = $Version.Trim()
+            if ($clean.StartsWith('v')) {
+              $clean = $clean.Substring(1)
+            }
+
+            if ($clean -match '-') {
+              $clean = $clean.Split('-', 2)[0]
+            }
+
+            $parts = $clean.Split('.')
+            if ($parts.Count -eq 3) {
+              $parts += '0'
+            }
+
+            if ($parts.Count -ne 4) {
+              throw "Version '$Version' must contain 3 or 4 numeric parts. Examples: 0.2.0 or 0.2.0.0"
+            }
+
+            foreach ($p in $parts) {
+              if ($p -notmatch '^\d+$') {
+                throw "Version '$Version' contains a non-numeric part: $p"
+              }
+            }
+
+            return ($parts -join '.')
+          }
+
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $TagName = '${{ github.ref_name }}'
+            $BaseVersion = Normalize-Version $TagName
+            $CreateTag = 'false'
+            $IsPrerelease = if ($TagName -match '-(alpha|beta|rc)(\.|\d|$)') { 'true' } else { 'false' }
+          }
+          else {
+            $BaseVersion = Normalize-Version '${{ github.event.inputs.base_version }}'
+            $TagName = "v$BaseVersion-build-$BuildNumber"
+            $CreateTag = 'true'
+            $IsPrerelease = if ('${{ github.event.inputs.is_prerelease }}' -eq 'true') { 'true' } else { 'false' }
+          }
+
+          $FullVersion = "$BaseVersion-build-$BuildNumber"
+          $ReleaseStatus = if ($IsPrerelease -eq 'true') { 'Pre-release' } else { 'Stable Release' }
+          $ExeName = "${{ env.APP_NAME }}-$FullVersion.exe"
+          $ArchiveName = "${{ env.APP_NAME }}-$FullVersion-windows-x64.zip"
+
+          "BUILD_NUMBER=$BuildNumber" >> $env:GITHUB_ENV
+          "BASE_VERSION=$BaseVersion" >> $env:GITHUB_ENV
+          "FULL_VERSION=$FullVersion" >> $env:GITHUB_ENV
+          "TAG_NAME=$TagName" >> $env:GITHUB_ENV
+          "CREATE_TAG=$CreateTag" >> $env:GITHUB_ENV
+          "IS_PRERELEASE=$IsPrerelease" >> $env:GITHUB_ENV
+          "RELEASE_STATUS=$ReleaseStatus" >> $env:GITHUB_ENV
+          "EXE_NAME=$ExeName" >> $env:GITHUB_ENV
+          "ARCHIVE_NAME=$ArchiveName" >> $env:GITHUB_ENV
+
+          "build_number=$BuildNumber" >> $env:GITHUB_OUTPUT
+          "base_version=$BaseVersion" >> $env:GITHUB_OUTPUT
+          "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
+          "tag_name=$TagName" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) {
+            pip install -r requirements.txt
+          }
+          pip install pyinstaller
+
+      - name: Generate version_info.txt
+        shell: pwsh
+        run: |
+          python scripts/generate_version_info.py `
+            --base-version "${{ env.BASE_VERSION }}" `
+            --build-number "${{ env.BUILD_NUMBER }}" `
+            --product-name "${{ env.APP_NAME }}" `
+            --company-name "${{ env.COMPANY_NAME }}" `
+            --internal-name "${{ env.INTERNAL_NAME }}" `
+            --original-filename "${{ env.ORIGINAL_FILENAME }}" `
+            --file-description "${{ env.FILE_DESCRIPTION }}" `
+            --output version_info.txt
+
+      - name: Build executable with PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
+
+      - name: Rename packaged executable
+        shell: pwsh
+        run: |
+          $ExePath = Join-Path 'dist' '${{ env.APP_NAME }}.exe'
+          if (-not (Test-Path $ExePath)) {
+            throw "Built executable not found: $ExePath"
+          }
+
+          $RenamedExePath = Join-Path 'dist' '${{ env.EXE_NAME }}'
+          Move-Item -Path $ExePath -Destination $RenamedExePath -Force
+          "RENAMED_EXE_PATH=$RenamedExePath" >> $env:GITHUB_ENV
+
+      - name: Create ZIP package
+        shell: pwsh
+        run: |
+          $ArchivePath = Join-Path 'dist' '${{ env.ARCHIVE_NAME }}'
+          Compress-Archive -Path "${{ env.RENAMED_EXE_PATH }}" -DestinationPath $ArchivePath -Force
+          "ARCHIVE_PATH=$ArchivePath" >> $env:GITHUB_ENV
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ env.FULL_VERSION }}
+          path: |
+            ${{ env.RENAMED_EXE_PATH }}
+            ${{ env.ARCHIVE_PATH }}
+            version_info.txt
+          if-no-files-found: error
+
+      - name: Create Git Tag
+        if: env.CREATE_TAG == 'true'
+        shell: bash
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag "${{ env.TAG_NAME }}"
+          git push origin "${{ env.TAG_NAME }}"
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header --output RELEASE_NOTES.md
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: FreeCleaner ${{ env.FULL_VERSION }}
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          files: |
+            ${{ env.EXE_PATH }}
+            ${{ env.ZIP_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
