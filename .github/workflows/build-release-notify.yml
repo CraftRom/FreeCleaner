@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       base_version:
-        description: 'Base version in Windows 4-part format (example: 0.2.0.0)'
+        description: 'Base version (examples: 0.2, 0.2.0, 0.2.0.0)'
         required: true
         type: string
         default: '0.2.0.0'
@@ -39,7 +39,7 @@ jobs:
         with:
           fetch-depth: 0
 
-           - name: Determine version and release status
+      - name: Determine version and release status
         id: versioning
         shell: pwsh
         run: |
@@ -132,12 +132,12 @@ jobs:
           "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
           "tag_name=$TagName" >> $env:GITHUB_OUTPUT
           "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
-          
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
+          cache: pip
 
       - name: Install dependencies
         shell: pwsh
@@ -152,7 +152,7 @@ jobs:
         shell: pwsh
         run: |
           python scripts/generate_version_info.py `
-            --base-version "${{ env.BASE_VERSION }}" `
+            --base-version "${{ env.WINDOWS_VERSION }}" `
             --build-number "${{ env.BUILD_NUMBER }}" `
             --product-name "${{ env.APP_NAME }}" `
             --company-name "${{ env.COMPANY_NAME }}" `
@@ -176,14 +176,11 @@ jobs:
 
           $RenamedExePath = Join-Path 'dist' '${{ env.EXE_NAME }}'
           Move-Item -Path $ExePath -Destination $RenamedExePath -Force
-          "RENAMED_EXE_PATH=$RenamedExePath" >> $env:GITHUB_ENV
 
-      - name: Create ZIP package
-        shell: pwsh
-        run: |
-          $ArchivePath = Join-Path 'dist' '${{ env.ARCHIVE_NAME }}'
-          Compress-Archive -Path "${{ env.RENAMED_EXE_PATH }}" -DestinationPath $ArchivePath -Force
-          "ARCHIVE_PATH=$ArchivePath" >> $env:GITHUB_ENV
+          $ReleaseExePath = $RenamedExePath -replace '\\', '/'
+
+          "RENAMED_EXE_PATH=$RenamedExePath" >> $env:GITHUB_ENV
+          "RELEASE_EXE_PATH=$ReleaseExePath" >> $env:GITHUB_ENV
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -191,13 +188,12 @@ jobs:
           name: ${{ env.APP_NAME }}-${{ env.FULL_VERSION }}
           path: |
             ${{ env.RENAMED_EXE_PATH }}
-            ${{ env.ARCHIVE_PATH }}
             version_info.txt
           if-no-files-found: error
 
       - name: Create Git Tag
         if: env.CREATE_TAG == 'true'
-        shell: bash
+        shell: pwsh
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -205,23 +201,25 @@ jobs:
           git push origin "${{ env.TAG_NAME }}"
 
       - name: Generate release notes
+        id: git_cliff
         uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
-          args: --latest --strip header --output RELEASE_NOTES.md
+          args: --latest --strip header
+          github_token: ${{ secrets.GITHUB_TOKEN }}
         env:
+          OUTPUT: RELEASE_NOTES.md
           GITHUB_REPO: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
-          name: FreeCleaner ${{ env.FULL_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ env.APP_NAME }} ${{ env.FULL_VERSION }}
           body_path: RELEASE_NOTES.md
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
-          files: |
-            ${{ env.EXE_PATH }}
-            ${{ env.ZIP_PATH }}
+          files: ${{ env.RELEASE_EXE_PATH }}
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
