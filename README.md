@@ -58,7 +58,7 @@ In short: it tries to clean the PC, not the user’s patience.
 Add your screenshots here after publishing visuals for the project.
 
 ```md
-![Main Window](/assets/screenshots/main-window.png)
+![Main Window](https://raw.githubusercontent.com/CraftRom/FreeCleaner/refs/heads/main/assets/screenshots/main-window.png)
 ```
 
 ---
