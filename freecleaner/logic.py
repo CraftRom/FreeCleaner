@@ -351,6 +351,7 @@ class CleanerTask:
     command: Optional[Callable[[], None]] = None
     danger: str = "safe"
     fmt: Optional[Dict[str, str]] = None
+    instant_action: bool = False
 
 
 class PathFinder:

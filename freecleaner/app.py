@@ -23,7 +23,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from .design import COLORS, SummaryCard, SectionCard, init_ui_theme
+from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, init_ui_theme
 from .logic import (
     IS_WINDOWS,
     ICONS_DIRNAME,
@@ -160,6 +160,7 @@ class Cleaner(ctk.CTk):
         self._search_after_id = None
         self._last_search_query = ""
         self._about_header_icon_cache = None
+        self.active_module_tab = "cleaner"
         self.apply_window_icon()
 
         self.is_admin = WindowsOps.is_admin()
@@ -303,6 +304,34 @@ class Cleaner(ctk.CTk):
             self.btn_start.pack(side="left", fill="x", expand=True, padx=(0, 8))
             self.btn_analyze.pack(side="left", padx=(0, 8))
             self.btn_reset_all.pack(side="left")
+
+    def module_tab_title(self, key: str) -> str:
+        return self.tr("tab_optimizer") if key == "optimizer" else self.tr("tab_cleaner")
+
+    def module_tab_subtitle(self, key: str) -> str:
+        return self.tr("tab_optimizer_sub") if key == "optimizer" else self.tr("tab_cleaner_sub")
+
+    def on_module_tab_changed(self, key: str):
+        self.show_module_tab(key)
+
+    def show_module_tab(self, key: str):
+        key = "optimizer" if key == "optimizer" else "cleaner"
+        self.active_module_tab = key
+
+        if hasattr(self, "cleaner_scroll") and hasattr(self, "optimizer_scroll"):
+            if key == "optimizer":
+                self.cleaner_scroll.grid_remove()
+                self.optimizer_scroll.grid()
+            else:
+                self.optimizer_scroll.grid_remove()
+                self.cleaner_scroll.grid()
+
+        if hasattr(self, "tab_cleaner_button"):
+            self.tab_cleaner_button.set_active(key == "cleaner")
+        if hasattr(self, "tab_optimizer_button"):
+            self.tab_optimizer_button.set_active(key == "optimizer")
+
+        self.schedule_responsive_layout()
 
     def refresh_responsive_layout(self):
         try:
@@ -478,11 +507,19 @@ class Cleaner(ctk.CTk):
         self.search_label.configure(text=self.tr("search_modules"))
         self.search_entry.configure(placeholder_text=self.tr("search_placeholder"))
         self.btn_clear_search.configure(text=self.tr("clear_search"))
-        self.scroll.configure(label_text=self.tr("modules"))
+        self.cleaner_scroll.configure(label_text=self.tr("cleaner_modules"))
+        self.optimizer_scroll.configure(label_text=self.tr("optimizer_modules"))
+        if hasattr(self, "tab_cleaner_button"):
+            self.tab_cleaner_button.set_text(self.module_tab_title("cleaner"), self.module_tab_subtitle("cleaner"))
+        if hasattr(self, "tab_optimizer_button"):
+            self.tab_optimizer_button.set_text(self.module_tab_title("optimizer"), self.module_tab_subtitle("optimizer"))
+        self.show_module_tab(self.active_module_tab)
         self.card_sys.set_header(self.tr("sec_system_title"), self.tr("sec_system_sub"))
         self.card_net.set_header(self.tr("sec_net_title"), self.tr("sec_net_sub"))
         self.card_deep.set_header(self.tr("sec_deep_title"), self.tr("sec_deep_sub"))
         self.card_gamer.set_header(self.tr("sec_gamer_title"), self.tr("sec_gamer_sub"))
+        self.card_opt.set_header(self.tr("sec_optimizer_title"), self.tr("sec_optimizer_sub"))
+        self.card_opt_tools.set_header(self.tr("sec_optimizer_tools_title"), self.tr("sec_optimizer_tools_sub"))
         self.card_ult.set_header(self.tr("sec_ult_title"), self.tr("sec_ult_sub"))
         for card in self.section_cards:
             card.refresh_rows_language()
@@ -591,7 +628,7 @@ class Cleaner(ctk.CTk):
         self.main_wrap = ctk.CTkFrame(self, fg_color="transparent")
         self.main_wrap.grid(row=0, column=1, sticky="nsew", padx=18, pady=18)
         self.main_wrap.grid_columnconfigure(0, weight=1)
-        self.main_wrap.grid_rowconfigure(2, weight=1)
+        self.main_wrap.grid_rowconfigure(3, weight=1)
 
         self.summary_top = ctk.CTkFrame(self.main_wrap, fg_color="transparent")
         self.summary_top.grid(row=0, column=0, sticky="ew", pady=(0, 14))
@@ -608,7 +645,7 @@ class Cleaner(ctk.CTk):
         self.card_admin.grid(row=0, column=3, sticky="ew")
 
         self.toolbar = ctk.CTkFrame(self.main_wrap, fg_color=COLORS["bg_card"], corner_radius=14, border_width=1, border_color=COLORS["border"])
-        self.toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 14))
+        self.toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         self.toolbar.grid_columnconfigure(1, weight=1)
 
         self.search_label = ctk.CTkLabel(self.toolbar, text=self.tr("search_modules"), font=("Segoe UI", 12, "bold"), text_color=COLORS["white"])
@@ -620,36 +657,81 @@ class Cleaner(ctk.CTk):
         self.btn_clear_search = ctk.CTkButton(self.toolbar, text=self.tr("clear_search"), width=130, command=lambda: self.search_var.set(""), fg_color="#334155", hover_color="#475569")
         self.btn_clear_search.grid(row=0, column=2, padx=(0, 12))
 
-        self.scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("modules"))
-        self.scroll.grid(row=2, column=0, sticky="nsew")
-        self.scroll.grid_columnconfigure(0, weight=1)
+        self.tab_bar = ctk.CTkFrame(
+            self.main_wrap,
+            fg_color=COLORS["bg_panel"],
+            corner_radius=18,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        self.tab_bar.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        self.tab_bar.grid_columnconfigure((0, 1), weight=1)
 
-        self.card_sys = SectionCard(self, self.scroll, self.tr("sec_system_title"), self.tr("sec_system_sub"), COLORS["system"])
+        self.tab_cleaner_button = ModernTabButton(
+            self.tab_bar,
+            title=self.module_tab_title("cleaner"),
+            subtitle=self.module_tab_subtitle("cleaner"),
+            accent=COLORS["system"],
+            command=lambda: self.on_module_tab_changed("cleaner"),
+        )
+        self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=(12, 8), pady=12)
+
+        self.tab_optimizer_button = ModernTabButton(
+            self.tab_bar,
+            title=self.module_tab_title("optimizer"),
+            subtitle=self.module_tab_subtitle("optimizer"),
+            accent=COLORS["gamer"],
+            command=lambda: self.on_module_tab_changed("optimizer"),
+        )
+        self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(8, 12), pady=12)
+
+        self.cleaner_scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("cleaner_modules"))
+        self.cleaner_scroll.grid(row=3, column=0, sticky="nsew")
+        self.cleaner_scroll.grid_columnconfigure(0, weight=1)
+
+        self.optimizer_scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("optimizer_modules"))
+        self.optimizer_scroll.grid(row=3, column=0, sticky="nsew")
+        self.optimizer_scroll.grid_columnconfigure(0, weight=1)
+
+        self.card_sys = SectionCard(self, self.cleaner_scroll, self.tr("sec_system_title"), self.tr("sec_system_sub"), COLORS["system"])
         self.card_sys.grid(row=0, column=0, sticky="ew", pady=(0, 16))
         self.section_cards.append(self.card_sys)
         self.register_system_tasks()
 
-        self.card_net = SectionCard(self, self.scroll, self.tr("sec_net_title"), self.tr("sec_net_sub"), COLORS["browsers"])
+        self.card_net = SectionCard(self, self.cleaner_scroll, self.tr("sec_net_title"), self.tr("sec_net_sub"), COLORS["browsers"])
         self.card_net.grid(row=1, column=0, sticky="ew", pady=(0, 16))
         self.section_cards.append(self.card_net)
         self.register_browser_tasks()
 
-        self.card_deep = SectionCard(self, self.scroll, self.tr("sec_deep_title"), self.tr("sec_deep_sub"), COLORS["deep"])
+        self.card_deep = SectionCard(self, self.cleaner_scroll, self.tr("sec_deep_title"), self.tr("sec_deep_sub"), COLORS["deep"])
         self.card_deep.grid(row=2, column=0, sticky="ew", pady=(0, 16))
         self.section_cards.append(self.card_deep)
         self.register_deep_tasks()
 
-        self.card_gamer = SectionCard(self, self.scroll, self.tr("sec_gamer_title"), self.tr("sec_gamer_sub"), COLORS["gamer"])
+        self.card_gamer = SectionCard(self, self.cleaner_scroll, self.tr("sec_gamer_title"), self.tr("sec_gamer_sub"), COLORS["gamer"])
         self.card_gamer.grid(row=3, column=0, sticky="ew", pady=(0, 16))
         self.section_cards.append(self.card_gamer)
-        self.register_gamer_tasks()
+        self.register_gaming_cleanup_tasks()
 
-        self.card_ult = SectionCard(self, self.scroll, self.tr("sec_ult_title"), self.tr("sec_ult_sub"), COLORS["ultimate"])
+        self.card_ult = SectionCard(self, self.cleaner_scroll, self.tr("sec_ult_title"), self.tr("sec_ult_sub"), COLORS["ultimate"])
         self.card_ult.grid(row=4, column=0, sticky="ew", pady=(0, 8))
         self.section_cards.append(self.card_ult)
         self.register_ultimate_tasks()
 
+        self.card_opt = SectionCard(self, self.optimizer_scroll, self.tr("sec_optimizer_title"), self.tr("sec_optimizer_sub"), COLORS["gamer"])
+        self.card_opt.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+        self.section_cards.append(self.card_opt)
+        self.register_optimizer_tasks()
+
+        self.card_opt_tools = SectionCard(self, self.optimizer_scroll, self.tr("sec_optimizer_tools_title"), self.tr("sec_optimizer_tools_sub"), COLORS["system"])
+        self.card_opt_tools.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self.section_cards.append(self.card_opt_tools)
+        self.register_optimizer_helper_tasks()
+
+        self.show_module_tab(self.active_module_tab)
+
     def build_footer(self):
+
         self.footer = ctk.CTkFrame(self, height=198, fg_color=COLORS["bg_panel"], corner_radius=0)
         self.footer.grid(row=1, column=1, sticky="ew")
         self.footer.grid_propagate(False)
@@ -680,9 +762,11 @@ class Cleaner(ctk.CTk):
 
     def add_task(self, parent_card: SectionCard, task: CleanerTask):
         self.tasks[task.key] = task
-        var = ctk.BooleanVar(value=task.default)
-        var.trace_add("write", lambda *_: self.refresh_selection_stats())
-        self.vars[task.key] = var
+        var = None
+        if not task.instant_action:
+            var = ctk.BooleanVar(value=task.default)
+            var.trace_add("write", lambda *_: self.refresh_selection_stats())
+            self.vars[task.key] = var
         parent_card.add_option(var, task)
 
     def register_system_tasks(self):
@@ -770,7 +854,7 @@ class Cleaner(ctk.CTk):
             command=lambda: self.run_logged_command("netsh winsock reset", "winsock_ok", "winsock_fail", timeout=120),
         ))
 
-    def register_gamer_tasks(self):
+    def register_gaming_cleanup_tasks(self):
         local = os.environ.get("LOCALAPPDATA", "")
         appdata = os.environ.get("APPDATA", "")
         programdata = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
@@ -794,21 +878,46 @@ class Cleaner(ctk.CTk):
                     state=state if requires_admin else "normal", requires_admin=requires_admin,
                 ))
 
-        self.add_task(self.card_gamer, CleanerTask(
-            key="disable_gamedvr", title_key="task.disable_gamedvr.title", desc_key="task.disable_gamedvr.desc",
-            kind="command", category="gamer", default=False, command=self.disable_game_dvr,
+    def register_optimizer_tasks(self):
+        state = "normal" if self.is_admin else "disabled"
+        self.add_task(self.card_opt, CleanerTask(
+            key="enable_game_mode", title_key="task.enable_game_mode.title", desc_key="task.enable_game_mode.desc",
+            kind="command", category="optimizer", default=False, command=self.enable_game_mode,
         ))
-        self.add_task(self.card_gamer, CleanerTask(
+        self.add_task(self.card_opt, CleanerTask(
+            key="disable_gamedvr", title_key="task.disable_gamedvr.title", desc_key="task.disable_gamedvr.desc",
+            kind="command", category="optimizer", default=False, command=self.disable_game_dvr,
+        ))
+        self.add_task(self.card_opt, CleanerTask(
             key="high_perf_plan", title_key="task.high_perf_plan.title", desc_key="task.high_perf_plan.desc",
-            kind="command", category="gamer", default=False, state=state, requires_admin=True,
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
             command=lambda: self.run_logged_command("powercfg /S SCHEME_MIN", "high_perf_ok", "high_perf_fail", timeout=90),
         ))
-        self.add_task(self.card_gamer, CleanerTask(
+        self.add_task(self.card_opt, CleanerTask(
             key="ultimate_perf_plan", title_key="task.ultimate_perf_plan.title", desc_key="task.ultimate_perf_plan.desc",
-            kind="command", category="gamer", default=False, state=state, requires_admin=True, command=self.enable_ultimate_performance,
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True, command=self.enable_ultimate_performance,
+        ))
+        self.add_task(self.card_opt, CleanerTask(
+            key="disable_notifications", title_key="task.disable_notifications.title", desc_key="task.disable_notifications.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:quiethours", "focus_assist_ok", "focus_assist_fail"),
+        ))
+        self.add_task(self.card_opt, CleanerTask(
+            key="open_visual_effects", title_key="task.open_visual_effects.title", desc_key="task.open_visual_effects.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.open_visual_effects_settings,
+        ))
+
+    def register_optimizer_helper_tasks(self):
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_graphics_defaults", title_key="task.open_graphics_defaults.title", desc_key="task.open_graphics_defaults.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:display-advancedgraphics-default", "graphics_defaults_ok", "graphics_defaults_fail"),
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_graphics_apps", title_key="task.open_graphics_apps.title", desc_key="task.open_graphics_apps.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:display-advancedgraphics", "graphics_apps_ok", "graphics_apps_fail"),
         ))
 
     def register_ultimate_tasks(self):
+
         state = "normal" if self.is_admin else "disabled"
         self.add_task(self.card_ult, CleanerTask(
             key="dism_clean", title_key="task.dism_clean.title", desc_key="task.dism_clean.desc",
@@ -895,6 +1004,18 @@ class Cleaner(ctk.CTk):
         self.refresh_selection_stats()
         self.log(self.tr("selection_cleared"))
 
+    def invoke_instant_task(self, task: CleanerTask):
+        if task.state == "disabled":
+            self.log(self.tr("admin_required_for_this"))
+            return
+        if not task.command:
+            return
+        self.log(self.trf("action_fmt", title=self.task_title(task)))
+        try:
+            task.command()
+        except Exception:
+            self.log(self.trf("action_error_fmt", title=self.task_title(task)))
+
     def apply_safe_preset(self):
         self.clear_selection()
         safe_keywords = ("temp", "cache", "dns")
@@ -916,7 +1037,7 @@ class Cleaner(ctk.CTk):
         preferred = {
             "dns_flush", "browser_chrome", "browser_edge", "browser_brave", "browser_opera",
             "discord_cache", "discord_gpu_cache", "steam_htmlcache", "epic_webcache",
-            "battle_net_cache", "temp_capture_cache", "disable_gamedvr"
+            "battle_net_cache", "temp_capture_cache", "disable_gamedvr", "enable_game_mode", "disable_notifications"
         }
         for key, var in self.vars.items():
             task = self.tasks.get(key)
@@ -936,7 +1057,7 @@ class Cleaner(ctk.CTk):
             "dns_flush", "dx_shader_cache", "nvidia_dx", "nvidia_gl", "nvidia_nv_cache",
             "amd_dx", "amd_gl", "steam_htmlcache", "epic_webcache", "battle_net_cache",
             "discord_cache", "discord_gpu_cache", "thumb_cache", "recent_docs",
-            "disable_gamedvr", "high_perf_plan"
+            "disable_gamedvr", "enable_game_mode", "high_perf_plan", "disable_notifications"
         }
         if self.is_admin:
             preferred.add("ultimate_perf_plan")
@@ -975,11 +1096,36 @@ class Cleaner(ctk.CTk):
     def run_logged_command(self, cmd: str, success_key: str, fail_key: str, timeout: int = 180):
         ok = WindowsOps.run_command(cmd, timeout=timeout)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
+    def open_settings_uri(self, uri: str, success_key: str, fail_key: str):
+        ok = False
+        if IS_WINDOWS:
+            try:
+                os.startfile(uri)  # type: ignore[attr-defined]
+                ok = True
+            except Exception:
+                ok = WindowsOps.run_command(f'start "" "{uri}"', timeout=20)
+        self.log(self.tr(success_key) if ok else self.tr(fail_key))
+
+    def open_visual_effects_settings(self):
+        ok = WindowsOps.run_command("SystemPropertiesPerformance.exe", timeout=20)
+        self.log(self.tr("visual_effects_ok") if ok else self.tr("visual_effects_fail"))
+
 
     def disable_game_dvr(self):
-        ok1 = WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0)
-        ok2 = WindowsOps.reg_add(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0)
-        self.log(self.tr("game_dvr_ok") if (ok1 and ok2) else self.tr("game_dvr_fail"))
+        results = [
+            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0),
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0),
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", 0),
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel", 0),
+        ]
+        self.log(self.tr("game_dvr_ok") if all(results) else self.tr("game_dvr_fail"))
+
+    def enable_game_mode(self):
+        results = [
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1),
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1),
+        ]
+        self.log(self.tr("game_mode_ok") if all(results) else self.tr("game_mode_fail"))
 
     def enable_ultimate_performance(self):
         ok = WindowsOps.try_enable_ultimate_performance()
