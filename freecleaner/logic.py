@@ -13,6 +13,9 @@ import subprocess
 import shutil
 import stat
 import time
+import urllib.request
+import urllib.error
+import webbrowser
 try:
     import winreg  # type: ignore
 except Exception:  # pragma: no cover
@@ -34,6 +37,23 @@ VERSION_INFO_FILENAME = "version_info.txt"
 LANG_DIRNAME = "lang"
 ICONS_DIRNAME = os.path.join("assets", "icons")
 REGISTRY_BACKUP_DIRNAME = "registry_backups"
+GITHUB_API_BASE = "https://api.github.com"
+
+
+@dataclass(slots=True)
+class UpdateInfo:
+    owner: str
+    repo: str
+    tag_name: str
+    name: str
+    body: str
+    html_url: str
+    download_url: str
+    published_at: str
+    version_text: str
+    version_tuple: Tuple[int, ...]
+
+
 
 
 # -------------------------
@@ -134,6 +154,113 @@ def _format_version_display(raw: str) -> str:
     if d is None or d == "0":
         return f"v{a}.{b}.{c}"
     return f"v{a}.{b}.{c}.{d}"
+
+
+def normalize_version_tuple(raw: str) -> Tuple[int, ...]:
+    text = (raw or "").strip()
+    if not text:
+        return (0,)
+
+    if text.lower().startswith("v"):
+        text = text[1:]
+
+    text = text.split("+", 1)[0].strip()
+    text = text.split("-", 1)[0].strip()
+
+    parts: List[int] = []
+    for segment in text.split('.'):
+        piece = segment.strip()
+        if not piece:
+            continue
+        m = re.match(r"(\d+)", piece)
+        if not m:
+            break
+        parts.append(int(m.group(1)))
+
+    if not parts:
+        return (0,)
+
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def compare_versions(left: str, right: str) -> int:
+    a = list(normalize_version_tuple(left))
+    b = list(normalize_version_tuple(right))
+    size = max(len(a), len(b))
+    a.extend([0] * (size - len(a)))
+    b.extend([0] * (size - len(b)))
+    if tuple(a) < tuple(b):
+        return -1
+    if tuple(a) > tuple(b):
+        return 1
+    return 0
+
+
+def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Optional[UpdateInfo]:
+    owner = (owner or '').strip()
+    repo = (repo or '').strip()
+    if not owner or not repo:
+        return None
+
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"{APP_NAME}-UpdateChecker",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    tag_name = str(payload.get("tag_name") or "").strip()
+    name = str(payload.get("name") or tag_name or f"{owner}/{repo}").strip()
+    body = str(payload.get("body") or "").strip()
+    html_url = str(payload.get("html_url") or "").strip()
+    published_at = str(payload.get("published_at") or payload.get("created_at") or "").strip()
+
+    download_url = html_url
+    assets = payload.get("assets")
+    if isinstance(assets, list):
+        preferred = None
+        fallback = None
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            candidate = str(asset.get("browser_download_url") or "").strip()
+            asset_name = str(asset.get("name") or "").strip().lower()
+            if not candidate:
+                continue
+            if asset_name.endswith('.exe') and preferred is None:
+                preferred = candidate
+            if fallback is None:
+                fallback = candidate
+        download_url = preferred or fallback or html_url
+
+    version_text = tag_name or name
+    return UpdateInfo(
+        owner=owner,
+        repo=repo,
+        tag_name=tag_name or name,
+        name=name,
+        body=body,
+        html_url=html_url,
+        download_url=download_url,
+        published_at=published_at,
+        version_text=version_text,
+        version_tuple=normalize_version_tuple(version_text),
+    )
 
 
 def _parse_version_info_text(text: str) -> Dict[str, str]:
@@ -473,6 +600,22 @@ class WindowsOps:
             return False
         except Exception:
             return False
+
+    @staticmethod
+    def open_url(url: str) -> bool:
+        try:
+            target = (url or '').strip()
+            if not target:
+                return False
+            if IS_WINDOWS:
+                os.startfile(target)  # type: ignore[attr-defined]
+                return True
+            return bool(webbrowser.open(target))
+        except Exception:
+            try:
+                return bool(webbrowser.open(url))
+            except Exception:
+                return False
 
     @staticmethod
     def registry_backup_root() -> str:

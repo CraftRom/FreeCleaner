@@ -267,5 +267,21 @@
   "cleanup_target_partial_fmt": "Очищено частково: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}, пропущено: {errors}",
   "cleanup_target_failed_fmt": "Помилка очищення: {title}",
   "cleanup_reboot_scheduled_fmt": "Заплановано видалення після перезавантаження: {title} -> {count}",
-  "cleanup_remaining_fmt": "Після очищення ще лишилось: {title} -> файлів: {files}, папок: {dirs}"
+  "cleanup_remaining_fmt": "Після очищення ще лишилось: {title} -> файлів: {files}, папок: {dirs}",
+  "check_updates": "Перевірити оновлення",
+  "checking_updates": "Перевіряю оновлення...",
+  "update_check_running": "Перевірка оновлення вже виконується.",
+  "update_check_failed": "Не вдалося перевірити оновлення зараз.",
+  "update_dialog_title": "Доступне оновлення",
+  "update_available_body": "Доступна новіша версія FreeCleaner. Поточна версія: {current}. Остання версія: {latest}.",
+  "update_available_log": "Знайдено оновлення: {current} → {latest}",
+  "update_up_to_date_body": "У тебе вже остання версія: {version}.",
+  "update_up_to_date_log": "У тебе вже остання версія: {version}.",
+  "update_published_at": "Опубліковано: {date}",
+  "update_changelog": "Що змінилося",
+  "update_no_changelog": "Для цього релізу не вказано список змін.",
+  "update_download": "Завантажити оновлення",
+  "update_later": "Пізніше",
+  "update_opened_download": "Відкрито сторінку завантаження для {version}.",
+  "update_download_failed": "Не вдалося відкрити сторінку завантаження."
 }

@@ -30,11 +30,15 @@ from .logic import (
     LANG_PACKS,
     LANG_PACK_SOURCES,
     APP_VERSION,
+    APP_VERSION_RAW,
     CONFIG_PATH,
     CleanerTask,
     PathFinder,
     WindowsOps,
     SafeFS,
+    UpdateInfo,
+    compare_versions,
+    fetch_latest_github_release,
     SCAN_WORKERS,
     CLEAN_WORKERS,
     get_runtime_base_dir,
@@ -161,6 +165,9 @@ class Cleaner(ctk.CTk):
         self._last_search_query = ""
         self._about_header_icon_cache = None
         self.active_module_tab = "cleaner"
+        self._update_check_in_progress = False
+        self._last_update_info: Optional[UpdateInfo] = None
+        self._ignored_update_tag = ""
         self.apply_window_icon()
 
         self.is_admin = WindowsOps.is_admin()
@@ -193,6 +200,7 @@ class Cleaner(ctk.CTk):
         self.log(self.tr("mode_admin") if self.is_admin else self.tr("mode_limited"))
         self.refresh_selection_stats()
         self.apply_language()
+        self.after(1400, lambda: self.check_for_updates(silent_if_latest=True, source="startup"))
 
 
     def configure_window_geometry(self):
@@ -564,6 +572,8 @@ class Cleaner(ctk.CTk):
             self.btn_restore_registry.configure(text=self.tr("restore_registry_backup"))
         if hasattr(self, "btn_about"):
             self.btn_about.configure(text=self.tr("about"))
+        if hasattr(self, "btn_check_updates"):
+            self.btn_check_updates.configure(text=self.tr("check_updates"))
         self.event_log_label.configure(text=self.tr("event_log"))
         self.btn_copy_log.configure(text=self.tr("copy_log"))
         self.btn_clear_log.configure(text=self.tr("clear_log"))
@@ -1895,8 +1905,149 @@ class Cleaner(ctk.CTk):
         doc_row("about_license", "about_license_sub", "LICENSE", "about_license")
         doc_row("about_privacy", "about_privacy_sub", "PRIVACY_POLICY.txt", "about_privacy")
 
-        ctk.CTkButton(wrap, text=self.tr("about_close"), height=42, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"], command=win.destroy).pack(fill="x", padx=18, pady=(8, 18))
+        action_row = ctk.CTkFrame(wrap, fg_color="transparent")
+        action_row.pack(fill="x", padx=18, pady=(8, 18))
+        self.btn_check_updates = ctk.CTkButton(action_row, text=self.tr("check_updates"), height=42, fg_color=COLORS["gamer"], hover_color="#059669", text_color=COLORS["white"], command=lambda: self.check_for_updates(silent_if_latest=False, source="about"))
+        self.btn_check_updates.pack(side="left", fill="x", expand=True)
+        ctk.CTkButton(action_row, text=self.tr("about_close"), height=42, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"], command=win.destroy).pack(side="left", fill="x", expand=True, padx=(10, 0))
 
+
+    def _set_update_check_busy(self, busy: bool) -> None:
+        self._update_check_in_progress = bool(busy)
+        try:
+            if getattr(self, "_about_win", None) and self._about_win.winfo_exists() and hasattr(self, "btn_check_updates"):
+                self.btn_check_updates.configure(
+                    state="disabled" if busy else "normal",
+                    text=self.tr("checking_updates") if busy else self.tr("check_updates"),
+                )
+        except Exception:
+            pass
+
+    def _format_release_notes_for_log(self, body: str, limit: int = 8) -> List[str]:
+        lines: List[str] = []
+        for raw in (body or "").splitlines():
+            clean = re.sub(r"\s+", " ", raw).strip()
+            if not clean:
+                continue
+            if clean.startswith("#"):
+                clean = clean.lstrip("#").strip()
+            lines.append(clean)
+            if len(lines) >= limit:
+                break
+        return lines
+
+    def check_for_updates(self, *, silent_if_latest: bool = False, source: str = "manual") -> None:
+        if self._update_check_in_progress:
+            if source != "startup":
+                self.log(self.tr("update_check_running"))
+            return
+
+        self._set_update_check_busy(True)
+        if source != "startup":
+            self.log(self.tr("checking_updates"))
+
+        def worker() -> None:
+            info = fetch_latest_github_release("CraftRom", "FreeCleaner")
+            self.after(0, lambda: self._handle_update_check_result(info, silent_if_latest=silent_if_latest, source=source))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _handle_update_check_result(self, info: Optional[UpdateInfo], *, silent_if_latest: bool, source: str) -> None:
+        self._set_update_check_busy(False)
+        if info is None:
+            if source != "startup":
+                self.log(self.tr("update_check_failed"))
+                self._open_text_viewer(self.tr("update_dialog_title"), self.tr("update_check_failed"))
+            return
+
+        self._last_update_info = info
+        current_raw = APP_VERSION_RAW
+        cmp = compare_versions(info.version_text, current_raw)
+
+        if cmp > 0 and (source != "startup" or info.tag_name != self._ignored_update_tag):
+            self.log(self.trf("update_available_log", current=self._format_version_label(current_raw), latest=self._format_version_label(info.version_text)))
+            for line in self._format_release_notes_for_log(info.body):
+                self.log(f"• {line}")
+            self.open_update_dialog(info, startup=(source == "startup"))
+            return
+
+        if source != "startup" or not silent_if_latest:
+            self.log(self.trf("update_up_to_date_log", version=self._format_version_label(current_raw)))
+            if source != "startup":
+                self._open_text_viewer(self.tr("update_dialog_title"), self.trf("update_up_to_date_body", version=self._format_version_label(current_raw)))
+
+    def _format_version_label(self, raw: str) -> str:
+        label = (raw or "").strip()
+        if not label:
+            return "v0.0.0"
+        if not label.lower().startswith("v"):
+            label = f"v{label}"
+        return label
+
+    def _format_release_notes(self, body: str) -> str:
+        notes = (body or "").strip()
+        if not notes:
+            return self.tr("update_no_changelog")
+        return notes
+
+    def download_update(self, info: UpdateInfo) -> None:
+        target = info.download_url or info.html_url
+        if WindowsOps.open_url(target):
+            self.log(self.trf("update_opened_download", version=self._format_version_label(info.version_text)))
+        else:
+            self.log(self.tr("update_download_failed"))
+
+    def open_update_dialog(self, info: UpdateInfo, *, startup: bool = False) -> None:
+        try:
+            if getattr(self, "_update_win", None) and self._update_win.winfo_exists():  # type: ignore[attr-defined]
+                self._update_win.focus()  # type: ignore[attr-defined]
+                return
+        except Exception:
+            pass
+
+        win = ctk.CTkToplevel(self)
+        self._update_win = win  # type: ignore[attr-defined]
+        win.title(self.tr("update_dialog_title"))
+        self.configure_toplevel_geometry(win, preferred=(760, 640), minimum=(620, 520))
+        win.configure(fg_color=COLORS["bg_main"])
+        try:
+            if startup:
+                win.transient(self)
+                win.grab_set()
+        except Exception:
+            pass
+        self._apply_icon_to_toplevel(win)
+
+        wrap = ctk.CTkFrame(win, fg_color=COLORS["bg_card"], corner_radius=18, border_width=1, border_color=COLORS["border"])
+        wrap.pack(fill="both", expand=True, padx=18, pady=18)
+
+        head = ctk.CTkFrame(wrap, fg_color="transparent")
+        head.pack(fill="x", padx=18, pady=(18, 10))
+        ctk.CTkLabel(head, text=self.tr("update_dialog_title"), font=("Segoe UI Black", 20), text_color=COLORS["white"]).pack(anchor="w")
+        ctk.CTkLabel(head, text=self.trf("update_available_body", current=self._format_version_label(APP_VERSION_RAW), latest=self._format_version_label(info.version_text)), font=("Segoe UI", 12), text_color=COLORS["text_gray"], justify="left", wraplength=660).pack(anchor="w", pady=(6, 0))
+
+        meta = ctk.CTkFrame(wrap, fg_color=COLORS["bg_soft"], corner_radius=14, border_width=1, border_color=COLORS["border"])
+        meta.pack(fill="x", padx=18, pady=(0, 12))
+        ctk.CTkLabel(meta, text=f"{self.tr('about_version')}: {self._format_version_label(APP_VERSION_RAW)} → {self._format_version_label(info.version_text)}", font=("Segoe UI", 12, "bold"), text_color=COLORS["white"]).pack(anchor="w", padx=14, pady=(12, 4))
+        if info.published_at:
+            ctk.CTkLabel(meta, text=self.trf("update_published_at", date=info.published_at.replace('T', ' ').replace('Z', ' UTC')), font=("Segoe UI", 11), text_color=COLORS["text_gray"]).pack(anchor="w", padx=14, pady=(0, 4))
+        ctk.CTkLabel(meta, text=info.name or info.tag_name, font=("Segoe UI", 11), text_color=COLORS["muted"], wraplength=640, justify="left").pack(anchor="w", padx=14, pady=(0, 12))
+
+        ctk.CTkLabel(wrap, text=self.tr("update_changelog"), font=("Segoe UI", 13, "bold"), text_color=COLORS["text_gray"]).pack(anchor="w", padx=18, pady=(0, 8))
+        notes = ctk.CTkTextbox(wrap, fg_color="#05070A", text_color=COLORS["white"], border_width=1, border_color=COLORS["border"], font=("Consolas", 11))
+        notes.pack(fill="both", expand=True, padx=18, pady=(0, 16))
+        notes.insert("1.0", self._format_release_notes(info.body))
+        notes.configure(state="disabled")
+
+        btns = ctk.CTkFrame(wrap, fg_color="transparent")
+        btns.pack(fill="x", padx=18, pady=(0, 18))
+        ctk.CTkButton(btns, text=self.tr("update_download"), height=42, fg_color=COLORS["gamer"], hover_color="#059669", command=lambda: self.download_update(info)).pack(side="left", fill="x", expand=True)
+
+        def dismiss() -> None:
+            self._ignored_update_tag = info.tag_name
+            win.destroy()
+
+        ctk.CTkButton(btns, text=self.tr("update_later"), height=42, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"], command=dismiss).pack(side="left", fill="x", expand=True, padx=(10, 0))
 
     def on_close(self):
         if self.dism_running:

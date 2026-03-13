@@ -267,5 +267,21 @@
   "cleanup_target_partial_fmt": "Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}",
   "cleanup_target_failed_fmt": "Cleanup error: {title}",
   "cleanup_reboot_scheduled_fmt": "Scheduled for deletion after reboot: {title} -> {count}",
-  "cleanup_remaining_fmt": "Still left after cleanup: {title} -> files: {files}, folders: {dirs}"
+  "cleanup_remaining_fmt": "Still left after cleanup: {title} -> files: {files}, folders: {dirs}",
+  "check_updates": "Check for updates",
+  "checking_updates": "Checking for updates...",
+  "update_check_running": "Update check is already running.",
+  "update_check_failed": "Could not check for updates right now.",
+  "update_dialog_title": "Update available",
+  "update_available_body": "A newer FreeCleaner release is available. Current version: {current}. Latest version: {latest}.",
+  "update_available_log": "Update found: {current} → {latest}",
+  "update_up_to_date_body": "You already have the latest version: {version}.",
+  "update_up_to_date_log": "You already have the latest version: {version}.",
+  "update_published_at": "Published: {date}",
+  "update_changelog": "What changed",
+  "update_no_changelog": "No release notes were provided for this release.",
+  "update_download": "Download update",
+  "update_later": "Later",
+  "update_opened_download": "Opened download page for {version}.",
+  "update_download_failed": "Could not open the download page."
 }
