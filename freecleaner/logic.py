@@ -14,6 +14,7 @@ import shutil
 import stat
 import time
 import urllib.request
+import urllib.parse
 import urllib.error
 import webbrowser
 try:
@@ -49,6 +50,7 @@ class UpdateInfo:
     body: str
     html_url: str
     download_url: str
+    asset_name: str
     published_at: str
     version_text: str
     version_tuple: Tuple[int, ...]
@@ -231,22 +233,29 @@ def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Opt
     published_at = str(payload.get("published_at") or payload.get("created_at") or "").strip()
 
     download_url = html_url
+    selected_asset_name = ""
     assets = payload.get("assets")
     if isinstance(assets, list):
         preferred = None
+        preferred_name = ""
         fallback = None
+        fallback_name = ""
         for asset in assets:
             if not isinstance(asset, dict):
                 continue
             candidate = str(asset.get("browser_download_url") or "").strip()
-            asset_name = str(asset.get("name") or "").strip().lower()
+            raw_asset_name = str(asset.get("name") or "").strip()
+            asset_name = raw_asset_name.lower()
             if not candidate:
                 continue
             if asset_name.endswith('.exe') and preferred is None:
                 preferred = candidate
+                preferred_name = raw_asset_name
             if fallback is None:
                 fallback = candidate
+                fallback_name = raw_asset_name
         download_url = preferred or fallback or html_url
+        selected_asset_name = preferred_name or fallback_name
 
     version_text = tag_name or name
     return UpdateInfo(
@@ -257,10 +266,91 @@ def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Opt
         body=body,
         html_url=html_url,
         download_url=download_url,
+        asset_name=selected_asset_name,
         published_at=published_at,
         version_text=version_text,
         version_tuple=normalize_version_tuple(version_text),
     )
+
+
+def get_default_download_dir() -> str:
+    home = os.path.expanduser("~")
+    downloads = os.path.join(home, "Downloads")
+    if os.path.isdir(downloads):
+        return downloads
+    return get_runtime_base_dir()
+
+
+def guess_download_filename(url: str, fallback: str = "download.bin") -> str:
+    text = (url or "").strip()
+    if not text:
+        return fallback
+    try:
+        parsed = urllib.parse.urlparse(text)
+        name = os.path.basename(urllib.parse.unquote(parsed.path))
+        return name or fallback
+    except Exception:
+        return fallback
+
+
+def download_url_to_file(
+    url: str,
+    dest_path: str,
+    *,
+    progress_cb: Optional[Callable[[int, Optional[int]], None]] = None,
+    timeout: int = 30,
+    cancel_event: Optional[threading.Event] = None,
+) -> Tuple[bool, str]:
+    target_url = (url or "").strip()
+    dest = (dest_path or "").strip()
+    if not target_url:
+        return False, "Empty download URL."
+    if not dest:
+        return False, "Empty destination path."
+
+    parent_dir = os.path.dirname(dest) or "."
+    os.makedirs(parent_dir, exist_ok=True)
+    temp_path = dest + ".part"
+
+    request = urllib.request.Request(
+        target_url,
+        headers={
+            "Accept": "application/octet-stream,application/vnd.github+json;q=0.9,*/*;q=0.8",
+            "User-Agent": f"{APP_NAME}-Updater",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method="GET",
+    )
+
+    downloaded = 0
+    total: Optional[int] = None
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response, open(temp_path, "wb") as fh:
+            length_header = response.headers.get("Content-Length")
+            if length_header and str(length_header).isdigit():
+                total = int(length_header)
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise RuntimeError("Download cancelled.")
+                chunk = response.read(1024 * 128)
+                if not chunk:
+                    break
+                fh.write(chunk)
+                downloaded += len(chunk)
+                if progress_cb is not None:
+                    try:
+                        progress_cb(downloaded, total)
+                    except Exception:
+                        pass
+        os.replace(temp_path, dest)
+        return True, dest
+    except Exception as exc:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+        return False, str(exc) or "Download failed."
 
 
 def _parse_version_info_text(text: str) -> Dict[str, str]:

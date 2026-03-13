@@ -282,6 +282,17 @@
   "update_no_changelog": "Для цього релізу не вказано список змін.",
   "update_download": "Завантажити оновлення",
   "update_later": "Пізніше",
-  "update_opened_download": "Відкрито сторінку завантаження для {version}.",
-  "update_download_failed": "Не вдалося відкрити сторінку завантаження."
+  "update_opened_download": "Оновлення для {version} завантажується напряму з програми.",
+  "update_download_failed": "Не вдалося завантажити оновлення.",
+  "update_download_section": "Завантаження оновлення",
+  "update_download_idle": "Натисни кнопку нижче, щоб зберегти інсталятор або архів прямо з програми.",
+  "update_save_dialog_title": "Куди зберегти оновлення",
+  "update_download_progress": "Завантаження: {progress}",
+  "update_downloading": "Завантаження...",
+  "update_download_complete": "Оновлення завантажено:\n{path}",
+  "update_download_saved": "Оновлення збережено: {path}",
+  "update_download_started": "Починаю завантаження оновлення {version}...",
+  "update_download_failed_reason": "Не вдалося завантажити оновлення: {reason}",
+  "update_download_busy": "Завантаження оновлення вже виконується.",
+  "all_files": "Усі файли"
 }

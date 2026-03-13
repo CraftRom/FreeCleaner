@@ -6,6 +6,8 @@ This module contains UI code only and imports core logic from freecleaner.logic.
 from __future__ import annotations
 
 import customtkinter as ctk
+import tkinter as tk
+from tkinter import filedialog, messagebox
 import os
 import ctypes
 import threading
@@ -39,6 +41,9 @@ from .logic import (
     UpdateInfo,
     compare_versions,
     fetch_latest_github_release,
+    download_url_to_file,
+    guess_download_filename,
+    get_default_download_dir,
     SCAN_WORKERS,
     CLEAN_WORKERS,
     get_runtime_base_dir,
@@ -168,6 +173,8 @@ class Cleaner(ctk.CTk):
         self._update_check_in_progress = False
         self._last_update_info: Optional[UpdateInfo] = None
         self._ignored_update_tag = ""
+        self._update_download_in_progress = False
+        self._update_download_cancel: Optional[threading.Event] = None
         self.apply_window_icon()
 
         self.is_admin = WindowsOps.is_admin()
@@ -1801,7 +1808,6 @@ class Cleaner(ctk.CTk):
         btn_copy = ctk.CTkButton(head, text=self.tr("about_copy"), height=34, width=120, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"])
         btn_copy.grid(row=0, column=2, sticky="e")
 
-        import tkinter as tk
         txt = tk.Text(wrap, wrap="word", bg=COLORS["bg_soft"], fg=COLORS["white"], insertbackground=COLORS["white"])
         txt.pack(fill="both", expand=True, padx=16, pady=(0, 12))
         txt.insert("1.0", text or "")
@@ -1968,7 +1974,8 @@ class Cleaner(ctk.CTk):
             self.log(self.trf("update_available_log", current=self._format_version_label(current_raw), latest=self._format_version_label(info.version_text)))
             for line in self._format_release_notes_for_log(info.body):
                 self.log(f"• {line}")
-            self.open_update_dialog(info, startup=(source == "startup"))
+            parent = getattr(self, "_about_win", None) if source == "about" else self
+            self.open_update_dialog(info, startup=(source == "startup"), parent=parent)
             return
 
         if source != "startup" or not silent_if_latest:
@@ -1990,64 +1997,503 @@ class Cleaner(ctk.CTk):
             return self.tr("update_no_changelog")
         return notes
 
-    def download_update(self, info: UpdateInfo) -> None:
-        target = info.download_url or info.html_url
-        if WindowsOps.open_url(target):
-            self.log(self.trf("update_opened_download", version=self._format_version_label(info.version_text)))
-        else:
-            self.log(self.tr("update_download_failed"))
+    def _human_size(self, value: float) -> str:
+        try:
+            num = float(value)
+        except Exception:
+            return "0 B"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        idx = 0
+        while num >= 1024 and idx < len(units) - 1:
+            num /= 1024.0
+            idx += 1
+        if idx == 0:
+            return f"{int(num)} {units[idx]}"
+        return f"{num:.1f} {units[idx]}"
 
-    def open_update_dialog(self, info: UpdateInfo, *, startup: bool = False) -> None:
+    def _configure_markdown_tags(self, text: tk.Text) -> None:
+        try:
+            text.tag_configure("md_p", spacing1=0, spacing3=7, lmargin1=2, lmargin2=2)
+            text.tag_configure("md_h1", font=("Segoe UI Black", 16), foreground=COLORS["white"], spacing1=8, spacing3=7)
+            text.tag_configure("md_h2", font=("Segoe UI Black", 14), foreground=COLORS["white"], spacing1=7, spacing3=6)
+            text.tag_configure("md_h3", font=("Segoe UI", 13, "bold"), foreground=COLORS["white"], spacing1=6, spacing3=5)
+            text.tag_configure("md_h4", font=("Segoe UI", 12, "bold"), foreground=COLORS["white"], spacing1=4, spacing3=4)
+            text.tag_configure("md_h5", font=("Segoe UI", 11, "bold"), foreground=COLORS["white"], spacing1=4, spacing3=4)
+            text.tag_configure("md_h6", font=("Segoe UI", 10, "bold"), foreground=COLORS["text_gray"], spacing1=4, spacing3=4)
+            text.tag_configure("md_bold", font=("Segoe UI", 10, "bold"))
+            text.tag_configure("md_italic", font=("Segoe UI", 10, "italic"))
+            text.tag_configure("md_code", font=("Consolas", 9), background="#101722", foreground="#A7F3D0")
+            text.tag_configure("md_codeblock", font=("Consolas", 9), background="#0B1020", foreground="#D1FAE5", lmargin1=12, lmargin2=12, spacing1=5, spacing3=7)
+            text.tag_configure("md_quote", foreground=COLORS["text_gray"], lmargin1=18, lmargin2=18, spacing1=2, spacing3=5)
+            text.tag_configure("md_bullet", lmargin1=16, lmargin2=34, spacing1=2, spacing3=2)
+            text.tag_configure("md_num", lmargin1=16, lmargin2=34, spacing1=2, spacing3=2)
+            text.tag_configure("md_hr", foreground=COLORS["border"], spacing1=6, spacing3=6)
+            text.tag_configure("md_link", foreground="#60A5FA", underline=True)
+        except Exception:
+            pass
+
+    def _insert_markdown_inline(self, text: tk.Text, value: str, base_tags: Tuple[str, ...] = ()) -> None:
+        pattern = re.compile(r'(\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|~~([^~]+)~~)')
+        pos = 0
+        for match in pattern.finditer(value or ""):
+            if match.start() > pos:
+                text.insert("end", value[pos:match.start()], base_tags or ("md_p",))
+            token = match.group(0)
+            if match.group(2) is not None and match.group(3) is not None:
+                label = match.group(2)
+                url = match.group(3).strip()
+                tag_name = f"md_link_{text.index('end-1c').replace('.', '_')}_{abs(hash((label, url))) % 100000}"
+                text.insert("end", label, tuple(base_tags) + ("md_link", tag_name))
+                def _open(_event=None, target=url):
+                    try:
+                        WindowsOps.open_url(target)
+                    except Exception:
+                        pass
+                    return "break"
+                text.tag_bind(tag_name, "<Button-1>", _open)
+                text.tag_bind(tag_name, "<Enter>", lambda _e: text.configure(cursor="hand2"))
+                text.tag_bind(tag_name, "<Leave>", lambda _e: text.configure(cursor="arrow"))
+            elif match.group(4) is not None:
+                text.insert("end", match.group(4), tuple(base_tags) + ("md_code",))
+            elif match.group(5) is not None or match.group(6) is not None:
+                text.insert("end", match.group(5) or match.group(6) or token, tuple(base_tags) + ("md_bold",))
+            elif match.group(7) is not None or match.group(8) is not None:
+                text.insert("end", match.group(7) or match.group(8) or token, tuple(base_tags) + ("md_italic",))
+            elif match.group(9) is not None:
+                text.insert("end", match.group(9), base_tags or ("md_p",))
+            pos = match.end()
+        if pos < len(value or ""):
+            text.insert("end", value[pos:], base_tags or ("md_p",))
+
+    def _render_markdown(self, text: tk.Text, body: str) -> None:
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        self._configure_markdown_tags(text)
+        source = (body or "").strip() or self.tr("update_no_changelog")
+        in_code = False
+        ordered_index = 1
+        for raw in source.splitlines():
+            line = raw.rstrip("\n")
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_code = not in_code
+                if not in_code:
+                    text.insert("end", "\n")
+                continue
+            if in_code:
+                text.insert("end", line + "\n", ("md_codeblock",))
+                continue
+            if not stripped:
+                text.insert("end", "\n")
+                ordered_index = 1
+                continue
+            if re.match(r'^([-*_])\1{2,}$', stripped):
+                text.insert("end", "─" * 72 + "\n", ("md_hr",))
+                ordered_index = 1
+                continue
+            m = re.match(r'^(#{1,6})\s+(.*)$', stripped)
+            if m:
+                self._insert_markdown_inline(text, m.group(2), (f"md_h{min(len(m.group(1)), 6)}",))
+                text.insert("end", "\n\n")
+                ordered_index = 1
+                continue
+            m = re.match(r'^>\s?(.*)$', stripped)
+            if m:
+                text.insert("end", "▌ ", ("md_quote",))
+                self._insert_markdown_inline(text, m.group(1), ("md_quote",))
+                text.insert("end", "\n")
+                continue
+            m = re.match(r'^[-*+]\s+(.*)$', stripped)
+            if m:
+                text.insert("end", "• ", ("md_bullet",))
+                self._insert_markdown_inline(text, m.group(1), ("md_bullet",))
+                text.insert("end", "\n")
+                ordered_index = 1
+                continue
+            m = re.match(r'^(\d+)[.)]\s+(.*)$', stripped)
+            if m:
+                prefix = f"{m.group(1)}. "
+                text.insert("end", prefix, ("md_num",))
+                self._insert_markdown_inline(text, m.group(2), ("md_num",))
+                text.insert("end", "\n")
+                ordered_index = int(m.group(1)) + 1
+                continue
+            self._insert_markdown_inline(text, stripped, ("md_p",))
+            text.insert("end", "\n")
+        text.configure(state="disabled")
+
+    def download_update(self, info: UpdateInfo, *, parent=None, progress_bar=None, status_label=None, action_button=None, later_button=None, done_callback=None) -> None:
+        if self._update_download_in_progress:
+            self.log(self.tr("update_download_busy"))
+            return
+
+        parent_win = parent or getattr(self, "_update_win", None) or self
+        default_name = guess_download_filename(info.download_url or info.html_url, info.asset_name or f"FreeCleaner-{info.version_text}.exe")
+        initial_dir = get_default_download_dir()
+        try:
+            save_path = filedialog.asksaveasfilename(
+                parent=parent_win,
+                title=self.tr("update_save_dialog_title"),
+                initialdir=initial_dir,
+                initialfile=default_name,
+                defaultextension=os.path.splitext(default_name)[1] or ".exe",
+                filetypes=[("Executable", "*.exe"), ("ZIP archive", "*.zip"), (self.tr("all_files"), "*.*")],
+            )
+        except Exception:
+            save_path = ""
+
+        if not save_path:
+            return
+
+        self._update_download_in_progress = True
+        cancel_event = threading.Event()
+        self._update_download_cancel = cancel_event
+
+        if action_button is not None:
+            try:
+                action_button.configure(state="disabled", text=self.tr("update_downloading"))
+            except Exception:
+                pass
+        if later_button is not None:
+            try:
+                later_button.configure(state="disabled")
+            except Exception:
+                pass
+        if progress_bar is not None:
+            try:
+                progress_bar.set(0)
+            except Exception:
+                pass
+        if status_label is not None:
+            try:
+                status_label.configure(text=self.trf("update_download_progress", progress="0% • 0 B"))
+            except Exception:
+                pass
+
+        self.log(self.trf("update_download_started", version=self._format_version_label(info.version_text)))
+        start_time = datetime.now().timestamp()
+
+        def progress(downloaded: int, total: Optional[int]) -> None:
+            elapsed = max(datetime.now().timestamp() - start_time, 0.001)
+            speed = downloaded / elapsed
+            percent = 0.0
+            progress_text = f"{self._human_size(downloaded)} • {self._human_size(speed)}/s"
+            if total and total > 0:
+                percent = min(downloaded / total, 1.0)
+                progress_text = f"{percent * 100:.0f}% • {self._human_size(downloaded)} / {self._human_size(total)} • {self._human_size(speed)}/s"
+
+            def apply() -> None:
+                if progress_bar is not None:
+                    try:
+                        progress_bar.set(percent if total and total > 0 else 0)
+                    except Exception:
+                        pass
+                if status_label is not None:
+                    try:
+                        status_label.configure(text=self.trf("update_download_progress", progress=progress_text))
+                    except Exception:
+                        pass
+            self.after(0, apply)
+
+        def finish(success: bool, result: str) -> None:
+            self._update_download_in_progress = False
+            self._update_download_cancel = None
+            if action_button is not None:
+                try:
+                    action_button.configure(state="normal", text=self.tr("update_download"))
+                except Exception:
+                    pass
+            if later_button is not None:
+                try:
+                    later_button.configure(state="normal")
+                except Exception:
+                    pass
+            if success:
+                self.log(self.trf("update_download_saved", path=result))
+                if progress_bar is not None:
+                    try:
+                        progress_bar.set(1)
+                    except Exception:
+                        pass
+                if status_label is not None:
+                    try:
+                        status_label.configure(text=self.trf("update_download_complete", path=result))
+                    except Exception:
+                        pass
+                try:
+                    messagebox.showinfo(self.tr("update_dialog_title"), self.trf("update_download_complete", path=result), parent=parent_win)
+                except Exception:
+                    pass
+                if callable(done_callback):
+                    try:
+                        done_callback(result)
+                    except Exception:
+                        pass
+            else:
+                self.log(self.trf("update_download_failed_reason", reason=result))
+                if status_label is not None:
+                    try:
+                        status_label.configure(text=self.trf("update_download_failed_reason", reason=result))
+                    except Exception:
+                        pass
+                try:
+                    messagebox.showerror(self.tr("update_dialog_title"), self.trf("update_download_failed_reason", reason=result), parent=parent_win)
+                except Exception:
+                    pass
+
+        def worker() -> None:
+            ok, result = download_url_to_file(info.download_url or info.html_url, save_path, progress_cb=progress, cancel_event=cancel_event)
+            self.after(0, lambda: finish(ok, result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def open_update_dialog(self, info: UpdateInfo, *, startup: bool = False, parent=None) -> None:
         try:
             if getattr(self, "_update_win", None) and self._update_win.winfo_exists():  # type: ignore[attr-defined]
-                self._update_win.focus()  # type: ignore[attr-defined]
+                self._update_win.deiconify()  # type: ignore[attr-defined]
+                self._update_win.lift()  # type: ignore[attr-defined]
+                self._update_win.focus_force()  # type: ignore[attr-defined]
                 return
         except Exception:
             pass
 
-        win = ctk.CTkToplevel(self)
+        owner = parent if parent is not None and getattr(parent, "winfo_exists", lambda: False)() else self
+
+        try:
+            if owner is not self and getattr(owner, "grab_current", None) and owner.grab_current() == owner:
+                owner.grab_release()
+        except Exception:
+            pass
+
+        win = ctk.CTkToplevel(owner)
         self._update_win = win  # type: ignore[attr-defined]
         win.title(self.tr("update_dialog_title"))
-        self.configure_toplevel_geometry(win, preferred=(760, 640), minimum=(620, 520))
+        self.configure_toplevel_geometry(win, preferred=(900, 760), minimum=(720, 620))
         win.configure(fg_color=COLORS["bg_main"])
         try:
-            if startup:
-                win.transient(self)
-                win.grab_set()
+            win.transient(owner)
+            win.lift()
+            win.attributes("-topmost", True)
+            win.after(250, lambda: win.attributes("-topmost", False))
+            win.grab_set()
         except Exception:
             pass
         self._apply_icon_to_toplevel(win)
 
-        wrap = ctk.CTkFrame(win, fg_color=COLORS["bg_card"], corner_radius=18, border_width=1, border_color=COLORS["border"])
-        wrap.pack(fill="both", expand=True, padx=18, pady=18)
+        wrap = ctk.CTkFrame(
+            win,
+            fg_color=COLORS["bg_card"],
+            corner_radius=22,
+            border_width=1,
+            border_color=mix_colors(COLORS["border"], COLORS["bg_card"], 0.45),
+        )
+        wrap.pack(fill="both", expand=True, padx=14, pady=14)
+        wrap.grid_columnconfigure(0, weight=1)
+        wrap.grid_rowconfigure(3, weight=1)
 
-        head = ctk.CTkFrame(wrap, fg_color="transparent")
-        head.pack(fill="x", padx=18, pady=(18, 10))
+        screen_w = max(720, int(self.winfo_screenwidth() or 900))
+        usable_wrap = max(420, min(760, screen_w - 220))
+        wraplength = usable_wrap - 70
+
+        hero = ctk.CTkFrame(
+            wrap,
+            fg_color=mix_colors(COLORS["gamer"], COLORS["bg_card"], 0.14),
+            corner_radius=20,
+            border_width=1,
+            border_color=mix_colors(COLORS["gamer"], COLORS["border"], 0.50),
+        )
+        hero.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 10))
+        head = ctk.CTkFrame(hero, fg_color="transparent")
+        head.pack(fill="x", padx=16, pady=(14, 12))
         ctk.CTkLabel(head, text=self.tr("update_dialog_title"), font=("Segoe UI Black", 20), text_color=COLORS["white"]).pack(anchor="w")
-        ctk.CTkLabel(head, text=self.trf("update_available_body", current=self._format_version_label(APP_VERSION_RAW), latest=self._format_version_label(info.version_text)), font=("Segoe UI", 12), text_color=COLORS["text_gray"], justify="left", wraplength=660).pack(anchor="w", pady=(6, 0))
+        ctk.CTkLabel(
+            head,
+            text=self.trf(
+                "update_available_body",
+                current=self._format_version_label(APP_VERSION_RAW),
+                latest=self._format_version_label(info.version_text),
+            ),
+            font=("Segoe UI", 11),
+            text_color=COLORS["text_gray"],
+            justify="left",
+            wraplength=wraplength,
+        ).pack(anchor="w", pady=(4, 0))
 
-        meta = ctk.CTkFrame(wrap, fg_color=COLORS["bg_soft"], corner_radius=14, border_width=1, border_color=COLORS["border"])
-        meta.pack(fill="x", padx=18, pady=(0, 12))
-        ctk.CTkLabel(meta, text=f"{self.tr('about_version')}: {self._format_version_label(APP_VERSION_RAW)} → {self._format_version_label(info.version_text)}", font=("Segoe UI", 12, "bold"), text_color=COLORS["white"]).pack(anchor="w", padx=14, pady=(12, 4))
+        meta = ctk.CTkFrame(wrap, fg_color=COLORS["bg_soft"], corner_radius=16, border_width=1, border_color=COLORS["border"])
+        meta.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 10))
+        ctk.CTkLabel(
+            meta,
+            text=f"{self.tr('about_version')}: {self._format_version_label(APP_VERSION_RAW)} → {self._format_version_label(info.version_text)}",
+            font=("Segoe UI", 11, "bold"),
+            text_color=COLORS["white"],
+        ).pack(anchor="w", padx=14, pady=(11, 3))
         if info.published_at:
-            ctk.CTkLabel(meta, text=self.trf("update_published_at", date=info.published_at.replace('T', ' ').replace('Z', ' UTC')), font=("Segoe UI", 11), text_color=COLORS["text_gray"]).pack(anchor="w", padx=14, pady=(0, 4))
-        ctk.CTkLabel(meta, text=info.name or info.tag_name, font=("Segoe UI", 11), text_color=COLORS["muted"], wraplength=640, justify="left").pack(anchor="w", padx=14, pady=(0, 12))
+            ctk.CTkLabel(
+                meta,
+                text=self.trf("update_published_at", date=info.published_at.replace('T', ' ').replace('Z', ' UTC')),
+                font=("Segoe UI", 9),
+                text_color=COLORS["text_gray"],
+            ).pack(anchor="w", padx=14, pady=(0, 3))
+        ctk.CTkLabel(
+            meta,
+            text=info.name or info.tag_name,
+            font=("Segoe UI", 9),
+            text_color=COLORS["muted"],
+            wraplength=wraplength,
+            justify="left",
+        ).pack(anchor="w", padx=14, pady=(0, 11))
 
-        ctk.CTkLabel(wrap, text=self.tr("update_changelog"), font=("Segoe UI", 13, "bold"), text_color=COLORS["text_gray"]).pack(anchor="w", padx=18, pady=(0, 8))
-        notes = ctk.CTkTextbox(wrap, fg_color="#05070A", text_color=COLORS["white"], border_width=1, border_color=COLORS["border"], font=("Consolas", 11))
-        notes.pack(fill="both", expand=True, padx=18, pady=(0, 16))
-        notes.insert("1.0", self._format_release_notes(info.body))
-        notes.configure(state="disabled")
+        changelog_head = ctk.CTkFrame(wrap, fg_color="transparent")
+        changelog_head.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 6))
+        ctk.CTkLabel(changelog_head, text=self.tr("update_changelog"), font=("Segoe UI", 12, "bold"), text_color=COLORS["text_gray"]).pack(anchor="w")
 
-        btns = ctk.CTkFrame(wrap, fg_color="transparent")
-        btns.pack(fill="x", padx=18, pady=(0, 18))
-        ctk.CTkButton(btns, text=self.tr("update_download"), height=42, fg_color=COLORS["gamer"], hover_color="#059669", command=lambda: self.download_update(info)).pack(side="left", fill="x", expand=True)
+        notes_wrap = ctk.CTkFrame(
+            wrap,
+            fg_color="#070B12",
+            corner_radius=16,
+            border_width=1,
+            border_color=mix_colors(COLORS["border"], "#070B12", 0.35),
+            height=280,
+        )
+        notes_wrap.grid(row=3, column=0, sticky="nsew", padx=14, pady=(0, 10))
+        notes_wrap.grid_columnconfigure(0, weight=1)
+        notes_wrap.grid_rowconfigure(0, weight=1)
+        notes_wrap.grid_propagate(False)
+
+        notes = tk.Text(
+            notes_wrap,
+            wrap="word",
+            bg="#070B12",
+            fg=COLORS["white"],
+            insertbackground=COLORS["white"],
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            padx=12,
+            pady=10,
+            font=("Segoe UI", 9),
+            cursor="arrow",
+            spacing1=0,
+            spacing3=0,
+        )
+        notes.grid(row=0, column=0, sticky="nsew")
+        notes_scroll = ctk.CTkScrollbar(notes_wrap, command=notes.yview, width=12)
+        notes_scroll.grid(row=0, column=1, sticky="ns", padx=(0, 5), pady=5)
+        notes.configure(yscrollcommand=notes_scroll.set)
+        self._render_markdown(notes, self._format_release_notes(info.body))
+
+        download_box = ctk.CTkFrame(wrap, fg_color=COLORS["bg_soft"], corner_radius=16, border_width=1, border_color=COLORS["border"])
+        download_box.grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 10))
+        ctk.CTkLabel(download_box, text=self.tr("update_download_section"), font=("Segoe UI", 11, "bold"), text_color=COLORS["white"]).pack(anchor="w", padx=14, pady=(10, 3))
+        download_status = ctk.CTkLabel(
+            download_box,
+            text=self.tr("update_download_idle"),
+            font=("Segoe UI", 9),
+            text_color=COLORS["text_gray"],
+            justify="left",
+            wraplength=wraplength,
+        )
+        download_status.pack(anchor="w", padx=14, pady=(0, 6))
+        progress = ctk.CTkProgressBar(download_box, height=12, corner_radius=999, progress_color=COLORS["gamer"])
+        progress.pack(fill="x", padx=14, pady=(0, 10))
+        progress.set(0)
+
+        footer = ctk.CTkFrame(
+            wrap,
+            fg_color=mix_colors(COLORS["bg_soft"], COLORS["bg_card"], 0.35),
+            corner_radius=18,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        footer.grid(row=5, column=0, sticky="ew", padx=14, pady=(0, 14))
+        btns = ctk.CTkFrame(footer, fg_color="transparent")
+        btns.pack(fill="x", padx=12, pady=12)
+        btns.grid_columnconfigure(0, weight=1)
+        btns.grid_columnconfigure(1, weight=1)
 
         def dismiss() -> None:
+            if self._update_download_in_progress:
+                return
             self._ignored_update_tag = info.tag_name
+            try:
+                win.grab_release()
+            except Exception:
+                pass
             win.destroy()
+            try:
+                self._update_win = None  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
+                if owner is not self and getattr(owner, "winfo_exists", lambda: False)():
+                    owner.lift()
+                    owner.focus_force()
+                    owner.grab_set()
+            except Exception:
+                pass
 
-        ctk.CTkButton(btns, text=self.tr("update_later"), height=42, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"], command=dismiss).pack(side="left", fill="x", expand=True, padx=(10, 0))
+        download_btn = ctk.CTkButton(
+            btns,
+            text=self.tr("update_download"),
+            height=44,
+            corner_radius=14,
+            fg_color=COLORS["gamer"],
+            hover_color="#059669",
+            text_color=COLORS["white"],
+            font=("Segoe UI", 12, "bold"),
+        )
+        download_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        later_btn = ctk.CTkButton(
+            btns,
+            text=self.tr("update_later"),
+            height=44,
+            corner_radius=14,
+            fg_color="#111827",
+            hover_color="#1F2937",
+            border_width=1,
+            border_color=COLORS["border"],
+            text_color=COLORS["white"],
+            font=("Segoe UI", 12, "bold"),
+            command=dismiss,
+        )
+        later_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        def update_wrap_metrics(event=None) -> None:
+            try:
+                current_w = max(520, int(win.winfo_width() or 0))
+                current_h = max(560, int(win.winfo_height() or 0))
+            except Exception:
+                return
+            local_wrap = max(380, current_w - 120)
+            notes_h = max(220, min(360, current_h - 420))
+            try:
+                notes_wrap.configure(height=notes_h)
+            except Exception:
+                pass
+            for lbl in (head.winfo_children()[1],):
+                try:
+                    lbl.configure(wraplength=local_wrap)
+                except Exception:
+                    pass
+            try:
+                download_status.configure(wraplength=local_wrap)
+            except Exception:
+                pass
+
+        download_btn.configure(
+            command=lambda: self.download_update(
+                info,
+                parent=win,
+                progress_bar=progress,
+                status_label=download_status,
+                action_button=download_btn,
+                later_button=later_btn,
+            )
+        )
+        win.bind("<Configure>", update_wrap_metrics, add="+")
+        win.after(120, update_wrap_metrics)
+        win.protocol("WM_DELETE_WINDOW", dismiss)
 
     def on_close(self):
         if self.dism_running:

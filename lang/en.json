@@ -282,6 +282,17 @@
   "update_no_changelog": "No release notes were provided for this release.",
   "update_download": "Download update",
   "update_later": "Later",
-  "update_opened_download": "Opened download page for {version}.",
-  "update_download_failed": "Could not open the download page."
+  "update_opened_download": "The update for {version} is downloading directly in the app.",
+  "update_download_failed": "Could not download the update.",
+  "update_download_section": "Update download",
+  "update_download_idle": "Click the button below to save the installer or archive directly from the app.",
+  "update_save_dialog_title": "Choose where to save the update",
+  "update_download_progress": "Downloading: {progress}",
+  "update_downloading": "Downloading...",
+  "update_download_complete": "Update downloaded:\n{path}",
+  "update_download_saved": "Update saved to: {path}",
+  "update_download_started": "Starting download for update {version}...",
+  "update_download_failed_reason": "Could not download the update: {reason}",
+  "update_download_busy": "An update download is already running.",
+  "all_files": "All files"
 }
