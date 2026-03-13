@@ -196,13 +196,13 @@ class Cleaner(ctk.CTk):
 
 
     def configure_window_geometry(self):
-        screen_w = max(1024, int(self.winfo_screenwidth() or 1540))
-        screen_h = max(720, int(self.winfo_screenheight() or 980))
+        screen_w = max(980, int(self.winfo_screenwidth() or 1540))
+        screen_h = max(700, int(self.winfo_screenheight() or 980))
 
-        target_w = min(1540, max(980, int(screen_w * 0.92)))
-        target_h = min(980, max(680, int(screen_h * 0.90)))
-        min_w = min(target_w, max(920, int(screen_w * 0.70)))
-        min_h = min(target_h, max(620, int(screen_h * 0.74)))
+        target_w = min(1580, max(1080, int(screen_w * 0.93)))
+        target_h = min(1000, max(720, int(screen_h * 0.91)))
+        min_w = min(target_w, max(980, int(screen_w * 0.68)))
+        min_h = min(target_h, max(680, int(screen_h * 0.72)))
 
         pos_x = max(0, (screen_w - target_w) // 2)
         pos_y = max(0, (screen_h - target_h) // 2)
@@ -215,10 +215,10 @@ class Cleaner(ctk.CTk):
         screen_h = max(520, int(self.winfo_screenheight() or preferred[1]))
 
         pref_w, pref_h = int(preferred[0]), int(preferred[1])
-        min_w = min(pref_w, max(420, int(minimum[0])))
-        min_h = min(pref_h, max(360, int(minimum[1])))
-        width = min(pref_w, max(min_w, int(screen_w * 0.78)))
-        height = min(pref_h, max(min_h, int(screen_h * 0.78)))
+        min_w = min(pref_w, max(440, int(minimum[0])))
+        min_h = min(pref_h, max(380, int(minimum[1])))
+        width = min(pref_w, max(min_w, int(screen_w * 0.84)))
+        height = min(pref_h, max(min_h, int(screen_h * 0.84)))
         pos_x = max(0, (screen_w - width) // 2)
         pos_y = max(0, (screen_h - height) // 2)
 
@@ -237,6 +237,13 @@ class Cleaner(ctk.CTk):
     def on_window_configure(self, event=None):
         if event is not None and getattr(event, "widget", None) is not self:
             return
+        try:
+            size_key = (int(self.winfo_width() or 0), int(self.winfo_height() or 0))
+            if self._layout_state.get("last_root_size") == size_key:
+                return
+            self._layout_state["last_root_size"] = size_key
+        except Exception:
+            pass
         self.schedule_responsive_layout()
 
     def layout_summary_cards(self, columns: int):
@@ -305,6 +312,50 @@ class Cleaner(ctk.CTk):
             self.btn_analyze.pack(side="left", padx=(0, 8))
             self.btn_reset_all.pack(side="left")
 
+    def layout_tab_bar(self, stacked: bool, subtitle_wrap: int):
+        stacked = bool(stacked)
+        subtitle_wrap = max(180, int(subtitle_wrap))
+        state = (stacked, subtitle_wrap)
+        if self._layout_state.get("tab_layout") == state:
+            return
+        self._layout_state["tab_layout"] = state
+
+        self.tab_cleaner_button.grid_forget()
+        self.tab_optimizer_button.grid_forget()
+        self.tab_bar.grid_columnconfigure(0, weight=1)
+        self.tab_bar.grid_columnconfigure(1, weight=1)
+
+        if stacked:
+            self.tab_bar.grid_columnconfigure(1, weight=0)
+            self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
+            self.tab_optimizer_button.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
+        else:
+            self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=(12, 8), pady=12)
+            self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(8, 12), pady=12)
+
+        self.tab_cleaner_button.set_subtitle_wrap(subtitle_wrap)
+        self.tab_optimizer_button.set_subtitle_wrap(subtitle_wrap)
+        self.tab_cleaner_button.set_compact(stacked)
+        self.tab_optimizer_button.set_compact(stacked)
+
+    def layout_sidebar_bottom(self, stacked: bool):
+        stacked = bool(stacked)
+        if self._layout_state.get("sidebar_bottom_stacked") == stacked:
+            return
+        self._layout_state["sidebar_bottom_stacked"] = stacked
+
+        for button in (self.btn_copy_log, self.btn_clear_log, self.btn_cancel):
+            button.pack_forget()
+
+        if stacked:
+            self.btn_copy_log.pack(fill="x", pady=(0, 8))
+            self.btn_clear_log.pack(fill="x", pady=(0, 8))
+            self.btn_cancel.pack(fill="x")
+        else:
+            self.btn_copy_log.pack(side="left")
+            self.btn_clear_log.pack(side="left", padx=8)
+            self.btn_cancel.pack(side="right")
+
     def module_tab_title(self, key: str) -> str:
         return self.tr("tab_optimizer") if key == "optimizer" else self.tr("tab_cleaner")
 
@@ -339,10 +390,16 @@ class Cleaner(ctk.CTk):
             width = max(int(self.winfo_width() or 0), int(self.winfo_reqwidth() or 0), 980)
             height = max(int(self.winfo_height() or 0), int(self.winfo_reqheight() or 0), 680)
 
-            sidebar_width = 390 if width >= 1560 else 350 if width >= 1360 else 315 if width >= 1180 else 280
-            footer_height = 198 if height >= 900 else 180 if height >= 780 else 164
-            content_width = max(320, width - sidebar_width - 90)
-            wraplength = max(340, min(980, content_width - 130))
+            compact_window = width < 1280 or height < 820
+            tight_window = width < 1140 or height < 760
+            sidebar_width = 390 if width >= 1600 else 350 if width >= 1420 else 320 if width >= 1260 else 288 if width >= 1120 else 260
+            footer_height = 202 if height >= 920 else 184 if height >= 800 else 168 if height >= 720 else 154
+            content_width = max(320, width - sidebar_width - (72 if compact_window else 94))
+            wraplength = max(300, min(980, content_width - 120))
+            main_pad_x = 18 if not compact_window else 14 if not tight_window else 10
+            main_pad_y = 18 if not compact_window else 14 if not tight_window else 10
+            tab_stacked = content_width < 760
+            tab_subtitle_wrap = max(180, min(380, content_width // (1 if tab_stacked else 2) - 54))
 
             if self._layout_state.get("sidebar_width") != sidebar_width:
                 self._layout_state["sidebar_width"] = sidebar_width
@@ -350,11 +407,20 @@ class Cleaner(ctk.CTk):
             if self._layout_state.get("footer_height") != footer_height:
                 self._layout_state["footer_height"] = footer_height
                 self.footer.configure(height=footer_height)
+            if self._layout_state.get("main_padding") != (main_pad_x, main_pad_y):
+                self._layout_state["main_padding"] = (main_pad_x, main_pad_y)
+                self.main_wrap.grid_configure(padx=main_pad_x, pady=main_pad_y)
+            console_height = 200 if not compact_window else 160 if not tight_window else 120
+            if self._layout_state.get("console_height") != console_height:
+                self._layout_state["console_height"] = console_height
+                self.console.configure(height=console_height)
 
-            summary_columns = 4 if content_width >= 1060 else 2 if content_width >= 560 else 1
+            summary_columns = 4 if content_width >= 1080 else 2 if content_width >= 620 else 1
             self.layout_summary_cards(summary_columns)
             self.layout_toolbar(content_width < 760)
             self.layout_action_buttons(content_width < 900)
+            self.layout_tab_bar(tab_stacked, tab_subtitle_wrap)
+            self.layout_sidebar_bottom(sidebar_width < 300)
 
             if self._layout_state.get("desc_wraplength") != wraplength:
                 self._layout_state["desc_wraplength"] = wraplength
@@ -605,7 +671,7 @@ class Cleaner(ctk.CTk):
             quick,
             text=self.tr("restore_registry_backup"),
             height=34,
-            command=self.restore_registry_backup,
+            command=self.open_restore_registry_dialog,
             fg_color="#4C1D95",
             hover_color="#5B21B6",
         )
@@ -641,11 +707,10 @@ class Cleaner(ctk.CTk):
         if not hasattr(self, "btn_restore_registry"):
             return
         has_backup = WindowsOps.has_registry_backup()
-        can_restore = has_backup and self.is_admin
         self.btn_restore_registry.configure(
-            state="normal" if can_restore else "disabled",
-            fg_color="#4C1D95" if can_restore else "#3F3F46",
-            hover_color="#5B21B6" if can_restore else "#3F3F46",
+            state="normal" if has_backup else "disabled",
+            fg_color="#4C1D95" if has_backup else "#3F3F46",
+            hover_color="#5B21B6" if has_backup else "#3F3F46",
         )
 
     def backup_registry_for_tasks(self, tasks: List[CleanerTask]) -> bool:
@@ -664,12 +729,156 @@ class Cleaner(ctk.CTk):
         self.log(self.tr("registry_backup_failed"))
         return False
 
-    def restore_registry_backup(self):
+    def restore_registry_backup(self, backup_dir: Optional[str] = None):
         if not self.is_admin:
             self.log(self.tr("restore_registry_admin_required"))
+            return False
+        target = backup_dir or WindowsOps.latest_registry_backup_dir()
+        if not target:
+            self.log(self.tr("registry_restore_missing"))
+            return False
+        ok = WindowsOps.restore_registry_backup_dir(target)
+        self.log(self.trf("registry_restore_ok", name=os.path.basename(target)) if ok else self.trf("registry_restore_fail", name=os.path.basename(target)))
+        self.after(0, self.refresh_restore_backup_button)
+        return ok
+
+    def _format_backup_time(self, path: str) -> str:
+        try:
+            stamp = datetime.fromtimestamp(os.path.getmtime(path))
+            return stamp.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return self.tr("unknown")
+
+    def open_restore_registry_dialog(self):
+        backups = WindowsOps.list_registry_backups()
+        if not backups:
+            self.log(self.tr("registry_restore_missing"))
             return
-        ok = WindowsOps.restore_latest_registry_backup()
-        self.log(self.tr("registry_restore_ok") if ok else self.tr("registry_restore_fail"))
+
+        try:
+            if getattr(self, "_restore_win", None) and self._restore_win.winfo_exists():  # type: ignore[attr-defined]
+                self._restore_win.focus()  # type: ignore[attr-defined]
+                return
+        except Exception:
+            pass
+
+        win = ctk.CTkToplevel(self)
+        self._restore_win = win  # type: ignore[attr-defined]
+        win.title(self.tr("restore_registry_backup"))
+        self.configure_toplevel_geometry(win, preferred=(900, 660), minimum=(700, 520))
+        win.configure(fg_color=COLORS["bg_main"])
+        try:
+            win.transient(self)
+            win.grab_set()
+        except Exception:
+            pass
+        self._apply_icon_to_toplevel(win)
+
+        selected = ctk.StringVar(value=backups[0]["path"])
+
+        wrap = ctk.CTkFrame(win, fg_color=COLORS["bg_card"], corner_radius=18, border_width=1, border_color=COLORS["border"])
+        wrap.pack(fill="both", expand=True, padx=18, pady=18)
+        wrap.grid_columnconfigure(0, weight=0)
+        wrap.grid_columnconfigure(1, weight=1)
+        wrap.grid_rowconfigure(1, weight=1)
+
+        head = ctk.CTkFrame(wrap, fg_color="transparent")
+        head.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(18, 10))
+        head.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(head, text=self.tr("restore_dialog_title"), font=("Segoe UI Black", 20), text_color=COLORS["white"]).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(head, text=self.tr("restore_dialog_sub"), font=("Segoe UI", 12), text_color=COLORS["text_gray"], justify="left").grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        list_card = ctk.CTkFrame(wrap, fg_color=COLORS["bg_soft"], corner_radius=16, border_width=1, border_color=COLORS["border"])
+        list_card.grid(row=1, column=0, sticky="ns", padx=(18, 12), pady=(0, 18))
+        list_card.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(list_card, text=self.tr("restore_dialog_backups"), font=("Segoe UI", 13, "bold"), text_color=COLORS["white"]).grid(row=0, column=0, sticky="w", padx=14, pady=(14, 10))
+        backup_list = ctk.CTkScrollableFrame(list_card, width=255, fg_color="transparent", label_text="")
+        backup_list.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+
+        details = ctk.CTkFrame(wrap, fg_color=COLORS["bg_soft"], corner_radius=16, border_width=1, border_color=COLORS["border"])
+        details.grid(row=1, column=1, sticky="nsew", padx=(0, 18), pady=(0, 18))
+        details.grid_columnconfigure(0, weight=1)
+        details.grid_rowconfigure(3, weight=1)
+
+        title_lbl = ctk.CTkLabel(details, text="", font=("Segoe UI", 15, "bold"), text_color=COLORS["white"], anchor="w")
+        title_lbl.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 6))
+        meta_lbl = ctk.CTkLabel(details, text="", font=("Segoe UI", 11), text_color=COLORS["text_gray"], justify="left", anchor="w")
+        meta_lbl.grid(row=1, column=0, sticky="ew", padx=16)
+        note_lbl = ctk.CTkLabel(details, text=self.tr("restore_dialog_note"), font=("Segoe UI", 11), text_color=COLORS["muted"], justify="left", wraplength=480)
+        note_lbl.grid(row=2, column=0, sticky="ew", padx=16, pady=(10, 10))
+        manifest_box = ctk.CTkTextbox(details, font=("Consolas", 11), fg_color=COLORS["bg_panel"], text_color=COLORS["white"], border_width=1, border_color=COLORS["border"])
+        manifest_box.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 12))
+        manifest_box.configure(state="disabled")
+
+        action_bar = ctk.CTkFrame(details, fg_color="transparent")
+        action_bar.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 16))
+
+        btn_open_folder = ctk.CTkButton(action_bar, text=self.tr("open_backup_folder"), height=40, fg_color=COLORS["bg_card"], hover_color="#1F2937")
+        btn_open_folder.pack(side="left")
+        btn_restore = ctk.CTkButton(action_bar, text=self.tr("restore_selected_backup"), height=40, fg_color="#4C1D95", hover_color="#5B21B6")
+        btn_restore.pack(side="right")
+
+        buttons = {}
+
+        def render_selected(path: str):
+            data = WindowsOps.describe_registry_backup(path)
+            title_lbl.configure(text=data.get("name") or os.path.basename(path))
+            kind = data.get("kind")
+            kind_label = self.tr("backup_kind_pre_restore") if kind == "pre_restore" else self.tr("backup_kind_backup")
+            meta_lbl.configure(text=self.trf(
+                "restore_dialog_meta",
+                created=data.get("created", self._format_backup_time(path)),
+                count=data.get("count", 0),
+                kind=kind_label,
+            ))
+            manifest_text = data.get("manifest_text") or self.tr("restore_dialog_manifest_empty")
+            manifest_box.configure(state="normal")
+            manifest_box.delete("1.0", "end")
+            manifest_box.insert("1.0", manifest_text)
+            manifest_box.configure(state="disabled")
+            for backup_path, button in buttons.items():
+                is_active = backup_path == path
+                button.configure(
+                    fg_color=mix_colors("#4C1D95", COLORS["bg_soft"], 0.18) if is_active else COLORS["bg_card"],
+                    border_color="#6D28D9" if is_active else COLORS["border"],
+                    text_color=COLORS["white"] if is_active else COLORS["text_gray"],
+                )
+            selected.set(path)
+            btn_open_folder.configure(command=lambda current=path: WindowsOps.open_in_file_manager(current))
+            btn_restore.configure(command=lambda current=path: do_restore(current))
+
+        def do_restore(path: str):
+            ok = self.restore_registry_backup(path)
+            if ok:
+                try:
+                    win.destroy()
+                except Exception:
+                    pass
+
+        for item in backups:
+            path = item["path"]
+            label = f"{item['name']}\n{item['created']}"
+            button = ctk.CTkButton(
+                backup_list,
+                text=label,
+                anchor="w",
+                height=56,
+                corner_radius=12,
+                fg_color=COLORS["bg_card"],
+                hover_color="#1F2937",
+                border_width=1,
+                border_color=COLORS["border"],
+                text_color=COLORS["text_gray"],
+                command=lambda current=path: render_selected(current),
+            )
+            button.pack(fill="x", padx=4, pady=(0, 8))
+            buttons[path] = button
+
+        render_selected(selected.get())
+
+        foot = ctk.CTkFrame(wrap, fg_color="transparent")
+        foot.grid(row=2, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 18))
+        ctk.CTkButton(foot, text=self.tr("about_close"), height=40, fg_color=COLORS["bg_panel"], hover_color="#1F2937", command=win.destroy).pack(side="right")
 
     def build_main_area(self):
         self.main_wrap = ctk.CTkFrame(self, fg_color="transparent")

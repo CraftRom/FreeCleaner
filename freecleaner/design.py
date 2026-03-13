@@ -249,6 +249,7 @@ class ModernTabButton(ctk.CTkFrame):
             justify="left",
             wraplength=360,
         )
+        self._subtitle_wrap = 360
         self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(3, 0))
 
         self.chevron = ctk.CTkLabel(self.content, text="›", font=("Segoe UI", 20, "bold"), text_color=COLORS["text_gray"])
@@ -300,3 +301,16 @@ class ModernTabButton(ctk.CTkFrame):
     def set_text(self, title: str, subtitle: str) -> None:
         self.title_label.configure(text=title)
         self.subtitle_label.configure(text=subtitle)
+
+    def set_subtitle_wrap(self, wraplength: int) -> None:
+        wraplength = max(180, int(wraplength))
+        if wraplength == self._subtitle_wrap:
+            return
+        self._subtitle_wrap = wraplength
+        self.subtitle_label.configure(wraplength=wraplength)
+
+    def set_compact(self, compact: bool) -> None:
+        compact = bool(compact)
+        self.chevron.configure(font=("Segoe UI", 18 if compact else 20, "bold"))
+        self.title_label.configure(font=("Segoe UI Semibold", 14 if compact else 15, "bold"))
+        self.subtitle_label.configure(font=("Segoe UI", 10 if compact else 11))

@@ -449,6 +449,18 @@ class WindowsOps:
         return WindowsOps.run_command(cmd, timeout=45)
 
     @staticmethod
+    def open_in_file_manager(path: str) -> bool:
+        try:
+            if not path:
+                return False
+            if IS_WINDOWS:
+                os.startfile(os.path.abspath(path))  # type: ignore[attr-defined]
+                return True
+            return False
+        except Exception:
+            return False
+
+    @staticmethod
     def registry_backup_root() -> str:
         root = os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
         os.makedirs(root, exist_ok=True)
@@ -490,34 +502,135 @@ class WindowsOps:
 
     @staticmethod
     def latest_registry_backup_dir() -> Optional[str]:
+        backups = WindowsOps.list_registry_backups()
+        return backups[0]["path"] if backups else None
+
+    @staticmethod
+    def list_registry_backups() -> List[Dict[str, Any]]:
         root = os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
         if not os.path.isdir(root):
-            return None
-        folders = [os.path.join(root, name) for name in os.listdir(root)]
-        folders = [path for path in folders if os.path.isdir(path)]
-        if not folders:
-            return None
-        folders.sort(key=lambda path: os.path.getmtime(path), reverse=True)
-        return folders[0]
+            return []
+        items: List[Dict[str, Any]] = []
+        for name in os.listdir(root):
+            path = os.path.join(root, name)
+            if not os.path.isdir(path):
+                continue
+            reg_files = sorted(
+                os.path.join(path, entry)
+                for entry in os.listdir(path)
+                if entry.lower().endswith('.reg')
+            )
+            if not reg_files:
+                continue
+            created = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M:%S')
+            kind = 'pre_restore' if name.lower().startswith('pre_restore_') else 'backup'
+            items.append({
+                'path': path,
+                'name': name,
+                'created': created,
+                'kind': kind,
+                'count': len(reg_files),
+            })
+        items.sort(key=lambda item: os.path.getmtime(item['path']), reverse=True)
+        return items
 
     @staticmethod
     def has_registry_backup() -> bool:
-        latest = WindowsOps.latest_registry_backup_dir()
-        if not latest:
+        return bool(WindowsOps.list_registry_backups())
+
+    @staticmethod
+    def _read_registry_manifest(folder: str) -> List[str]:
+        manifest = os.path.join(folder, 'manifest.txt')
+        keys: List[str] = []
+        if not os.path.isfile(manifest):
+            return keys
+        try:
+            with open(manifest, 'r', encoding='utf-8') as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line or '=' not in line:
+                        continue
+                    key = line.split('=', 1)[0].strip()
+                    if key:
+                        keys.append(key)
+        except Exception:
+            return []
+        return keys
+
+    @staticmethod
+    def describe_registry_backup(folder: str) -> Dict[str, Any]:
+        folder = os.path.abspath(folder)
+        name = os.path.basename(folder)
+        reg_files = sorted(
+            os.path.join(folder, entry)
+            for entry in os.listdir(folder)
+            if entry.lower().endswith('.reg')
+        ) if os.path.isdir(folder) else []
+        created = datetime.fromtimestamp(os.path.getmtime(folder)).strftime('%Y-%m-%d %H:%M:%S') if os.path.isdir(folder) else ''
+        kind = 'pre_restore' if name.lower().startswith('pre_restore_') else 'backup'
+        manifest_path = os.path.join(folder, 'manifest.txt')
+        manifest_text = ''
+        if os.path.isfile(manifest_path):
+            try:
+                with open(manifest_path, 'r', encoding='utf-8') as fh:
+                    manifest_text = fh.read().strip()
+            except Exception:
+                manifest_text = ''
+        return {
+            'path': folder,
+            'name': name,
+            'created': created,
+            'count': len(reg_files),
+            'kind': kind,
+            'kind_label': 'Pre-restore snapshot' if kind == 'pre_restore' else 'Registry backup',
+            'manifest_text': manifest_text,
+        }
+
+    @staticmethod
+    def restore_registry_backup_dir(folder: str) -> bool:
+        folder = os.path.abspath(folder)
+        if not os.path.isdir(folder):
             return False
-        return any(name.lower().endswith('.reg') for name in os.listdir(latest))
+        reg_files = [os.path.join(folder, name) for name in os.listdir(folder) if name.lower().endswith('.reg')]
+        reg_files.sort()
+        if not reg_files:
+            return False
+
+        keys = WindowsOps._read_registry_manifest(folder)
+        if keys:
+            root = WindowsOps.registry_backup_root()
+            stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            snapshot = os.path.join(root, f'pre_restore_{stamp}')
+            os.makedirs(snapshot, exist_ok=True)
+            exported = 0
+            manifest_lines = []
+            for index, key in enumerate(keys, start=1):
+                safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', key).strip('_')[:90] or f'key_{index}'
+                target = os.path.join(snapshot, f'{index:02d}_{safe_name}.reg')
+                ok = WindowsOps.run_command(f'reg export "{key}" "{target}" /y', timeout=45)
+                manifest_lines.append(f'{key}={"ok" if ok else "missing"}')
+                if ok and os.path.isfile(target):
+                    exported += 1
+            try:
+                with open(os.path.join(snapshot, 'manifest.txt'), 'w', encoding='utf-8') as fh:
+                    fh.write('\n'.join(manifest_lines))
+            except Exception:
+                pass
+            if exported == 0:
+                try:
+                    shutil.rmtree(snapshot, ignore_errors=True)
+                except Exception:
+                    pass
+
+        results = [WindowsOps.run_command(f'reg import "{path}"', timeout=60) for path in reg_files]
+        return all(results)
 
     @staticmethod
     def restore_latest_registry_backup() -> bool:
         latest = WindowsOps.latest_registry_backup_dir()
         if not latest:
             return False
-        reg_files = [os.path.join(latest, name) for name in os.listdir(latest) if name.lower().endswith('.reg')]
-        reg_files.sort()
-        if not reg_files:
-            return False
-        results = [WindowsOps.run_command(f'reg import "{path}"', timeout=60) for path in reg_files]
-        return all(results)
+        return WindowsOps.restore_registry_backup_dir(latest)
 
     @staticmethod
     def try_enable_ultimate_performance() -> bool:
