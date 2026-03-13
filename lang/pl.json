@@ -219,5 +219,7 @@
   "graphics_defaults_fail": "Failed to open Graphics default settings.",
   "graphics_apps_ok": "Opened per-app Graphics settings.",
   "graphics_apps_fail": "Failed to open per-app Graphics settings.",
-  "admin_required_for_this": "Ta akcja wymaga uprawnień administratora."
+  "admin_required_for_this": "Ta akcja wymaga uprawnień administratora.",
+  "cleanup_reboot_scheduled_fmt": "Zaplanowano usunięcie po restarcie: {title} -> {count}",
+  "cleanup_remaining_fmt": "Po czyszczeniu nadal pozostało: {title} -> plików: {files}, folderów: {dirs}"
 }

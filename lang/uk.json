@@ -265,5 +265,7 @@
   "unknown": "Невідомо",
   "cleanup_target_ok_fmt": "Очищено: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}",
   "cleanup_target_partial_fmt": "Очищено частково: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}, пропущено: {errors}",
-  "cleanup_target_failed_fmt": "Помилка очищення: {title}"
+  "cleanup_target_failed_fmt": "Помилка очищення: {title}",
+  "cleanup_reboot_scheduled_fmt": "Заплановано видалення після перезавантаження: {title} -> {count}",
+  "cleanup_remaining_fmt": "Після очищення ще лишилось: {title} -> файлів: {files}, папок: {dirs}"
 }

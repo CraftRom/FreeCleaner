@@ -265,5 +265,7 @@
   "unknown": "Unknown",
   "cleanup_target_ok_fmt": "Cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}",
   "cleanup_target_partial_fmt": "Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}",
-  "cleanup_target_failed_fmt": "Cleanup error: {title}"
+  "cleanup_target_failed_fmt": "Cleanup error: {title}",
+  "cleanup_reboot_scheduled_fmt": "Scheduled for deletion after reboot: {title} -> {count}",
+  "cleanup_remaining_fmt": "Still left after cleanup: {title} -> files: {files}, folders: {dirs}"
 }

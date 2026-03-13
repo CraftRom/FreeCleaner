@@ -1630,6 +1630,9 @@ class Cleaner(ctk.CTk):
                 removed_mb = float(result.get("removed_bytes", 0)) / (1024 ** 2)
                 files_removed = int(result.get("files_removed", 0))
                 dirs_removed = int(result.get("dirs_removed", 0))
+                scheduled_reboot = int(result.get("scheduled_reboot", 0))
+                remaining_files = int(result.get("remaining_files", 0))
+                remaining_dirs = int(result.get("remaining_dirs", 0))
                 errors = int(result.get("errors", 0))
 
                 if errors > 0:
@@ -1650,6 +1653,11 @@ class Cleaner(ctk.CTk):
                         dirs=dirs_removed,
                     ))
 
+                if scheduled_reboot > 0:
+                    self.log(self.trf("cleanup_reboot_scheduled_fmt", title=self.task_title(task), count=scheduled_reboot))
+                if remaining_files > 0 or remaining_dirs > 0:
+                    self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
+
     def perform_pre_analysis(self, chosen: List[CleanerTask]) -> Tuple[List[CleanerTask], List[CleanerTask]]:
         dir_tasks = [task for task in chosen if task.kind == "directory" and task.path and os.path.exists(task.path)]
         cmd_tasks = [task for task in chosen if task.kind == "command" and task.command]
@@ -1665,16 +1673,25 @@ class Cleaner(ctk.CTk):
         return dir_tasks, cmd_tasks
 
     def prepare_service_deps(self, dir_tasks: List[CleanerTask], start: bool):
-        if not any(task.key == "update_cache_files" for task in dir_tasks):
+        needs_update = any(task.key == "update_cache_files" for task in dir_tasks)
+        needs_delivery = any(task.key == "delivery_opt" for task in dir_tasks)
+        if not needs_update and not needs_delivery:
             return
+
         if start:
             self.log(self.tr("stop_update_services"))
-            WindowsOps.run_command("net stop wuauserv", timeout=60)
-            WindowsOps.run_command("net stop bits", timeout=60)
+            if needs_update:
+                WindowsOps.run_command("net stop wuauserv", timeout=60)
+                WindowsOps.run_command("net stop bits", timeout=60)
+            if needs_delivery:
+                WindowsOps.run_command("net stop dosvc", timeout=60)
         else:
             self.log(self.tr("start_update_services"))
-            WindowsOps.run_command("net start wuauserv", timeout=60)
-            WindowsOps.run_command("net start bits", timeout=60)
+            if needs_update:
+                WindowsOps.run_command("net start wuauserv", timeout=60)
+                WindowsOps.run_command("net start bits", timeout=60)
+            if needs_delivery:
+                WindowsOps.run_command("net start dosvc", timeout=60)
 
     def analysis_only_engine(self):
         try:
