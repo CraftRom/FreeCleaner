@@ -161,7 +161,6 @@ class Cleaner(ctk.CTk):
         self._last_search_query = ""
         self._about_header_icon_cache = None
         self.active_module_tab = "cleaner"
-        self.latest_registry_backup_path: Optional[str] = None
         self.apply_window_icon()
 
         self.is_admin = WindowsOps.is_admin()
@@ -185,7 +184,6 @@ class Cleaner(ctk.CTk):
         self.build_sidebar()
         self.build_main_area()
         self.build_footer()
-        self.refresh_registry_backup_controls()
         self.bind("<Configure>", self.on_window_configure)
         self.after(120, self.flush_log_queue)
         self.after(180, self.refresh_responsive_layout)
@@ -496,11 +494,8 @@ class Cleaner(ctk.CTk):
         self.btn_streamer.configure(text=self.tr("streamer"))
         self.btn_low_end.configure(text=self.tr("low_end"))
         self.btn_reset_selection.configure(text=self.tr("reset_selection"))
-        if hasattr(self, "registry_backup_label"):
-            self.registry_backup_label.configure(text=self.tr("registry_backup_title"))
         if hasattr(self, "btn_restore_registry"):
             self.btn_restore_registry.configure(text=self.tr("restore_registry_backup"))
-            self.refresh_registry_backup_controls()
         if hasattr(self, "btn_about"):
             self.btn_about.configure(text=self.tr("about"))
         self.event_log_label.configure(text=self.tr("event_log"))
@@ -526,6 +521,7 @@ class Cleaner(ctk.CTk):
         self.card_deep.set_header(self.tr("sec_deep_title"), self.tr("sec_deep_sub"))
         self.card_gamer.set_header(self.tr("sec_gamer_title"), self.tr("sec_gamer_sub"))
         self.card_opt.set_header(self.tr("sec_optimizer_title"), self.tr("sec_optimizer_sub"))
+        self.card_opt_adv.set_header(self.tr("sec_optimizer_registry_title"), self.tr("sec_optimizer_registry_sub"))
         self.card_opt_tools.set_header(self.tr("sec_optimizer_tools_title"), self.tr("sec_optimizer_tools_sub"))
         self.card_ult.set_header(self.tr("sec_ult_title"), self.tr("sec_ult_sub"))
         for card in self.section_cards:
@@ -604,17 +600,17 @@ class Cleaner(ctk.CTk):
         self.btn_low_end = ctk.CTkButton(quick, text=self.tr("low_end"), height=34, command=self.apply_low_end_mode, fg_color="#166534", hover_color="#14532D")
         self.btn_low_end.pack(fill="x", padx=14, pady=(0, 8))
         self.btn_reset_selection = ctk.CTkButton(quick, text=self.tr("reset_selection"), height=34, command=self.clear_selection, fg_color="#374151", hover_color="#4B5563")
-        self.btn_reset_selection.pack(fill="x", padx=14, pady=(0, 10))
-
-        backup_box = ctk.CTkFrame(self.sidebar, fg_color=COLORS["bg_card"], corner_radius=14, border_width=1, border_color=COLORS["border"])
-        backup_box.pack(fill="x", padx=20, pady=(0, 14))
-        self.registry_backup_label = ctk.CTkLabel(backup_box, text=self.tr("registry_backup_title"), font=("Segoe UI", 13, "bold"), text_color=COLORS["white"])
-        self.registry_backup_label.pack(anchor="w", padx=14, pady=(12, 6))
-        self.registry_backup_status = ctk.CTkLabel(backup_box, text=self.tr("registry_backup_missing"), font=("Segoe UI", 11), text_color=COLORS["text_gray"], justify="left", anchor="w", wraplength=300)
-        self.registry_backup_status.pack(fill="x", padx=14, pady=(0, 10))
-        self.btn_restore_registry = ctk.CTkButton(backup_box, text=self.tr("restore_registry_backup"), height=34, command=self.restore_latest_registry_backup, fg_color="#334155", hover_color="#475569", state="disabled")
-        self.btn_restore_registry.pack(fill="x", padx=14, pady=(0, 14))
-
+        self.btn_reset_selection.pack(fill="x", padx=14, pady=(0, 8))
+        self.btn_restore_registry = ctk.CTkButton(
+            quick,
+            text=self.tr("restore_registry_backup"),
+            height=34,
+            command=self.restore_registry_backup,
+            fg_color="#4C1D95",
+            hover_color="#5B21B6",
+        )
+        self.btn_restore_registry.pack(fill="x", padx=14, pady=(0, 8))
+        self.refresh_restore_backup_button()
         # About
         self.btn_about = ctk.CTkButton(
             quick,
@@ -640,6 +636,40 @@ class Cleaner(ctk.CTk):
         self.btn_clear_log.pack(side="left", padx=8)
         self.btn_cancel = ctk.CTkButton(btn_frame, text=self.tr("stop"), fg_color="#4B5563", hover_color="#6B7280", width=110, state="disabled", command=self.cancel_current_run)
         self.btn_cancel.pack(side="right")
+
+    def refresh_restore_backup_button(self):
+        if not hasattr(self, "btn_restore_registry"):
+            return
+        has_backup = WindowsOps.has_registry_backup()
+        can_restore = has_backup and self.is_admin
+        self.btn_restore_registry.configure(
+            state="normal" if can_restore else "disabled",
+            fg_color="#4C1D95" if can_restore else "#3F3F46",
+            hover_color="#5B21B6" if can_restore else "#3F3F46",
+        )
+
+    def backup_registry_for_tasks(self, tasks: List[CleanerTask]) -> bool:
+        registry_keys: List[str] = []
+        for task in tasks:
+            for key in (task.registry_keys or []):
+                if key not in registry_keys:
+                    registry_keys.append(key)
+        if not registry_keys:
+            return True
+        folder = WindowsOps.backup_registry_keys(registry_keys)
+        if folder:
+            self.log(self.trf("registry_backup_created", path=folder))
+            self.after(0, self.refresh_restore_backup_button)
+            return True
+        self.log(self.tr("registry_backup_failed"))
+        return False
+
+    def restore_registry_backup(self):
+        if not self.is_admin:
+            self.log(self.tr("restore_registry_admin_required"))
+            return
+        ok = WindowsOps.restore_latest_registry_backup()
+        self.log(self.tr("registry_restore_ok") if ok else self.tr("registry_restore_fail"))
 
     def build_main_area(self):
         self.main_wrap = ctk.CTkFrame(self, fg_color="transparent")
@@ -740,8 +770,13 @@ class Cleaner(ctk.CTk):
         self.section_cards.append(self.card_opt)
         self.register_optimizer_tasks()
 
+        self.card_opt_adv = SectionCard(self, self.optimizer_scroll, self.tr("sec_optimizer_registry_title"), self.tr("sec_optimizer_registry_sub"), COLORS["ultimate"])
+        self.card_opt_adv.grid(row=1, column=0, sticky="ew", pady=(0, 16))
+        self.section_cards.append(self.card_opt_adv)
+        self.register_optimizer_registry_tasks()
+
         self.card_opt_tools = SectionCard(self, self.optimizer_scroll, self.tr("sec_optimizer_tools_title"), self.tr("sec_optimizer_tools_sub"), COLORS["system"])
-        self.card_opt_tools.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self.card_opt_tools.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         self.section_cards.append(self.card_opt_tools)
         self.register_optimizer_helper_tasks()
 
@@ -900,27 +935,18 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_opt, CleanerTask(
             key="enable_game_mode", title_key="task.enable_game_mode.title", desc_key="task.enable_game_mode.desc",
             kind="command", category="optimizer", default=False, command=self.enable_game_mode,
-            registry_entries=[
-                (r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode"),
-                (r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled"),
-            ],
+            registry_keys=[r"HKCU\Software\Microsoft\GameBar"],
         ))
         self.add_task(self.card_opt, CleanerTask(
             key="disable_gamedvr", title_key="task.disable_gamedvr.title", desc_key="task.disable_gamedvr.desc",
             kind="command", category="optimizer", default=False, command=self.disable_game_dvr,
-            registry_entries=[
-                (r"HKCU\System\GameConfigStore", "GameDVR_Enabled"),
-                (r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"),
-                (r"HKCU\Software\Microsoft\GameBar", "UseNexusForGameBarEnabled"),
-                (r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel"),
-                (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR"),
+            registry_keys=[
+                r"HKCU\System\GameConfigStore",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR",
+                r"HKCU\Software\Microsoft\GameBar",
+                r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR",
             ],
-        ))
-        self.add_task(self.card_opt, CleanerTask(
-            key="enable_hags", title_key="task.enable_hags.title", desc_key="task.enable_hags.desc",
-            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
-            command=self.enable_hags,
-            registry_entries=[(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode")],
+            reboot_required=True,
         ))
         self.add_task(self.card_opt, CleanerTask(
             key="high_perf_plan", title_key="task.high_perf_plan.title", desc_key="task.high_perf_plan.desc",
@@ -931,16 +957,58 @@ class Cleaner(ctk.CTk):
             key="ultimate_perf_plan", title_key="task.ultimate_perf_plan.title", desc_key="task.ultimate_perf_plan.desc",
             kind="command", category="optimizer", default=False, state=state, requires_admin=True, command=self.enable_ultimate_performance,
         ))
-        self.add_task(self.card_opt, CleanerTask(
-            key="disable_notifications", title_key="task.disable_notifications.title", desc_key="task.disable_notifications.desc",
-            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:quiethours", "focus_assist_ok", "focus_assist_fail"),
+
+    def register_optimizer_registry_tasks(self):
+        state = "normal" if self.is_admin else "disabled"
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="disable_hags", title_key="task.disable_hags.title", desc_key="task.disable_hags.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.disable_hags,
+            registry_keys=[r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"],
+            reboot_required=True,
         ))
-        self.add_task(self.card_opt, CleanerTask(
-            key="open_visual_effects", title_key="task.open_visual_effects.title", desc_key="task.open_visual_effects.desc",
-            kind="command", category="optimizer", default=False, instant_action=True, command=self.open_visual_effects_settings,
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="disable_power_throttling", title_key="task.disable_power_throttling.title", desc_key="task.disable_power_throttling.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.disable_power_throttling,
+            registry_keys=[r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling"],
+            reboot_required=True,
+        ))
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="network_throttling_off", title_key="task.network_throttling_off.title", desc_key="task.network_throttling_off.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.disable_network_throttling,
+            registry_keys=[r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"],
+            reboot_required=True,
+        ))
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="mmcss_gaming_profile", title_key="task.mmcss_gaming_profile.title", desc_key="task.mmcss_gaming_profile.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.apply_mmcss_gaming_profile,
+            registry_keys=[
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+            ],
+            reboot_required=True,
         ))
 
     def register_optimizer_helper_tasks(self):
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_game_mode_settings", title_key="task.open_game_mode_settings.title", desc_key="task.open_game_mode_settings.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:gaming-gamemode", "game_mode_page_ok", "game_mode_page_fail"),
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_capture_settings", title_key="task.open_capture_settings.title", desc_key="task.open_capture_settings.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:gaming-gamedvr", "captures_page_ok", "captures_page_fail"),
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="disable_notifications", title_key="task.disable_notifications.title", desc_key="task.disable_notifications.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:quiethours", "focus_assist_ok", "focus_assist_fail"),
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_visual_effects", title_key="task.open_visual_effects.title", desc_key="task.open_visual_effects.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.open_visual_effects_settings,
+        ))
         self.add_task(self.card_opt_tools, CleanerTask(
             key="open_graphics_defaults", title_key="task.open_graphics_defaults.title", desc_key="task.open_graphics_defaults.desc",
             kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:display-advancedgraphics-default", "graphics_defaults_ok", "graphics_defaults_fail"),
@@ -996,49 +1064,6 @@ class Cleaner(ctk.CTk):
     def set_profile_name(self, name: str, color: str):
         self.current_profile_name = name
         self.card_profile.set(name, color)
-
-    def refresh_registry_backup_controls(self):
-        latest = WindowsOps.latest_registry_backup()
-        self.latest_registry_backup_path = latest
-        if not hasattr(self, "btn_restore_registry") or not hasattr(self, "registry_backup_status"):
-            return
-        if latest and os.path.isfile(latest):
-            self.btn_restore_registry.configure(state="normal")
-            self.registry_backup_status.configure(
-                text=self.trf("registry_backup_ready", name=os.path.basename(latest)),
-                text_color=COLORS["success"],
-            )
-        else:
-            self.btn_restore_registry.configure(state="disabled")
-            self.registry_backup_status.configure(text=self.tr("registry_backup_missing"), text_color=COLORS["text_gray"])
-
-    def create_registry_backup_for_tasks(self, tasks: Sequence[CleanerTask]) -> Optional[str]:
-        registry_entries: List[Tuple[str, str]] = []
-        for task in tasks:
-            if task.registry_entries:
-                registry_entries.extend(task.registry_entries)
-        if not registry_entries:
-            return None
-        backup_path = WindowsOps.create_registry_restore_snapshot(registry_entries, label="gaming-optimizer")
-        if backup_path:
-            self.log(self.trf("registry_backup_created_fmt", path=backup_path))
-        else:
-            self.log(self.tr("registry_backup_failed"))
-        self.after(0, self.refresh_registry_backup_controls)
-        return backup_path
-
-    def restore_latest_registry_backup(self):
-        backup_path = self.latest_registry_backup_path or WindowsOps.latest_registry_backup()
-        if not backup_path or not os.path.isfile(backup_path):
-            self.refresh_registry_backup_controls()
-            self.log(self.tr("registry_backup_not_found"))
-            return
-        if not self.is_admin:
-            self.log(self.tr("registry_restore_admin_required"))
-            return
-        self.log(self.trf("action_fmt", title=self.tr("restore_registry_backup")))
-        ok = WindowsOps.import_registry_backup(backup_path, timeout=180)
-        self.log(self.trf("registry_restore_ok", path=backup_path) if ok else self.tr("registry_restore_fail"))
 
     def log(self, text: str):
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -1191,9 +1216,15 @@ class Cleaner(ctk.CTk):
     def disable_game_dvr(self):
         results = [
             WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0),
+            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2),
+            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode", 0),
+            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehavior", 0),
+            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_DXGIHonorFSEWindowsCompatible", 0),
             WindowsOps.reg_add(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0),
             WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", 0),
             WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel", 0),
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1),
+            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1),
         ]
         if self.is_admin:
             results.append(WindowsOps.reg_add(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 0))
@@ -1206,13 +1237,57 @@ class Cleaner(ctk.CTk):
         ]
         self.log(self.tr("game_mode_ok") if all(results) else self.tr("game_mode_fail"))
 
+    def disable_hags(self):
+        ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1)
+        self.log(self.tr("hags_off_ok") if ok else self.tr("hags_off_fail"))
+
+    def disable_power_throttling(self):
+        ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 1)
+        self.log(self.tr("power_throttling_ok") if ok else self.tr("power_throttling_fail"))
+
+    def disable_network_throttling(self):
+        ok = WindowsOps.reg_add(
+            r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+            "NetworkThrottlingIndex",
+            "0xffffffff",
+        )
+        self.log(self.tr("network_throttling_ok") if ok else self.tr("network_throttling_fail"))
+
+    def apply_mmcss_gaming_profile(self):
+        results = [
+            WindowsOps.reg_add(
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+                "SystemResponsiveness",
+                0,
+            ),
+            WindowsOps.reg_add(
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+                "GPU Priority",
+                8,
+            ),
+            WindowsOps.reg_add(
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+                "Priority",
+                6,
+            ),
+            WindowsOps.reg_add(
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+                "Scheduling Category",
+                "High",
+                reg_type="REG_SZ",
+            ),
+            WindowsOps.reg_add(
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+                "SFIO Priority",
+                "High",
+                reg_type="REG_SZ",
+            ),
+        ]
+        self.log(self.tr("mmcss_profile_ok") if all(results) else self.tr("mmcss_profile_fail"))
+
     def enable_ultimate_performance(self):
         ok = WindowsOps.try_enable_ultimate_performance()
         self.log(self.tr("ultimate_perf_ok") if ok else self.tr("ultimate_perf_fail"))
-
-    def enable_hags(self):
-        ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 2)
-        self.log(self.tr("hags_ok") if ok else self.tr("hags_fail"))
 
     def run_dism_cleanup(self):
         self.dism_running = True
@@ -1388,19 +1463,22 @@ class Cleaner(ctk.CTk):
             if self.cancel_event.is_set():
                 self.log(self.tr("cancelled_before_clean"))
                 return
+            if not self.backup_registry_for_tasks(cmd_tasks):
+                return
             self.prepare_service_deps(dir_tasks, start=True)
             try:
                 self.clean_targets(dir_tasks)
             finally:
                 self.prepare_service_deps(dir_tasks, start=False)
             if not self.cancel_event.is_set():
-                self.create_registry_backup_for_tasks(cmd_tasks)
                 for task in cmd_tasks:
                     if self.cancel_event.is_set():
                         break
                     self.log(self.trf("action_fmt", title=self.task_title(task)))
                     try:
                         task.command()
+                        if task.reboot_required:
+                            self.log(self.tr("reboot_recommended"))
                     except Exception:
                         self.log(self.trf("action_error_fmt", title=self.task_title(task)))
             if self.cancel_event.is_set():

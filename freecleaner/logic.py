@@ -21,7 +21,7 @@ import locale
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Optional, Dict, List, Tuple, Any
+from typing import Callable, Optional, Dict, List, Tuple, Union
 
 from .default_lang_packs import DEFAULT_LANG_PACKS
 
@@ -353,7 +353,8 @@ class CleanerTask:
     danger: str = "safe"
     fmt: Optional[Dict[str, str]] = None
     instant_action: bool = False
-    registry_entries: Optional[List[Tuple[str, str]]] = None
+    registry_keys: Optional[List[str]] = None
+    reboot_required: bool = False
 
 
 class PathFinder:
@@ -442,150 +443,81 @@ class WindowsOps:
             return False
 
     @staticmethod
-    def reg_add(path: str, name: str, value: int, reg_type: str = "REG_DWORD") -> bool:
-        cmd = f'reg add "{path}" /v "{name}" /t {reg_type} /d {value} /f'
+    def reg_add(path: str, name: str, value: Union[int, str], reg_type: str = "REG_DWORD") -> bool:
+        safe_value = str(value).replace('"', '\"')
+        cmd = f'reg add "{path}" /v "{name}" /t {reg_type} /d "{safe_value}" /f'
         return WindowsOps.run_command(cmd, timeout=45)
 
     @staticmethod
-    def registry_backup_dir() -> str:
-        return os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
+    def registry_backup_root() -> str:
+        root = os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
+        os.makedirs(root, exist_ok=True)
+        return root
 
     @staticmethod
-    def _split_reg_path(path: str) -> Tuple[Optional[Any], str, str]:
-        clean = (path or "").strip().replace("/", "\\")
-        if not clean:
-            return None, "", ""
-        root_name, _, subkey = clean.partition("\\")
-        upper = root_name.upper()
-        mapping: Dict[str, Tuple[str, Any]] = {}
-        if winreg is not None:
-            mapping = {
-                "HKCU": ("HKEY_CURRENT_USER", winreg.HKEY_CURRENT_USER),
-                "HKEY_CURRENT_USER": ("HKEY_CURRENT_USER", winreg.HKEY_CURRENT_USER),
-                "HKLM": ("HKEY_LOCAL_MACHINE", winreg.HKEY_LOCAL_MACHINE),
-                "HKEY_LOCAL_MACHINE": ("HKEY_LOCAL_MACHINE", winreg.HKEY_LOCAL_MACHINE),
-            }
-        if upper not in mapping:
-            return None, subkey, ""
-        full_name, root = mapping[upper]
-        return root, subkey, full_name
-
-    @staticmethod
-    def _escape_reg_string(value: str) -> str:
-        return str(value).replace("\\", r"\\").replace('"', r'\"')
-
-    @staticmethod
-    def _format_reg_value_line(name: str, value: Any, value_type: Any) -> Optional[str]:
-        safe_name = WindowsOps._escape_reg_string(name)
-        if value_type == "MISSING":
-            return f'"{safe_name}"=-'
-        if winreg is None:
+    def backup_registry_keys(keys: List[str]) -> Optional[str]:
+        if not IS_WINDOWS or not keys:
             return None
-        if value_type == winreg.REG_DWORD:
-            try:
-                return f'"{safe_name}"=dword:{int(value) & 0xFFFFFFFF:08x}'
-            except Exception:
-                return None
-        if value_type == winreg.REG_QWORD:
-            try:
-                raw = int(value).to_bytes(8, byteorder="little", signed=False)
-                return f'"{safe_name}"=hex(b):' + ",".join(f"{b:02x}" for b in raw)
-            except Exception:
-                return None
-        if value_type == winreg.REG_SZ:
-            return f'"{safe_name}"="{WindowsOps._escape_reg_string(str(value))}"'
-        if value_type == winreg.REG_EXPAND_SZ:
-            raw = (str(value) + "\0").encode("utf-16le")
-            return f'"{safe_name}"=hex(2):' + ",".join(f"{b:02x}" for b in raw)
-        return None
-
-    @staticmethod
-    def _read_registry_value(path: str, name: str) -> Tuple[Any, Any]:
-        if not IS_WINDOWS or winreg is None:
-            return None, None
-        root, subkey, _ = WindowsOps._split_reg_path(path)
-        if root is None:
-            return None, None
-        try:
-            with winreg.OpenKey(root, subkey, 0, winreg.KEY_READ) as key:
-                value, value_type = winreg.QueryValueEx(key, name)
-                return value, value_type
-        except OSError:
-            return None, "MISSING"
-
-    @staticmethod
-    def create_registry_restore_snapshot(entries: List[Tuple[str, str]], label: str = "") -> Optional[str]:
-        if not IS_WINDOWS or not entries:
-            return None
-        try:
-            backup_dir = WindowsOps.registry_backup_dir()
-            os.makedirs(backup_dir, exist_ok=True)
-        except Exception:
-            return None
-
-        unique_entries: List[Tuple[str, str]] = []
+        unique_keys: List[str] = []
         seen = set()
-        for path, name in entries:
-            key = (str(path).strip(), str(name).strip())
-            if key[0] and key[1] and key not in seen:
-                seen.add(key)
-                unique_entries.append(key)
-        if not unique_entries:
+        for key in keys:
+            clean = (key or '').strip()
+            if clean and clean not in seen:
+                seen.add(clean)
+                unique_keys.append(clean)
+        if not unique_keys:
             return None
 
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "-", (label or "registry").strip("- ")) or "registry"
-        out_path = os.path.join(backup_dir, f"{timestamp}-{safe_label}.reg")
+        root = WindowsOps.registry_backup_root()
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        folder = os.path.join(root, f'backup_{stamp}')
+        os.makedirs(folder, exist_ok=True)
 
-        grouped: Dict[str, List[str]] = {}
-        for reg_path, value_name in unique_entries:
-            grouped.setdefault(reg_path, []).append(value_name)
+        manifest_lines = []
+        exported = 0
+        for index, key in enumerate(unique_keys, start=1):
+            safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', key).strip('_')[:90] or f'key_{index}'
+            target = os.path.join(folder, f'{index:02d}_{safe_name}.reg')
+            ok = WindowsOps.run_command(f'reg export "{key}" "{target}" /y', timeout=45)
+            manifest_lines.append(f'{key}={"ok" if ok else "missing"}')
+            if ok and os.path.isfile(target):
+                exported += 1
 
-        lines: List[str] = ["Windows Registry Editor Version 5.00", ""]
-        for reg_path in sorted(grouped.keys()):
-            _, _, full_root = WindowsOps._split_reg_path(reg_path)
-            if not full_root:
-                continue
-            root_name, _, subkey = reg_path.replace("/", "\\").partition("\\")
-            full_key_path = full_root if not subkey else f"{full_root}\\{subkey}"
-            lines.append(f"[{full_key_path}]")
-            for value_name in sorted(grouped[reg_path]):
-                value, value_type = WindowsOps._read_registry_value(reg_path, value_name)
-                line = WindowsOps._format_reg_value_line(value_name, value, value_type)
-                if line:
-                    lines.append(line)
-            lines.append("")
+        with open(os.path.join(folder, 'manifest.txt'), 'w', encoding='utf-8') as fh:
+            fh.write('\n'.join(manifest_lines))
 
-        try:
-            with open(out_path, "w", encoding="utf-16") as f:
-                f.write("\r\n".join(lines).rstrip() + "\r\n")
-            return out_path
-        except Exception:
-            return None
+        return folder if exported else None
 
     @staticmethod
-    def latest_registry_backup() -> Optional[str]:
-        if not IS_WINDOWS:
+    def latest_registry_backup_dir() -> Optional[str]:
+        root = os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
+        if not os.path.isdir(root):
             return None
-        backup_dir = WindowsOps.registry_backup_dir()
-        try:
-            candidates = [
-                os.path.join(backup_dir, name)
-                for name in os.listdir(backup_dir)
-                if name.lower().endswith(".reg")
-            ]
-        except Exception:
+        folders = [os.path.join(root, name) for name in os.listdir(root)]
+        folders = [path for path in folders if os.path.isdir(path)]
+        if not folders:
             return None
-        if not candidates:
-            return None
-        candidates.sort(key=lambda path: os.path.getmtime(path), reverse=True)
-        return candidates[0]
+        folders.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+        return folders[0]
 
     @staticmethod
-    def import_registry_backup(path: str, timeout: int = 120) -> bool:
-        if not IS_WINDOWS or not path or not os.path.isfile(path):
+    def has_registry_backup() -> bool:
+        latest = WindowsOps.latest_registry_backup_dir()
+        if not latest:
             return False
-        return WindowsOps.run_command(f'reg import "{path}"', timeout=timeout)
+        return any(name.lower().endswith('.reg') for name in os.listdir(latest))
+
+    @staticmethod
+    def restore_latest_registry_backup() -> bool:
+        latest = WindowsOps.latest_registry_backup_dir()
+        if not latest:
+            return False
+        reg_files = [os.path.join(latest, name) for name in os.listdir(latest) if name.lower().endswith('.reg')]
+        reg_files.sort()
+        if not reg_files:
+            return False
+        results = [WindowsOps.run_command(f'reg import "{path}"', timeout=60) for path in reg_files]
+        return all(results)
 
     @staticmethod
     def try_enable_ultimate_performance() -> bool:
