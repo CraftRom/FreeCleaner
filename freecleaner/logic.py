@@ -10,6 +10,9 @@ import sys
 import ctypes
 import threading
 import subprocess
+import shutil
+import stat
+import time
 try:
     import winreg  # type: ignore
 except Exception:  # pragma: no cover
@@ -21,7 +24,7 @@ import locale
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Optional, Dict, List, Tuple, Union
+from typing import Any, Callable, Optional, Dict, List, Tuple, Union
 
 from .default_lang_packs import DEFAULT_LANG_PACKS
 
@@ -647,6 +650,26 @@ class WindowsOps:
 
 class SafeFS:
     @staticmethod
+    def _clear_attributes(path: str, is_dir: bool = False) -> None:
+        try:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        except OSError:
+            pass
+        if IS_WINDOWS:
+            try:
+                attrs = 0x10 if is_dir else 0x80
+                ctypes.windll.kernel32.SetFileAttributesW(str(path), attrs)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _prepare_tree(path: str) -> None:
+        if not IS_WINDOWS or not path or not os.path.isdir(path):
+            return
+        escaped = os.path.abspath(path).replace('\"', '')
+        WindowsOps.run_command(f'attrib -r -s -h "{escaped}\\*" /s /d', timeout=180)
+
+    @staticmethod
     def fast_size(path: str) -> int:
         if not path or not os.path.exists(path):
             return 0
@@ -674,37 +697,92 @@ class SafeFS:
         return total
 
     @staticmethod
-    def clean_directory(path: str, on_bytes_removed: Callable[[int], None], cancel_event: threading.Event) -> None:
+    def clean_directory(path: str, on_bytes_removed: Callable[[int], None], cancel_event: threading.Event) -> Dict[str, int]:
+        result = {
+            "removed_bytes": 0,
+            "files_removed": 0,
+            "dirs_removed": 0,
+            "errors": 0,
+        }
         if not path or not os.path.exists(path):
-            return
+            return result
+
+        if os.path.isfile(path):
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                size = 0
+            SafeFS._clear_attributes(path, is_dir=False)
+            try:
+                os.remove(path)
+                if size > 0:
+                    on_bytes_removed(size)
+                    result["removed_bytes"] += size
+                result["files_removed"] += 1
+            except OSError:
+                result["errors"] += 1
+            return result
+
+        SafeFS._prepare_tree(path)
+
         for root, dirs, files in os.walk(path, topdown=False):
             if cancel_event.is_set():
-                return
+                return result
             for name in files:
                 if cancel_event.is_set():
-                    return
+                    return result
                 file_path = os.path.join(root, name)
                 try:
                     size = os.path.getsize(file_path)
                 except OSError:
                     size = 0
-                try:
-                    os.chmod(file_path, 0o666)
-                except OSError:
-                    pass
+                SafeFS._clear_attributes(file_path, is_dir=False)
                 try:
                     os.remove(file_path)
-                    if size > 0:
-                        on_bytes_removed(size)
                 except OSError:
-                    continue
+                    time.sleep(0.02)
+                    SafeFS._clear_attributes(file_path, is_dir=False)
+                    try:
+                        os.remove(file_path)
+                    except OSError:
+                        result["errors"] += 1
+                        continue
+                if size > 0:
+                    on_bytes_removed(size)
+                    result["removed_bytes"] += size
+                result["files_removed"] += 1
+
             for name in dirs:
                 if cancel_event.is_set():
-                    return
+                    return result
                 dir_path = os.path.join(root, name)
+                SafeFS._clear_attributes(dir_path, is_dir=True)
                 try:
                     os.rmdir(dir_path)
+                    result["dirs_removed"] += 1
                 except OSError:
-                    continue
+                    try:
+                        if os.path.isdir(dir_path) and not os.listdir(dir_path):
+                            shutil.rmtree(dir_path, ignore_errors=False)
+                            result["dirs_removed"] += 1
+                        else:
+                            result["errors"] += 1
+                    except OSError:
+                        result["errors"] += 1
+
+        # One more pass for stubborn empty folders inside the target
+        for root, dirs, _files in os.walk(path, topdown=False):
+            if cancel_event.is_set():
+                return result
+            for name in dirs:
+                dir_path = os.path.join(root, name)
+                SafeFS._clear_attributes(dir_path, is_dir=True)
+                try:
+                    os.rmdir(dir_path)
+                    result["dirs_removed"] += 1
+                except OSError:
+                    pass
+
+        return result
 
 

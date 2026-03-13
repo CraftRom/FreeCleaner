@@ -262,5 +262,8 @@
   "backup_kind_backup": "Резервна копія реєстру",
   "backup_kind_pre_restore": "Pre-restore знімок",
   "registry_restore_missing": "Резервну копію реєстру не знайдено.",
-  "unknown": "Невідомо"
+  "unknown": "Невідомо",
+  "cleanup_target_ok_fmt": "Очищено: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}",
+  "cleanup_target_partial_fmt": "Очищено частково: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}, пропущено: {errors}",
+  "cleanup_target_failed_fmt": "Помилка очищення: {title}"
 }

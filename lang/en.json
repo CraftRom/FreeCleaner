@@ -262,5 +262,8 @@
   "backup_kind_backup": "Registry backup",
   "backup_kind_pre_restore": "Pre-restore snapshot",
   "registry_restore_missing": "No registry backup was found.",
-  "unknown": "Unknown"
+  "unknown": "Unknown",
+  "cleanup_target_ok_fmt": "Cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}",
+  "cleanup_target_partial_fmt": "Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}",
+  "cleanup_target_failed_fmt": "Cleanup error: {title}"
 }

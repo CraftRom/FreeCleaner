@@ -23,7 +23,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, init_ui_theme
+from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, init_ui_theme, mix_colors
 from .logic import (
     IS_WINDOWS,
     ICONS_DIRNAME,
@@ -1613,14 +1613,42 @@ class Cleaner(ctk.CTk):
             return
         self.log(self.trf("cleaning_targets_fmt", count=len(dir_tasks), workers=CLEAN_WORKERS))
         with concurrent.futures.ThreadPoolExecutor(max_workers=CLEAN_WORKERS) as pool:
-            futures = [pool.submit(SafeFS.clean_directory, task.path, self.update_progress, self.cancel_event) for task in dir_tasks if task.path]
-            for future in concurrent.futures.as_completed(futures):
+            future_map = {
+                pool.submit(SafeFS.clean_directory, task.path, self.update_progress, self.cancel_event): task
+                for task in dir_tasks if task.path
+            }
+            for future in concurrent.futures.as_completed(future_map):
+                task = future_map[future]
                 if self.cancel_event.is_set():
                     break
                 try:
-                    future.result()
+                    result = future.result()
                 except Exception:
+                    self.log(self.trf("cleanup_target_failed_fmt", title=self.task_title(task)))
                     continue
+
+                removed_mb = float(result.get("removed_bytes", 0)) / (1024 ** 2)
+                files_removed = int(result.get("files_removed", 0))
+                dirs_removed = int(result.get("dirs_removed", 0))
+                errors = int(result.get("errors", 0))
+
+                if errors > 0:
+                    self.log(self.trf(
+                        "cleanup_target_partial_fmt",
+                        title=self.task_title(task),
+                        mb=removed_mb,
+                        files=files_removed,
+                        dirs=dirs_removed,
+                        errors=errors,
+                    ))
+                else:
+                    self.log(self.trf(
+                        "cleanup_target_ok_fmt",
+                        title=self.task_title(task),
+                        mb=removed_mb,
+                        files=files_removed,
+                        dirs=dirs_removed,
+                    ))
 
     def perform_pre_analysis(self, chosen: List[CleanerTask]) -> Tuple[List[CleanerTask], List[CleanerTask]]:
         dir_tasks = [task for task in chosen if task.kind == "directory" and task.path and os.path.exists(task.path)]
