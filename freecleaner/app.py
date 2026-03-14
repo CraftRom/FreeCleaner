@@ -1110,7 +1110,7 @@ class Cleaner(ctk.CTk):
         deep_dirs = [
             ("prefetch", "task.prefetch.title", "task.prefetch.desc", r"C:\Windows\Prefetch"),
             ("error_logs", "task.error_logs.title", "task.error_logs.desc", r"C:\ProgramData\Microsoft\Windows\WER"),
-            ("update_cache_files", "task.update_cache_files.title", "task.update_cache_files.desc", r"C:\Windows\SoftwareDistribution\Download"),
+            ("update_cache_files", "task.update_cache_files.title", "task.update_cache_files.desc", r"C:\Windows\SoftwareDistribution"),
             ("delivery_opt", "task.delivery_opt.title", "task.delivery_opt.desc", os.path.join(local, r"Microsoft\Windows\DeliveryOptimization\Cache")),
         ]
         for key, tkey, dkey, path in deep_dirs:
@@ -1700,11 +1700,13 @@ class Cleaner(ctk.CTk):
             if needs_update:
                 WindowsOps.run_command("net stop wuauserv", timeout=60)
                 WindowsOps.run_command("net stop bits", timeout=60)
+                WindowsOps.run_command("net stop cryptsvc", timeout=60)
             if needs_delivery:
                 WindowsOps.run_command("net stop dosvc", timeout=60)
         else:
             self.log(self.tr("start_update_services"))
             if needs_update:
+                WindowsOps.run_command("net start cryptsvc", timeout=60)
                 WindowsOps.run_command("net start wuauserv", timeout=60)
                 WindowsOps.run_command("net start bits", timeout=60)
             if needs_delivery:
