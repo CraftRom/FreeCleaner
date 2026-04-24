@@ -656,6 +656,7 @@ class CleanerTask:
     command: Optional[Callable[[], None]] = None
     danger: str = "safe"
     fmt: Optional[Dict[str, str]] = None
+    paths: Optional[List[str]] = None
     instant_action: bool = False
     registry_keys: Optional[List[str]] = None
     reboot_required: bool = False
@@ -716,8 +717,28 @@ class PathFinder:
 
 
     @staticmethod
+    def unique_existing(paths: List[str]) -> List[str]:
+        """Return existing paths without duplicates, normalized case-insensitively on Windows."""
+        result: List[str] = []
+        seen: Set[str] = set()
+        for path in paths:
+            if not path:
+                continue
+            expanded = PathFinder.expand(path)
+            try:
+                abs_path = os.path.abspath(expanded)
+            except Exception:
+                abs_path = expanded
+            key = os.path.normcase(abs_path)
+            if key in seen or not os.path.exists(abs_path):
+                continue
+            seen.add(key)
+            result.append(abs_path)
+        return result
+
+    @staticmethod
     def _existing_unique(paths: List[str]) -> List[str]:
-        return PathFinder.existing(paths)
+        return PathFinder.unique_existing(paths)
 
     @staticmethod
     def _safe_join(*parts: str) -> str:
@@ -1346,6 +1367,32 @@ class SafeFS:
                 except OSError:
                     pass
         return total
+
+    @staticmethod
+    def fast_size_many(paths: List[str]) -> int:
+        total = 0
+        for path in PathFinder.unique_existing(paths):
+            total += SafeFS.fast_size(path)
+        return total
+
+    @staticmethod
+    def clean_many(paths: List[str], on_bytes_removed: Callable[[int], None], cancel_event: threading.Event) -> Dict[str, int]:
+        total_result = {
+            "removed_bytes": 0,
+            "files_removed": 0,
+            "dirs_removed": 0,
+            "scheduled_reboot": 0,
+            "remaining_files": 0,
+            "remaining_dirs": 0,
+            "errors": 0,
+        }
+        for path in PathFinder.unique_existing(paths):
+            if cancel_event.is_set():
+                break
+            result = SafeFS.clean_directory(path, on_bytes_removed, cancel_event)
+            for key, value in result.items():
+                total_result[key] = total_result.get(key, 0) + int(value or 0)
+        return total_result
 
     @staticmethod
     def clean_directory(path: str, on_bytes_removed: Callable[[int], None], cancel_event: threading.Event) -> Dict[str, int]:

@@ -1038,7 +1038,33 @@ class Cleaner(ctk.CTk):
         self.btn_reset_all = ctk.CTkButton(self.footer_actions, text=self.tr("reset_all"), font=("Segoe UI", 14, "bold"), width=150, height=48, fg_color="#374151", hover_color="#4B5563", command=self.clear_selection)
         self.btn_reset_all.pack(side="left")
 
+    def _task_paths(self, task: CleanerTask) -> List[str]:
+        raw_paths: List[str] = []
+        if getattr(task, "paths", None):
+            raw_paths.extend([p for p in (task.paths or []) if p])
+        elif task.path:
+            raw_paths.append(task.path)
+        return PathFinder.unique_existing(raw_paths)
+
     def add_task(self, parent_card: SectionCard, task: CleanerTask):
+        # Do not render duplicate actions. Duplicates made the Cleaner menu look
+        # broken and could scan/clean the same folder more than once.
+        if task.key in self.tasks:
+            return
+
+        if task.kind == "directory":
+            unique_paths = self._task_paths(task)
+            if not unique_paths:
+                return
+            task.paths = unique_paths
+            task.path = unique_paths[0]
+            seen_paths = getattr(self, "_registered_clean_paths", set())
+            path_signature = tuple(os.path.normcase(os.path.abspath(p)) for p in unique_paths)
+            if path_signature in seen_paths:
+                return
+            seen_paths.add(path_signature)
+            self._registered_clean_paths = seen_paths
+
         self.tasks[task.key] = task
         var = None
         if not task.instant_action:
@@ -1072,19 +1098,82 @@ class Cleaner(ctk.CTk):
             ))
 
     def register_browser_tasks(self):
+        # Chromium exposes many separate cache folders per profile. Showing each
+        # folder as a separate checkbox creates visible duplicates, so we group
+        # them into one action per browser profile while still cleaning every
+        # underlying cache path.
+        chromium_groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
         for key, tkey, dkey, path, fmt in PathFinder.get_chromium_cache_targets():
+            browser = fmt.get("browser", "Chromium")
+            profile = fmt.get("profile", "Default")
+            group_key = (browser, profile)
+            group = chromium_groups.setdefault(group_key, {
+                "slug": key.split("_")[1] if "_" in key else "chromium",
+                "browser": browser,
+                "profile": profile,
+                "paths": [],
+            })
+            group["paths"].append(path)
+
+        for (browser, profile), group in sorted(chromium_groups.items(), key=lambda item: item[0]):
+            paths = PathFinder.unique_existing(group["paths"])
+            if not paths:
+                continue
+            safe_key = re.sub(r"[^a-zA-Z0-9_]+", "_", f"browser_{browser}_{profile}_cache").strip("_").lower()
             self.add_task(self.card_net, CleanerTask(
-                key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False, fmt=fmt,
+                key=safe_key,
+                title_key="task.browser_generic.title",
+                desc_key="task.browser_generic.desc",
+                path=paths[0],
+                paths=paths,
+                category="browsers",
+                default=False,
+                fmt={"browser": browser, "profile": profile, "path": paths[0]},
             ))
 
+        firefox_groups: Dict[str, List[str]] = {}
         for key, tkey, dkey, path, fmt in PathFinder.get_firefox_cache_targets():
+            profile = fmt.get("profile", "Default")
+            firefox_groups.setdefault(profile, []).append(path)
+
+        for profile, paths_raw in sorted(firefox_groups.items()):
+            paths = PathFinder.unique_existing(paths_raw)
+            if not paths:
+                continue
+            safe_key = re.sub(r"[^a-zA-Z0-9_]+", "_", f"firefox_{profile}_cache").strip("_").lower()
             self.add_task(self.card_net, CleanerTask(
-                key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False, fmt=fmt,
+                key=safe_key,
+                title_key="task.firefox_cache2.title",
+                desc_key="task.firefox_cache2.desc",
+                path=paths[0],
+                paths=paths,
+                category="browsers",
+                default=False,
+                fmt={"profile": profile, "path": paths[0]},
             ))
 
+        app_groups: Dict[str, Dict[str, Any]] = {}
         for key, tkey, dkey, path in PathFinder.get_app_cache_targets():
+            base = key.split("_")[0]
+            if key.startswith("discord_"):
+                base = "discord"
+            group = app_groups.setdefault(base, {"keys": [], "title_key": tkey, "desc_key": dkey, "paths": []})
+            group["keys"].append(key)
+            group["paths"].append(path)
+
+        for base, group in sorted(app_groups.items()):
+            paths = PathFinder.unique_existing(group["paths"])
+            if not paths:
+                continue
             self.add_task(self.card_net, CleanerTask(
-                key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False, fmt={"path": path},
+                key=f"{base}_cache_group",
+                title_key=group["title_key"],
+                desc_key=group["desc_key"],
+                path=paths[0],
+                paths=paths,
+                category="browsers",
+                default=False,
+                fmt={"path": paths[0]},
             ))
 
         self.add_task(self.card_net, CleanerTask(
@@ -1559,7 +1648,7 @@ class Cleaner(ctk.CTk):
 
         self.log(self.trf("analyzing_targets_fmt", count=len(dir_tasks), workers=SCAN_WORKERS))
         with concurrent.futures.ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
-            future_map = {pool.submit(SafeFS.fast_size, task.path): task for task in dir_tasks if task.path}
+            future_map = {pool.submit(SafeFS.fast_size_many, self._task_paths(task)): task for task in dir_tasks if self._task_paths(task)}
             for future in concurrent.futures.as_completed(future_map):
                 task = future_map[future]
                 if self.cancel_event.is_set():
@@ -1615,8 +1704,8 @@ class Cleaner(ctk.CTk):
         self.log(self.trf("cleaning_targets_fmt", count=len(dir_tasks), workers=CLEAN_WORKERS))
         with concurrent.futures.ThreadPoolExecutor(max_workers=CLEAN_WORKERS) as pool:
             future_map = {
-                pool.submit(SafeFS.clean_directory, task.path, self.update_progress, self.cancel_event): task
-                for task in dir_tasks if task.path
+                pool.submit(SafeFS.clean_many, self._task_paths(task), self.update_progress, self.cancel_event): task
+                for task in dir_tasks if self._task_paths(task)
             }
             for future in concurrent.futures.as_completed(future_map):
                 task = future_map[future]
@@ -1660,7 +1749,7 @@ class Cleaner(ctk.CTk):
                     self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
 
     def perform_pre_analysis(self, chosen: List[CleanerTask]) -> Tuple[List[CleanerTask], List[CleanerTask]]:
-        dir_tasks = [task for task in chosen if task.kind == "directory" and task.path and os.path.exists(task.path)]
+        dir_tasks = [task for task in chosen if task.kind == "directory" and self._task_paths(task)]
         cmd_tasks = [task for task in chosen if task.kind == "command" and task.command]
         total, category_totals, top_items = self.analyze_directory_tasks(dir_tasks)
         self.analysis_total_bytes = total
