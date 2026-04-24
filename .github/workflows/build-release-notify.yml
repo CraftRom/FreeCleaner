@@ -161,14 +161,20 @@ jobs:
           if (-not $InstallerPath) { throw "Installer was not generated." }
           "INSTALLER_PATH=$($InstallerPath.FullName)" >> $env:GITHUB_ENV
 
+      - name: Stage release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact-out | Out-Null
+          Copy-Item -Path "${{ env.RENAMED_EXE_PATH }}" -Destination artifact-out -Force
+          Copy-Item -Path "${{ env.INSTALLER_PATH }}" -Destination artifact-out -Force
+          Copy-Item -Path version_info.txt -Destination artifact-out -Force
+          Get-ChildItem -Path artifact-out -File | Format-Table Name, Length
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}
-          path: |
-            ${{ env.RENAMED_EXE_PATH }}
-            ${{ env.INSTALLER_PATH }}
-            version_info.txt
+          path: artifact-out/*
           if-no-files-found: error
 
   release:
@@ -188,8 +194,26 @@ jobs:
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-assets
-          merge-multiple: true
+          path: downloaded-artifacts
+          merge-multiple: false
+
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Get-ChildItem -Path downloaded-artifacts -Recurse -File | Format-Table FullName, Length
+          $exeFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File -Filter "*.exe"
+          if (-not $exeFiles -or $exeFiles.Count -eq 0) {
+            throw "No .exe files were downloaded from build artifacts."
+          }
+          foreach ($file in $exeFiles) {
+            Copy-Item -Path $file.FullName -Destination (Join-Path release-assets $file.Name) -Force
+          }
+          $releaseFiles = Get-ChildItem -Path release-assets -File -Filter "*.exe"
+          if (-not $releaseFiles -or $releaseFiles.Count -eq 0) {
+            throw "release-assets/*.exe was not created."
+          }
+          $releaseFiles | Format-Table Name, Length
 
       - name: Create Git Tag
         if: needs.version.outputs.create_tag == 'true'
