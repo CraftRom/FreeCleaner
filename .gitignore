@@ -102,3 +102,6 @@ __pycache__/
 # lang/custom/
 # languages/custom/
 # =========================
+*.zip
+*.reg
+*.txt
