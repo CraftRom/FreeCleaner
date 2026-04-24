@@ -225,5 +225,6 @@
   "task.browser_generic.title": "Pamięć podręczna {browser} ({profile})",
   "task.browser_generic.desc": "Rzeczywiste foldery pamięci podręcznej tego profilu przeglądarki.",
   "task.app_cache.title": "Pamięć podręczna {app}",
-  "task.app_cache.desc": "Bezpieczna pamięć podręczna {app}, która zostanie odtworzona automatycznie."
+  "task.app_cache.desc": "Bezpieczna pamięć podręczna {app}, która zostanie odtworzona automatycznie.",
+  "adaptive_threads_fmt": "Adaptacyjna kontrola obciążenia: {status}"
 }

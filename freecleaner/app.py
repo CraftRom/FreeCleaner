@@ -46,6 +46,8 @@ from .logic import (
     get_default_download_dir,
     SCAN_WORKERS,
     CLEAN_WORKERS,
+    get_adaptive_workers,
+    get_adaptive_thread_status,
     get_runtime_base_dir,
     get_bundle_base_dir,
     find_icon_path,
@@ -203,7 +205,10 @@ class Cleaner(ctk.CTk):
         self.after(180, self.refresh_responsive_layout)
 
         self.log(self.trf("app_started", title=self.app_title()))
-        self.log(self.trf("threads_info", scan=SCAN_WORKERS, clean=CLEAN_WORKERS))
+        initial_scan_workers = get_adaptive_workers("scan")
+        initial_clean_workers = get_adaptive_workers("clean")
+        self.log(self.trf("threads_info", scan=initial_scan_workers, clean=initial_clean_workers))
+        self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("scan")))
         self.log(self.tr("mode_admin") if self.is_admin else self.tr("mode_limited"))
         self.refresh_selection_stats()
         self.apply_language()
@@ -1683,24 +1688,31 @@ class Cleaner(ctk.CTk):
         total = 0
         category_totals: Dict[str, int] = {key: 0 for key in ("system", "browsers", "deep", "gamer", "ultimate")}
         detail_rows: List[Tuple[str, int]] = []
-        if not dir_tasks:
+        pending_tasks = [task for task in dir_tasks if self._task_paths(task)]
+        if not pending_tasks:
             return 0, category_totals, detail_rows
 
-        self.log(self.trf("analyzing_targets_fmt", count=len(dir_tasks), workers=SCAN_WORKERS))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
-            future_map = {pool.submit(SafeFS.fast_size_many, self._task_paths(task)): task for task in dir_tasks if self._task_paths(task)}
-            for future in concurrent.futures.as_completed(future_map):
-                task = future_map[future]
-                if self.cancel_event.is_set():
-                    break
-                try:
-                    size = future.result()
-                except Exception:
-                    size = 0
-                total += size
-                category_totals[task.category] = category_totals.get(task.category, 0) + size
-                detail_rows.append((self.task_title(task), size))
-                self.log(self.trf("analysis_item_fmt", title=self.task_title(task), mb=size / (1024 ** 2)))
+        while pending_tasks and not self.cancel_event.is_set():
+            workers = get_adaptive_workers("scan", len(pending_tasks))
+            self.log(self.trf("analyzing_targets_fmt", count=len(pending_tasks), workers=workers))
+            self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("scan")))
+            batch = pending_tasks[:workers]
+            pending_tasks = pending_tasks[workers:]
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                future_map = {pool.submit(SafeFS.fast_size_many, self._task_paths(task)): task for task in batch}
+                for future in concurrent.futures.as_completed(future_map):
+                    task = future_map[future]
+                    if self.cancel_event.is_set():
+                        break
+                    try:
+                        size = future.result()
+                    except Exception:
+                        size = 0
+                    total += size
+                    category_totals[task.category] = category_totals.get(task.category, 0) + size
+                    detail_rows.append((self.task_title(task), size))
+                    self.log(self.trf("analysis_item_fmt", title=self.task_title(task), mb=size / (1024 ** 2)))
 
         detail_rows.sort(key=lambda item: item[1], reverse=True)
         return total, category_totals, detail_rows
@@ -1739,54 +1751,62 @@ class Cleaner(ctk.CTk):
         self.after(0, ui_update)
 
     def clean_targets(self, dir_tasks: List[CleanerTask]):
-        if not dir_tasks:
+        pending_tasks = [task for task in dir_tasks if self._task_paths(task)]
+        if not pending_tasks:
             return
-        self.log(self.trf("cleaning_targets_fmt", count=len(dir_tasks), workers=CLEAN_WORKERS))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=CLEAN_WORKERS) as pool:
-            future_map = {
-                pool.submit(SafeFS.clean_many, self._task_paths(task), self.update_progress, self.cancel_event): task
-                for task in dir_tasks if self._task_paths(task)
-            }
-            for future in concurrent.futures.as_completed(future_map):
-                task = future_map[future]
-                if self.cancel_event.is_set():
-                    break
-                try:
-                    result = future.result()
-                except Exception:
-                    self.log(self.trf("cleanup_target_failed_fmt", title=self.task_title(task)))
-                    continue
 
-                removed_mb = float(result.get("removed_bytes", 0)) / (1024 ** 2)
-                files_removed = int(result.get("files_removed", 0))
-                dirs_removed = int(result.get("dirs_removed", 0))
-                scheduled_reboot = int(result.get("scheduled_reboot", 0))
-                remaining_files = int(result.get("remaining_files", 0))
-                remaining_dirs = int(result.get("remaining_dirs", 0))
-                errors = int(result.get("errors", 0))
+        while pending_tasks and not self.cancel_event.is_set():
+            workers = get_adaptive_workers("clean", len(pending_tasks))
+            self.log(self.trf("cleaning_targets_fmt", count=len(pending_tasks), workers=workers))
+            self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("clean")))
+            batch = pending_tasks[:workers]
+            pending_tasks = pending_tasks[workers:]
 
-                if errors > 0:
-                    self.log(self.trf(
-                        "cleanup_target_partial_fmt",
-                        title=self.task_title(task),
-                        mb=removed_mb,
-                        files=files_removed,
-                        dirs=dirs_removed,
-                        errors=errors,
-                    ))
-                else:
-                    self.log(self.trf(
-                        "cleanup_target_ok_fmt",
-                        title=self.task_title(task),
-                        mb=removed_mb,
-                        files=files_removed,
-                        dirs=dirs_removed,
-                    ))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                future_map = {
+                    pool.submit(SafeFS.clean_many, self._task_paths(task), self.update_progress, self.cancel_event): task
+                    for task in batch
+                }
+                for future in concurrent.futures.as_completed(future_map):
+                    task = future_map[future]
+                    if self.cancel_event.is_set():
+                        break
+                    try:
+                        result = future.result()
+                    except Exception:
+                        self.log(self.trf("cleanup_target_failed_fmt", title=self.task_title(task)))
+                        continue
 
-                if scheduled_reboot > 0:
-                    self.log(self.trf("cleanup_reboot_scheduled_fmt", title=self.task_title(task), count=scheduled_reboot))
-                if remaining_files > 0 or remaining_dirs > 0:
-                    self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
+                    removed_mb = float(result.get("removed_bytes", 0)) / (1024 ** 2)
+                    files_removed = int(result.get("files_removed", 0))
+                    dirs_removed = int(result.get("dirs_removed", 0))
+                    scheduled_reboot = int(result.get("scheduled_reboot", 0))
+                    remaining_files = int(result.get("remaining_files", 0))
+                    remaining_dirs = int(result.get("remaining_dirs", 0))
+                    errors = int(result.get("errors", 0))
+
+                    if errors > 0:
+                        self.log(self.trf(
+                            "cleanup_target_partial_fmt",
+                            title=self.task_title(task),
+                            mb=removed_mb,
+                            files=files_removed,
+                            dirs=dirs_removed,
+                            errors=errors,
+                        ))
+                    else:
+                        self.log(self.trf(
+                            "cleanup_target_ok_fmt",
+                            title=self.task_title(task),
+                            mb=removed_mb,
+                            files=files_removed,
+                            dirs=dirs_removed,
+                        ))
+
+                    if scheduled_reboot > 0:
+                        self.log(self.trf("cleanup_reboot_scheduled_fmt", title=self.task_title(task), count=scheduled_reboot))
+                    if remaining_files > 0 or remaining_dirs > 0:
+                        self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
 
     def perform_pre_analysis(self, chosen: List[CleanerTask]) -> Tuple[List[CleanerTask], List[CleanerTask]]:
         dir_tasks = [task for task in chosen if task.kind == "directory" and self._task_paths(task)]

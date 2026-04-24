@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 import ctypes
+import ctypes.wintypes
 import threading
 import subprocess
 import shutil
@@ -193,13 +194,164 @@ def is_windows_at_least(major: int, minor: int = 0, build: int = 0) -> bool:
 
 
 CPU_COUNT = max(1, os.cpu_count() or 4)
-SCAN_WORKERS = min(max(2, CPU_COUNT), 4)
-CLEAN_WORKERS = min(max(2, CPU_COUNT), 4)
+# Conservative fallbacks used when adaptive probing is unavailable.
+SCAN_WORKERS = max(1, min(CPU_COUNT, max(1, CPU_COUNT // 2)))
+CLEAN_WORKERS = max(1, CPU_COUNT - 2) if CPU_COUNT > 2 else 1
 
 
+class _MEMORYSTATUSEX(ctypes.Structure):
+    _fields_ = [
+        ("dwLength", ctypes.c_ulong),
+        ("dwMemoryLoad", ctypes.c_ulong),
+        ("ullTotalPhys", ctypes.c_ulonglong),
+        ("ullAvailPhys", ctypes.c_ulonglong),
+        ("ullTotalPageFile", ctypes.c_ulonglong),
+        ("ullAvailPageFile", ctypes.c_ulonglong),
+        ("ullTotalVirtual", ctypes.c_ulonglong),
+        ("ullAvailVirtual", ctypes.c_ulonglong),
+        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+    ]
 
 
+def _filetime_to_int(filetime: Any) -> int:
+    return (int(filetime.dwHighDateTime) << 32) + int(filetime.dwLowDateTime)
 
+
+def _get_windows_cpu_times() -> Optional[Tuple[int, int]]:
+    """Return (idle, total) CPU ticks using WinAPI, compatible with Win7+."""
+    if not IS_WINDOWS:
+        return None
+    try:
+        idle = ctypes.wintypes.FILETIME()
+        kernel = ctypes.wintypes.FILETIME()
+        user = ctypes.wintypes.FILETIME()
+        if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+            return None
+        idle_i = _filetime_to_int(idle)
+        kernel_i = _filetime_to_int(kernel)
+        user_i = _filetime_to_int(user)
+        return idle_i, kernel_i + user_i
+    except Exception:
+        return None
+
+
+def get_memory_load_percent() -> Optional[float]:
+    """Return current RAM load percent without external dependencies."""
+    if not IS_WINDOWS:
+        return None
+    try:
+        stat = _MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return float(stat.dwMemoryLoad)
+    except Exception:
+        pass
+    return None
+
+
+class AdaptiveThreadManager:
+    """Adaptive worker selector for scan/clean operations.
+
+    - scan starts around half of logical CPUs because it is mostly disk-bound;
+    - clean starts at all logical CPUs minus two to keep the UI/system responsive;
+    - both modes back off when CPU/RAM load is high.
+    """
+
+    def __init__(self, cpu_count: Optional[int] = None):
+        self.cpu_count = max(1, int(cpu_count or CPU_COUNT or 1))
+        self._last_cpu_sample = _get_windows_cpu_times()
+        self._last_sample_at = time.time()
+        self._last_cpu_load = None  # type: Optional[float]
+        self._last_memory_load = get_memory_load_percent()
+        self._last_workers = {"scan": SCAN_WORKERS, "clean": CLEAN_WORKERS}
+
+    def sample_cpu_load(self) -> Optional[float]:
+        current = _get_windows_cpu_times()
+        if not current:
+            return self._last_cpu_load
+        previous = self._last_cpu_sample
+        self._last_cpu_sample = current
+        self._last_sample_at = time.time()
+        if not previous:
+            return self._last_cpu_load
+
+        idle_delta = current[0] - previous[0]
+        total_delta = current[1] - previous[1]
+        if total_delta <= 0:
+            return self._last_cpu_load
+        load = 100.0 * (1.0 - (float(idle_delta) / float(total_delta)))
+        load = max(0.0, min(100.0, load))
+        self._last_cpu_load = load
+        return load
+
+    def sample_memory_load(self) -> Optional[float]:
+        load = get_memory_load_percent()
+        if load is not None:
+            self._last_memory_load = load
+        return self._last_memory_load
+
+    def base_workers(self, mode: str) -> int:
+        if mode == "clean":
+            return max(1, self.cpu_count - 2) if self.cpu_count > 2 else 1
+        return max(1, self.cpu_count // 2)
+
+    def choose_workers(self, mode: str, pending_items: int = 0) -> int:
+        mode = "clean" if mode == "clean" else "scan"
+        base = self.base_workers(mode)
+        cpu = self.sample_cpu_load()
+        mem = self.sample_memory_load()
+        workers = base
+
+        if cpu is not None:
+            if cpu >= 92.0:
+                workers = max(1, workers // 3)
+            elif cpu >= 80.0:
+                workers = max(1, workers // 2)
+            elif cpu >= 65.0:
+                workers = max(1, workers - 1)
+            elif cpu <= 35.0 and (mem is None or mem < 75.0):
+                limit = self.cpu_count if mode == "clean" else max(1, (self.cpu_count + 1) // 2)
+                workers = min(limit, workers + 1)
+
+        if mem is not None:
+            if mem >= 92.0:
+                workers = 1
+            elif mem >= 85.0:
+                workers = max(1, workers // 2)
+            elif mem >= 75.0:
+                workers = max(1, workers - 1)
+
+        if mode == "clean" and self.cpu_count > 2:
+            workers = min(workers, self.cpu_count - 2)
+        if mode == "scan":
+            workers = min(workers, max(1, (self.cpu_count + 1) // 2))
+
+        if pending_items:
+            workers = min(workers, max(1, pending_items))
+        workers = max(1, int(workers))
+        self._last_workers[mode] = workers
+        return workers
+
+    def status_text(self, mode: str) -> str:
+        cpu = self._last_cpu_load
+        mem = self._last_memory_load
+        parts = ["adaptive", "mode=%s" % ("clean" if mode == "clean" else "scan")]
+        if cpu is not None:
+            parts.append("cpu=%.0f%%" % cpu)
+        if mem is not None:
+            parts.append("ram=%.0f%%" % mem)
+        return ", ".join(parts)
+
+
+ADAPTIVE_THREADS = AdaptiveThreadManager()
+
+
+def get_adaptive_workers(mode: str, pending_items: int = 0) -> int:
+    return ADAPTIVE_THREADS.choose_workers(mode, pending_items)
+
+
+def get_adaptive_thread_status(mode: str) -> str:
+    return ADAPTIVE_THREADS.status_text(mode)
 
 
 # -------------------------

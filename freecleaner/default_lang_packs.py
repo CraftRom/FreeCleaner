@@ -86,6 +86,7 @@ DEFAULT_LANG_PACKS = {
         "mode_limited": "Mode: limited access.",
         "app_started": "{title} started.",
         "threads_info": "Scanning: {scan} threads | cleaning: {clean} threads",
+        "adaptive_threads_fmt": "Adaptive load control: {status}",
         "language_switched": "Language switched: {lang}",
         "log_copied": "Log copied to clipboard.",
         "log_cleared": "Log cleared.",

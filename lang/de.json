@@ -225,5 +225,6 @@
   "task.browser_generic.title": "{browser} Cache ({profile})",
   "task.browser_generic.desc": "Echte Cache-Ordner dieses Browserprofils.",
   "task.app_cache.title": "{app}-Cache",
-  "task.app_cache.desc": "Sicherer {app}-Cache, der automatisch neu erstellt wird."
+  "task.app_cache.desc": "Sicherer {app}-Cache, der automatisch neu erstellt wird.",
+  "adaptive_threads_fmt": "Adaptive Laststeuerung: {status}"
 }

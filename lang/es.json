@@ -225,5 +225,6 @@
   "task.browser_generic.title": "Caché de {browser} ({profile})",
   "task.browser_generic.desc": "Carpetas reales de caché de este perfil del navegador.",
   "task.app_cache.title": "Caché de {app}",
-  "task.app_cache.desc": "Caché seguro de {app} que se reconstruye automáticamente."
+  "task.app_cache.desc": "Caché seguro de {app} que se reconstruye automáticamente.",
+  "adaptive_threads_fmt": "Control de carga adaptativo: {status}"
 }

@@ -318,3 +318,12 @@ The in-app updater selects the installer by the current Windows architecture:
 - If the native x64 installer is missing, 64-bit Windows can fall back to `FreeCleaner-<version>-win32-setup.exe` because the 32-bit installer is compatible.
 
 The updater avoids downloading an incompatible `win64-setup.exe` on 32-bit Windows.
+
+## Adaptive scan/clean threading
+
+FreeCleaner now chooses worker counts dynamically instead of using fixed limits:
+
+- Scan starts around half of logical CPU threads because scanning is mostly disk-bound.
+- Cleaning starts at logical CPU threads minus two to keep Windows responsive.
+- During work, each batch re-checks CPU and RAM pressure through Windows APIs and reduces workers on loaded systems.
+- No extra runtime dependency is required; the logic remains compatible with Python 3.8 and Windows 7-11.
