@@ -103,7 +103,9 @@ def main() -> None:
     )
 
     output_path = Path(args.output)
-    output_path.write_text(text, encoding="utf-8", newline="\n")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
     print(f"Generated {output_path} with version {'.'.join(map(str, base_version))}-build-{args.build_number}")
 
 
