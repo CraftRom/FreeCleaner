@@ -123,6 +123,45 @@ def get_windows_version() -> Tuple[int, int, int]:
 WINDOWS_VERSION = get_windows_version()
 
 
+def _is_64bit_windows() -> bool:
+    """Return True when the installed Windows OS is 64-bit.
+
+    A 32-bit Python process can run on 64-bit Windows through WOW64, so
+    pointer size alone is not enough here.
+    """
+    if not IS_WINDOWS:
+        return sys.maxsize > 2**32
+    if sys.maxsize > 2**32:
+        return True
+    try:
+        is_wow64 = ctypes.c_bool(False)
+        kernel32 = ctypes.windll.kernel32
+        fn = getattr(kernel32, "IsWow64Process", None)
+        if fn and fn(kernel32.GetCurrentProcess(), ctypes.byref(is_wow64)):
+            return bool(is_wow64.value)
+    except Exception:
+        pass
+    return False
+
+
+def get_process_architecture() -> str:
+    return "x64" if sys.maxsize > 2**32 else "x86"
+
+
+def get_os_architecture() -> str:
+    return "x64" if _is_64bit_windows() else "x86"
+
+
+def is_32bit_process_on_64bit_windows() -> bool:
+    return IS_WINDOWS and get_process_architecture() == "x86" and get_os_architecture() == "x64"
+
+
+PROCESS_ARCHITECTURE = get_process_architecture()
+OS_ARCHITECTURE = get_os_architecture()
+IS_64BIT_WINDOWS = OS_ARCHITECTURE == "x64"
+IS_WOW64_PROCESS = is_32bit_process_on_64bit_windows()
+
+
 def is_windows_at_least(major: int, minor: int = 0, build: int = 0) -> bool:
     return IS_WINDOWS and WINDOWS_VERSION >= (major, minor, build)
 
@@ -683,6 +722,24 @@ class PathFinder:
     @staticmethod
     def _safe_join(*parts: str) -> str:
         return os.path.normpath(os.path.join(*[p for p in parts if p]))
+
+    @staticmethod
+    def get_program_files_paths() -> List[str]:
+        """Return all Program Files roots visible to the current process."""
+        names = ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)")
+        paths: List[str] = []
+        seen: Set[str] = set()
+        for name in names:
+            value = os.environ.get(name, "")
+            if not value:
+                continue
+            expanded = PathFinder.expand(value)
+            norm = os.path.normcase(os.path.abspath(expanded))
+            if norm in seen:
+                continue
+            seen.add(norm)
+            paths.append(expanded)
+        return paths
 
     @staticmethod
     def get_windows_junk_targets() -> List[Tuple[str, str, str, str, bool]]:

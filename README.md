@@ -271,3 +271,12 @@ You can contribute by:
 This project is licensed under the MIT License.
 
 See the `LICENSE` file for details.
+
+## Windows 32-bit / 64-bit builds
+
+FreeCleaner supports both Windows x86 and x64 targets:
+
+- `*-win32.exe` is built with 32-bit Python and is intended for 32-bit Windows and older Windows 7 installations.
+- `*-win64.exe` is built with 64-bit Python and is intended for 64-bit Windows 7/8/8.1/10/11.
+
+The application also detects whether it is running as a 32-bit process on 64-bit Windows (WOW64), so path discovery can correctly distinguish native x64, native x86, and WOW64 environments.

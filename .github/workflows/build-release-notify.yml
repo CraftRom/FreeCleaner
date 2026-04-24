@@ -18,186 +18,170 @@ on:
         default: true
 
 jobs:
-  build_release_notify:
-    name: Build EXE, Create Release & Upload Assets
+  version:
+    name: Prepare version
+    runs-on: windows-2022
+    outputs:
+      build_number: ${{ steps.versioning.outputs.build_number }}
+      base_version: ${{ steps.versioning.outputs.base_version }}
+      windows_version: ${{ steps.versioning.outputs.windows_version }}
+      full_version: ${{ steps.versioning.outputs.full_version }}
+      tag_name: ${{ steps.versioning.outputs.tag_name }}
+      create_tag: ${{ steps.versioning.outputs.create_tag }}
+      is_prerelease: ${{ steps.versioning.outputs.is_prerelease }}
+    steps:
+      - name: Determine version and release status
+        id: versioning
+        shell: pwsh
+        run: |
+          $BuildNumber = [int]'${{ github.run_number }}'
+          function Normalize-Version([string]$Version) {
+            if ([string]::IsNullOrWhiteSpace($Version)) { throw 'Version cannot be empty.' }
+            $clean = $Version.Trim()
+            if ($clean.StartsWith('v')) { $clean = $clean.Substring(1) }
+            if ($clean -match '-') { $clean = $clean.Split('-', 2)[0] }
+            $parts = $clean.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
+            if ($parts.Count -lt 1) { throw "Version '$Version' does not contain any numeric parts." }
+            foreach ($p in $parts) { if ($p -notmatch '^\d+$') { throw "Version '$Version' contains a non-numeric part: $p" } }
+            return ($parts -join '.')
+          }
+          function Convert-ToWindowsVersion([string]$Version) {
+            $parts = $Version.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
+            $result = @()
+            for ($i = 0; $i -lt 4; $i++) {
+              if ($i -lt $parts.Count) { $result += [string][int]$parts[$i] } else { $result += '0' }
+            }
+            return ($result -join '.')
+          }
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $TagName = '${{ github.ref_name }}'
+            $BaseVersion = Normalize-Version $TagName
+            $CreateTag = 'false'
+            $IsPrerelease = if ($TagName -match '-(alpha|beta|rc)(\.|\d|$)') { 'true' } else { 'false' }
+          } else {
+            $BaseVersion = Normalize-Version '${{ github.event.inputs.base_version }}'
+            $CreateTag = 'true'
+            $IsPrerelease = if ('${{ github.event.inputs.is_prerelease }}' -eq 'true') { 'true' } else { 'false' }
+            $TagName = "v$BaseVersion-build-$BuildNumber"
+          }
+          $WindowsVersion = Convert-ToWindowsVersion $BaseVersion
+          $FullVersion = "$WindowsVersion-build-$BuildNumber"
+          "build_number=$BuildNumber" >> $env:GITHUB_OUTPUT
+          "base_version=$BaseVersion" >> $env:GITHUB_OUTPUT
+          "windows_version=$WindowsVersion" >> $env:GITHUB_OUTPUT
+          "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
+          "tag_name=$TagName" >> $env:GITHUB_OUTPUT
+          "create_tag=$CreateTag" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
+
+  build:
+    name: Build ${{ matrix.arch }} EXE
+    needs: version
     runs-on: windows-2022
     permissions:
-      contents: write
-
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            python_arch: x86
+            asset_suffix: win32
+            original_filename: FreeCleaner-win32.exe
+          - arch: x64
+            python_arch: x64
+            asset_suffix: win64
+            original_filename: FreeCleaner-win64.exe
     env:
       APP_NAME: FreeCleaner
       COMPANY_NAME: FreeCleaner
       INTERNAL_NAME: FreeCleaner
-      ORIGINAL_FILENAME: FreeCleaner.exe
       FILE_DESCRIPTION: FreeCleaner Windows cleaner, auto system language, and persistent language preference
       SPEC_FILE: FreeCleaner.spec
       PYTHON_VERSION: '3.8'
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Determine version and release status
-        id: versioning
-        shell: pwsh
-        run: |
-          $BuildNumber = [int]'${{ github.run_number }}'
-
-          function Normalize-Version([string]$Version) {
-            if ([string]::IsNullOrWhiteSpace($Version)) {
-              throw 'Version cannot be empty.'
-            }
-
-            $clean = $Version.Trim()
-
-            if ($clean.StartsWith('v')) {
-              $clean = $clean.Substring(1)
-            }
-
-            if ($clean -match '-') {
-              $clean = $clean.Split('-', 2)[0]
-            }
-
-            $parts = $clean.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
-
-            if ($parts.Count -lt 1) {
-              throw "Version '$Version' does not contain any numeric parts."
-            }
-
-            foreach ($p in $parts) {
-              if ($p -notmatch '^\d+$') {
-                throw "Version '$Version' contains a non-numeric part: $p"
-              }
-            }
-
-            return ($parts -join '.')
-          }
-
-          function Convert-ToWindowsVersion([string]$Version) {
-            $parts = $Version.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
-
-            $result = @()
-            for ($i = 0; $i -lt 4; $i++) {
-              if ($i -lt $parts.Count) {
-                $result += [string][int]$parts[$i]
-              }
-              else {
-                $result += '0'
-              }
-            }
-
-            return ($result -join '.')
-          }
-
-          if ('${{ github.ref_type }}' -eq 'tag') {
-            $TagName = '${{ github.ref_name }}'
-            $BaseVersion = Normalize-Version $TagName
-            $CreateTag = 'false'
-            $IsPrerelease = if ($TagName -match '-(alpha|beta|rc)(\.|\d|$)') { 'true' } else { 'false' }
-          }
-          else {
-            $BaseVersion = Normalize-Version '${{ github.event.inputs.base_version }}'
-            $CreateTag = 'true'
-            $IsPrerelease = if ('${{ github.event.inputs.is_prerelease }}' -eq 'true') { 'true' } else { 'false' }
-          }
-
-          $WindowsVersion = Convert-ToWindowsVersion $BaseVersion
-          $FullVersion = "$WindowsVersion-build-$BuildNumber"
-
-          if ('${{ github.ref_type }}' -eq 'tag') {
-            $TagName = '${{ github.ref_name }}'
-          }
-          else {
-            $TagName = "v$BaseVersion-build-$BuildNumber"
-          }
-
-          $ReleaseStatus = if ($IsPrerelease -eq 'true') { 'Pre-release' } else { 'Stable Release' }
-          $ExeName = "${{ env.APP_NAME }}-$FullVersion.exe"
-
-          "BUILD_NUMBER=$BuildNumber" >> $env:GITHUB_ENV
-          "BASE_VERSION=$BaseVersion" >> $env:GITHUB_ENV
-          "WINDOWS_VERSION=$WindowsVersion" >> $env:GITHUB_ENV
-          "FULL_VERSION=$FullVersion" >> $env:GITHUB_ENV
-          "TAG_NAME=$TagName" >> $env:GITHUB_ENV
-          "CREATE_TAG=$CreateTag" >> $env:GITHUB_ENV
-          "IS_PRERELEASE=$IsPrerelease" >> $env:GITHUB_ENV
-          "RELEASE_STATUS=$ReleaseStatus" >> $env:GITHUB_ENV
-          "EXE_NAME=$ExeName" >> $env:GITHUB_ENV
-
-          "build_number=$BuildNumber" >> $env:GITHUB_OUTPUT
-          "base_version=$BaseVersion" >> $env:GITHUB_OUTPUT
-          "windows_version=$WindowsVersion" >> $env:GITHUB_OUTPUT
-          "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
-          "tag_name=$TagName" >> $env:GITHUB_OUTPUT
-          "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
-
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python_arch }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          architecture: ${{ matrix.python_arch }}
           cache: pip
 
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade "pip<25"
-          if (Test-Path requirements.txt) {
-            pip install -r requirements.txt
-          }
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
 
       - name: Generate version_info.txt
         shell: pwsh
         run: |
           python scripts/generate_version_info.py `
-            --base-version "${{ env.WINDOWS_VERSION }}" `
-            --build-number "${{ env.BUILD_NUMBER }}" `
+            --base-version "${{ needs.version.outputs.windows_version }}" `
+            --build-number "${{ needs.version.outputs.build_number }}" `
             --product-name "${{ env.APP_NAME }}" `
             --company-name "${{ env.COMPANY_NAME }}" `
             --internal-name "${{ env.INTERNAL_NAME }}" `
-            --original-filename "${{ env.ORIGINAL_FILENAME }}" `
-            --file-description "${{ env.FILE_DESCRIPTION }}" `
+            --original-filename "${{ matrix.original_filename }}" `
+            --file-description "${{ env.FILE_DESCRIPTION }} (${{ matrix.arch }})" `
             --output version_info.txt
 
       - name: Build executable with PyInstaller
         shell: pwsh
-        run: |
-          pyinstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
+        run: pyinstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
 
       - name: Rename packaged executable
         shell: pwsh
         run: |
           $ExePath = Join-Path 'dist' '${{ env.APP_NAME }}.exe'
-          if (-not (Test-Path $ExePath)) {
-            throw "Built executable not found: $ExePath"
-          }
-
-          $RenamedExePath = Join-Path 'dist' '${{ env.EXE_NAME }}'
+          if (-not (Test-Path $ExePath)) { throw "Built executable not found: $ExePath" }
+          $ExeName = "${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}.exe"
+          $RenamedExePath = Join-Path 'dist' $ExeName
           Move-Item -Path $ExePath -Destination $RenamedExePath -Force
-
-          $ReleaseExePath = $RenamedExePath -replace '\\', '/'
-
           "RENAMED_EXE_PATH=$RenamedExePath" >> $env:GITHUB_ENV
-          "RELEASE_EXE_PATH=$ReleaseExePath" >> $env:GITHUB_ENV
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ env.FULL_VERSION }}
+          name: ${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}
           path: |
             ${{ env.RENAMED_EXE_PATH }}
             version_info.txt
           if-no-files-found: error
 
+  release:
+    name: Create Release & Upload Assets
+    needs: [version, build]
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    env:
+      APP_NAME: FreeCleaner
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
       - name: Create Git Tag
-        if: env.CREATE_TAG == 'true'
+        if: needs.version.outputs.create_tag == 'true'
         shell: pwsh
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git tag "${{ env.TAG_NAME }}"
-          git push origin "${{ env.TAG_NAME }}"
+          git tag "${{ needs.version.outputs.tag_name }}"
+          git push origin "${{ needs.version.outputs.tag_name }}"
 
       - name: Generate release notes
         id: git_cliff
@@ -213,12 +197,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG_NAME }}
+          tag_name: ${{ needs.version.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
-          name: ${{ env.APP_NAME }} ${{ env.FULL_VERSION }}
+          name: ${{ env.APP_NAME }} ${{ needs.version.outputs.full_version }}
           body_path: RELEASE_NOTES.md
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
-          files: ${{ env.RELEASE_EXE_PATH }}
+          prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
+          files: release-assets/*.exe
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
