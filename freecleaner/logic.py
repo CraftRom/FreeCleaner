@@ -41,7 +41,7 @@ REGISTRY_BACKUP_DIRNAME = "registry_backups"
 GITHUB_API_BASE = "https://api.github.com"
 
 
-@dataclass(slots=True)
+@dataclass
 class UpdateInfo:
     owner: str
     repo: str
@@ -692,7 +692,7 @@ def language_display_name(code: str) -> str:
 
 
 
-@dataclass(slots=True)
+@dataclass
 class CleanerTask:
     key: str
     title_key: str
