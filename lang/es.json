@@ -221,5 +221,9 @@
   "graphics_apps_fail": "Failed to open per-app Graphics settings.",
   "admin_required_for_this": "Se requieren derechos de administrador para esta acción.",
   "cleanup_reboot_scheduled_fmt": "Programado para eliminarse después del reinicio: {title} -> {count}",
-  "cleanup_remaining_fmt": "Aún quedan elementos tras la limpieza: {title} -> archivos: {files}, carpetas: {dirs}"
+  "cleanup_remaining_fmt": "Aún quedan elementos tras la limpieza: {title} -> archivos: {files}, carpetas: {dirs}",
+  "task.browser_generic.title": "Caché de {browser} ({profile})",
+  "task.browser_generic.desc": "Carpetas reales de caché de este perfil del navegador.",
+  "task.app_cache.title": "Caché de aplicaciones",
+  "task.app_cache.desc": "Caché seguro de aplicaciones que se reconstruye automáticamente."
 }

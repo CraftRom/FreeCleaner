@@ -1061,42 +1061,31 @@ class Cleaner(ctk.CTk):
                 path=path, category="system", default=self.is_admin, state=sys_state, requires_admin=True, fmt={"path": path},
             ))
 
-        local = os.environ.get("LOCALAPPDATA", "")
-        for key, tkey, dkey, path in [
-            ("recent_docs", "task.recent_docs.title", "task.recent_docs.desc", os.path.join(local, r"Microsoft\Windows\Recent")),
-            ("thumb_cache", "task.thumb_cache.title", "task.thumb_cache.desc", os.path.join(local, r"Microsoft\Windows\Explorer")),
-        ]:
-            if os.path.exists(path):
-                self.add_task(self.card_sys, CleanerTask(key=key, title_key=tkey, desc_key=dkey, path=path, category="system", default=False))
+        for key, tkey, dkey, path, requires_admin in PathFinder.get_windows_junk_targets():
+            # Deep/admin-only targets are registered in the Deep section below.
+            if key in {"prefetch", "update_cache_files", "delivery_opt", "wer_system"}:
+                continue
+            state = sys_state if requires_admin else "normal"
+            self.add_task(self.card_sys, CleanerTask(
+                key=key, title_key=tkey, desc_key=dkey, path=path, category="system",
+                default=False, state=state, requires_admin=requires_admin, fmt={"path": path},
+            ))
 
     def register_browser_tasks(self):
-        local = os.environ.get("LOCALAPPDATA", "")
-        roaming = os.environ.get("APPDATA", "")
-        browser_paths = [
-            ("browser_chrome", "task.browser_chrome.title", "task.browser_chrome.desc", os.path.join(local, r"Google\Chrome\User Data\Default\Cache")),
-            ("browser_edge", "task.browser_edge.title", "task.browser_edge.desc", os.path.join(local, r"Microsoft\Edge\User Data\Default\Cache")),
-            ("browser_brave", "task.browser_brave.title", "task.browser_brave.desc", os.path.join(local, r"BraveSoftware\Brave-Browser\User Data\Default\Cache")),
-            ("browser_opera", "task.browser_opera.title", "task.browser_opera.desc", os.path.join(roaming, r"Opera Software\Opera Stable\Cache")),
-            ("discord_cache", "task.discord_cache.title", "task.discord_cache.desc", os.path.join(roaming, r"discord\Cache")),
-            ("discord_gpu_cache", "task.discord_gpu_cache.title", "task.discord_gpu_cache.desc", os.path.join(roaming, r"discord\GPUCache")),
-        ]
-        for key, tkey, dkey, path in browser_paths:
-            if os.path.exists(path):
-                self.add_task(self.card_net, CleanerTask(key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False))
+        for key, tkey, dkey, path, fmt in PathFinder.get_chromium_cache_targets():
+            self.add_task(self.card_net, CleanerTask(
+                key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False, fmt=fmt,
+            ))
 
-        firefox_profiles = os.path.join(local, r"Mozilla\Firefox\Profiles")
-        if os.path.exists(firefox_profiles):
-            for profile in os.listdir(firefox_profiles):
-                profile_path = os.path.join(firefox_profiles, profile)
-                if not os.path.isdir(profile_path):
-                    continue
-                for suffix, title_key in (("cache2", "task.firefox_cache2.title"), ("startupCache", "task.firefox_startupCache.title")):
-                    target = os.path.join(profile_path, suffix)
-                    if os.path.exists(target):
-                        key = f"firefox_{profile}_{suffix}".replace(".", "_")
-                        self.add_task(self.card_net, CleanerTask(
-                            key=key, title_key=title_key, desc_key=f"task.firefox_{suffix}.desc", path=target, category="browsers", default=False, fmt={"profile": profile},
-                        ))
+        for key, tkey, dkey, path, fmt in PathFinder.get_firefox_cache_targets():
+            self.add_task(self.card_net, CleanerTask(
+                key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False, fmt=fmt,
+            ))
+
+        for key, tkey, dkey, path in PathFinder.get_app_cache_targets():
+            self.add_task(self.card_net, CleanerTask(
+                key=key, title_key=tkey, desc_key=dkey, path=path, category="browsers", default=False, fmt={"path": path},
+            ))
 
         self.add_task(self.card_net, CleanerTask(
             key="dns_flush", title_key="task.dns_flush.title", desc_key="task.dns_flush.desc",
@@ -1106,19 +1095,13 @@ class Cleaner(ctk.CTk):
 
     def register_deep_tasks(self):
         state = "normal" if self.is_admin else "disabled"
-        local = os.environ.get("LOCALAPPDATA", "")
-        deep_dirs = [
-            ("prefetch", "task.prefetch.title", "task.prefetch.desc", r"C:\Windows\Prefetch"),
-            ("error_logs", "task.error_logs.title", "task.error_logs.desc", r"C:\ProgramData\Microsoft\Windows\WER"),
-            ("update_cache_files", "task.update_cache_files.title", "task.update_cache_files.desc", r"C:\Windows\SoftwareDistribution"),
-            ("delivery_opt", "task.delivery_opt.title", "task.delivery_opt.desc", os.path.join(local, r"Microsoft\Windows\DeliveryOptimization\Cache")),
-        ]
-        for key, tkey, dkey, path in deep_dirs:
-            if os.path.exists(path):
-                self.add_task(self.card_deep, CleanerTask(
-                    key=key, title_key=tkey, desc_key=dkey, path=path, category="deep", default=False,
-                    state=state if key != "delivery_opt" else "normal", requires_admin=(key != "delivery_opt"),
-                ))
+        for key, tkey, dkey, path, requires_admin in PathFinder.get_windows_junk_targets():
+            if key not in {"prefetch", "update_cache_files", "delivery_opt", "wer_system"}:
+                continue
+            self.add_task(self.card_deep, CleanerTask(
+                key=key, title_key=tkey, desc_key=dkey, path=path, category="deep", default=False,
+                state=state if requires_admin else "normal", requires_admin=requires_admin, fmt={"path": path},
+            ))
 
         self.add_task(self.card_deep, CleanerTask(
             key="recycle", title_key="task.recycle.title", desc_key="task.recycle.desc",
@@ -1133,28 +1116,12 @@ class Cleaner(ctk.CTk):
         ))
 
     def register_gaming_cleanup_tasks(self):
-        local = os.environ.get("LOCALAPPDATA", "")
-        appdata = os.environ.get("APPDATA", "")
-        programdata = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
         state = "normal" if self.is_admin else "disabled"
-        gamer_dirs = [
-            ("dx_shader_cache", "task.dx_shader_cache.title", "task.dx_shader_cache.desc", os.path.join(local, r"D3DSCache"), False, False),
-            ("nvidia_dx", "task.nvidia_dx.title", "task.nvidia_dx.desc", os.path.join(local, r"NVIDIA\DXCache"), False, False),
-            ("nvidia_gl", "task.nvidia_gl.title", "task.nvidia_gl.desc", os.path.join(local, r"NVIDIA\GLCache"), False, False),
-            ("nvidia_nv_cache", "task.nvidia_nv_cache.title", "task.nvidia_nv_cache.desc", os.path.join(programdata, r"NVIDIA Corporation\NV_Cache"), False, True),
-            ("amd_dx", "task.amd_dx.title", "task.amd_dx.desc", os.path.join(local, r"AMD\DxCache"), False, False),
-            ("amd_gl", "task.amd_gl.title", "task.amd_gl.desc", os.path.join(local, r"AMD\GLCache"), False, False),
-            ("steam_htmlcache", "task.steam_htmlcache.title", "task.steam_htmlcache.desc", os.path.join(local, r"Steam\htmlcache"), False, False),
-            ("battle_net_cache", "task.battle_net_cache.title", "task.battle_net_cache.desc", os.path.join(programdata, r"Battle.net\Agent"), False, True),
-            ("epic_webcache", "task.epic_webcache.title", "task.epic_webcache.desc", os.path.join(local, r"EpicGamesLauncher\Saved\webcache"), False, False),
-            ("temp_capture_cache", "task.temp_capture_cache.title", "task.temp_capture_cache.desc", os.path.join(appdata, r"obs-studio\plugin_config\obs-browser\Cache"), False, False),
-        ]
-        for key, tkey, dkey, path, default, requires_admin in gamer_dirs:
-            if os.path.exists(path):
-                self.add_task(self.card_gamer, CleanerTask(
-                    key=key, title_key=tkey, desc_key=dkey, path=path, category="gamer", default=default,
-                    state=state if requires_admin else "normal", requires_admin=requires_admin,
-                ))
+        for key, tkey, dkey, path, requires_admin in PathFinder.get_gaming_cache_targets():
+            self.add_task(self.card_gamer, CleanerTask(
+                key=key, title_key=tkey, desc_key=dkey, path=path, category="gamer", default=False,
+                state=state if requires_admin else "normal", requires_admin=requires_admin, fmt={"path": path},
+            ))
 
     def register_optimizer_tasks(self):
         state = "normal" if self.is_admin else "disabled"

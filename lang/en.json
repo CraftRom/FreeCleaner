@@ -294,5 +294,9 @@
   "update_download_started": "Starting download for update {version}...",
   "update_download_failed_reason": "Could not download the update: {reason}",
   "update_download_busy": "An update download is already running.",
-  "all_files": "All files"
+  "all_files": "All files",
+  "task.browser_generic.title": "{browser} Cache ({profile})",
+  "task.browser_generic.desc": "Real cache folders for this browser profile: network cache, code cache, GPU cache and service worker cache.",
+  "task.app_cache.title": "Application Cache",
+  "task.app_cache.desc": "Safe application cache that can be rebuilt automatically."
 }

@@ -294,5 +294,9 @@
   "update_download_started": "Починаю завантаження оновлення {version}...",
   "update_download_failed_reason": "Не вдалося завантажити оновлення: {reason}",
   "update_download_busy": "Завантаження оновлення вже виконується.",
-  "all_files": "Усі файли"
+  "all_files": "Усі файли",
+  "task.browser_generic.title": "{browser} Cache ({profile})",
+  "task.browser_generic.desc": "Реальні папки кешу профілю браузера: network cache, code cache, GPU cache та service worker cache.",
+  "task.app_cache.title": "Application Cache",
+  "task.app_cache.desc": "Безпечний кеш програм, який автоматично створиться знову."
 }

@@ -221,5 +221,9 @@
   "graphics_apps_fail": "Failed to open per-app Graphics settings.",
   "admin_required_for_this": "Administratorrechte sind für diese Aktion erforderlich.",
   "cleanup_reboot_scheduled_fmt": "Zur Löschung nach dem Neustart geplant: {title} -> {count}",
-  "cleanup_remaining_fmt": "Nach der Bereinigung noch vorhanden: {title} -> Dateien: {files}, Ordner: {dirs}"
+  "cleanup_remaining_fmt": "Nach der Bereinigung noch vorhanden: {title} -> Dateien: {files}, Ordner: {dirs}",
+  "task.browser_generic.title": "{browser} Cache ({profile})",
+  "task.browser_generic.desc": "Echte Cache-Ordner dieses Browserprofils.",
+  "task.app_cache.title": "Anwendungs-Cache",
+  "task.app_cache.desc": "Sicherer Anwendungscache, der automatisch neu erstellt wird."
 }
