@@ -162,6 +162,32 @@ IS_64BIT_WINDOWS = OS_ARCHITECTURE == "x64"
 IS_WOW64_PROCESS = is_32bit_process_on_64bit_windows()
 
 
+def get_update_asset_suffix() -> str:
+    """Return the release asset suffix that matches the current Windows OS."""
+    return "win64" if get_os_architecture() == "x64" else "win32"
+
+
+def _asset_name_matches_update_arch(asset_name: str, suffix: Optional[str] = None) -> bool:
+    name = (asset_name or "").strip().lower()
+    wanted = (suffix or get_update_asset_suffix()).lower()
+    return name.startswith(f"{APP_NAME.lower()}-") and name.endswith(f"-{wanted}-setup.exe")
+
+
+def _asset_name_is_compatible_fallback(asset_name: str) -> bool:
+    name = (asset_name or "").strip().lower()
+    return name.startswith(f"{APP_NAME.lower()}-") and name.endswith("-win32-setup.exe")
+
+
+def is_update_asset_compatible(asset_name: str) -> bool:
+    """Return True if the release asset can be installed on this machine."""
+    name = (asset_name or "").strip().lower()
+    if not name.endswith("-setup.exe"):
+        return False
+    if get_os_architecture() == "x64":
+        return name.endswith("-win64-setup.exe") or name.endswith("-win32-setup.exe")
+    return name.endswith("-win32-setup.exe")
+
+
 def is_windows_at_least(major: int, minor: int = 0, build: int = 0) -> bool:
     return IS_WINDOWS and WINDOWS_VERSION >= (major, minor, build)
 
@@ -320,10 +346,18 @@ def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Opt
     selected_asset_name = ""
     assets = payload.get("assets")
     if isinstance(assets, list):
-        preferred = None
-        preferred_name = ""
-        fallback = None
-        fallback_name = ""
+        arch_suffix = get_update_asset_suffix()
+        exact_setup = None
+        exact_setup_name = ""
+        win32_fallback = None
+        win32_fallback_name = ""
+        compatible_setup = None
+        compatible_setup_name = ""
+        generic_exe = None
+        generic_exe_name = ""
+        first_asset = None
+        first_asset_name = ""
+
         for asset in assets:
             if not isinstance(asset, dict):
                 continue
@@ -332,14 +366,30 @@ def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Opt
             asset_name = raw_asset_name.lower()
             if not candidate:
                 continue
-            if asset_name.endswith('.exe') and preferred is None:
-                preferred = candidate
-                preferred_name = raw_asset_name
-            if fallback is None:
-                fallback = candidate
-                fallback_name = raw_asset_name
-        download_url = preferred or fallback or html_url
-        selected_asset_name = preferred_name or fallback_name
+
+            if first_asset is None:
+                first_asset = candidate
+                first_asset_name = raw_asset_name
+
+            if _asset_name_matches_update_arch(raw_asset_name, arch_suffix):
+                exact_setup = candidate
+                exact_setup_name = raw_asset_name
+                break
+
+            if _asset_name_is_compatible_fallback(raw_asset_name) and win32_fallback is None:
+                win32_fallback = candidate
+                win32_fallback_name = raw_asset_name
+
+            if is_update_asset_compatible(raw_asset_name) and compatible_setup is None:
+                compatible_setup = candidate
+                compatible_setup_name = raw_asset_name
+
+            if asset_name.endswith('.exe') and generic_exe is None and (not asset_name.endswith('-setup.exe') or is_update_asset_compatible(raw_asset_name)):
+                generic_exe = candidate
+                generic_exe_name = raw_asset_name
+
+        download_url = exact_setup or win32_fallback or compatible_setup or generic_exe or html_url
+        selected_asset_name = exact_setup_name or win32_fallback_name or compatible_setup_name or generic_exe_name
 
     version_text = tag_name or name
     return UpdateInfo(

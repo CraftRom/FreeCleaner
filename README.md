@@ -308,3 +308,13 @@ Manual installer build after PyInstaller:
   -Version "0.2.0.0-build-1" `
   -OutputDir "dist"
 ```
+
+## Update asset selection
+
+The in-app updater selects the installer by the current Windows architecture:
+
+- 32-bit Windows downloads `FreeCleaner-<version>-win32-setup.exe`.
+- 64-bit Windows downloads `FreeCleaner-<version>-win64-setup.exe`.
+- If the native x64 installer is missing, 64-bit Windows can fall back to `FreeCleaner-<version>-win32-setup.exe` because the 32-bit installer is compatible.
+
+The updater avoids downloading an incompatible `win64-setup.exe` on 32-bit Windows.
