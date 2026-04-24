@@ -145,12 +145,29 @@ jobs:
           Move-Item -Path $ExePath -Destination $RenamedExePath -Force
           "RENAMED_EXE_PATH=$RenamedExePath" >> $env:GITHUB_ENV
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          .\\scripts\\build_installer.ps1 `
+            -ExePath "${{ env.RENAMED_EXE_PATH }}" `
+            -Arch "${{ matrix.asset_suffix }}" `
+            -Version "${{ needs.version.outputs.full_version }}" `
+            -OutputDir "dist"
+          $InstallerPath = Get-ChildItem -Path dist -Filter "${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}-setup.exe" | Select-Object -First 1
+          if (-not $InstallerPath) { throw "Installer was not generated." }
+          "INSTALLER_PATH=$($InstallerPath.FullName)" >> $env:GITHUB_ENV
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}
           path: |
             ${{ env.RENAMED_EXE_PATH }}
+            ${{ env.INSTALLER_PATH }}
             version_info.txt
           if-no-files-found: error
 

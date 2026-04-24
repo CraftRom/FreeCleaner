@@ -280,3 +280,31 @@ FreeCleaner supports both Windows x86 and x64 targets:
 - `*-win64.exe` is built with 64-bit Python and is intended for 64-bit Windows 7/8/8.1/10/11.
 
 The application also detects whether it is running as a 32-bit process on 64-bit Windows (WOW64), so path discovery can correctly distinguish native x64, native x86, and WOW64 environments.
+
+## Windows installer builds
+
+The release workflow now produces both portable EXE files and installable setup files:
+
+- `FreeCleaner-<version>-win32.exe` — portable 32-bit executable.
+- `FreeCleaner-<version>-win64.exe` — portable 64-bit executable.
+- `FreeCleaner-<version>-win32-setup.exe` — installer for 32-bit Windows and compatible 64-bit systems.
+- `FreeCleaner-<version>-win64-setup.exe` — installer for 64-bit Windows only.
+
+The installer is built with Inno Setup and includes:
+
+- installation into `Program Files` / `Program Files (x86)` depending on architecture;
+- Start Menu shortcut;
+- optional Desktop shortcut;
+- uninstall entry in Windows “Programs and Features”;
+- license page;
+- admin privileges, because cleaner functions need system-level access.
+
+Manual installer build after PyInstaller:
+
+```powershell
+.\scripts\build_installer.ps1 `
+  -ExePath "dist\FreeCleaner-0.2.0.0-build-1-win64.exe" `
+  -Arch "win64" `
+  -Version "0.2.0.0-build-1" `
+  -OutputDir "dist"
+```
