@@ -1046,10 +1046,38 @@ class Cleaner(ctk.CTk):
             raw_paths.append(task.path)
         return PathFinder.unique_existing(raw_paths)
 
+    def _task_visible_signature(self, task: CleanerTask) -> Tuple[Any, ...]:
+        """Signature used to merge rows that would look identical in the UI.
+
+        Different folders belonging to the same logical cleaner action (for
+        example Battle.net cache + logs, or Epic webcache variants) should be
+        one checkbox with several paths, not repeated rows with identical text.
+        Tasks with an app/profile/browser formatter stay separate because their
+        labels are intentionally unique.
+        """
+        fmt = dict(task.fmt or {})
+        identity_fmt = tuple(sorted((k, v) for k, v in fmt.items() if k in {"app", "browser", "profile"}))
+        return (
+            task.kind,
+            task.category,
+            task.title_key,
+            task.desc_key,
+            task.requires_admin,
+            task.state,
+            identity_fmt,
+        )
+
+    def _merge_task_paths(self, existing: CleanerTask, incoming: CleanerTask) -> None:
+        merged = PathFinder.unique_existing((existing.paths or ([existing.path] if existing.path else [])) + (incoming.paths or ([incoming.path] if incoming.path else [])))
+        if merged:
+            existing.paths = merged
+            existing.path = merged[0]
+
     def add_task(self, parent_card: SectionCard, task: CleanerTask):
         # Do not render duplicate actions. Duplicates made the Cleaner menu look
         # broken and could scan/clean the same folder more than once.
         if task.key in self.tasks:
+            self._merge_task_paths(self.tasks[task.key], task)
             return
 
         if task.kind == "directory":
@@ -1058,12 +1086,22 @@ class Cleaner(ctk.CTk):
                 return
             task.paths = unique_paths
             task.path = unique_paths[0]
+
+            visible_index = getattr(self, "_registered_visible_tasks", {})
+            visible_signature = self._task_visible_signature(task)
+            existing_key = visible_index.get(visible_signature)
+            if existing_key and existing_key in self.tasks:
+                self._merge_task_paths(self.tasks[existing_key], task)
+                return
+
             seen_paths = getattr(self, "_registered_clean_paths", set())
             path_signature = tuple(os.path.normcase(os.path.abspath(p)) for p in unique_paths)
             if path_signature in seen_paths:
                 return
             seen_paths.add(path_signature)
             self._registered_clean_paths = seen_paths
+            visible_index[visible_signature] = task.key
+            self._registered_visible_tasks = visible_index
 
         self.tasks[task.key] = task
         var = None
@@ -1153,11 +1191,13 @@ class Cleaner(ctk.CTk):
             ))
 
         app_groups: Dict[str, Dict[str, Any]] = {}
-        for key, tkey, dkey, path in PathFinder.get_app_cache_targets():
-            base = key.split("_")[0]
+        for key, tkey, dkey, path, fmt in PathFinder.get_app_cache_targets():
+            app_name = (fmt or {}).get("app") or key.split("_")[0].title()
+            base = re.sub(r"[^a-zA-Z0-9_]+", "_", app_name).strip("_").lower()
             if key.startswith("discord_"):
                 base = "discord"
-            group = app_groups.setdefault(base, {"keys": [], "title_key": tkey, "desc_key": dkey, "paths": []})
+                app_name = "Discord"
+            group = app_groups.setdefault(base, {"keys": [], "title_key": tkey, "desc_key": dkey, "paths": [], "app": app_name})
             group["keys"].append(key)
             group["paths"].append(path)
 
@@ -1173,7 +1213,7 @@ class Cleaner(ctk.CTk):
                 paths=paths,
                 category="browsers",
                 default=False,
-                fmt={"path": paths[0]},
+                fmt={"app": group["app"], "path": paths[0]},
             ))
 
         self.add_task(self.card_net, CleanerTask(

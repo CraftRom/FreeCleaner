@@ -297,6 +297,6 @@
   "all_files": "Усі файли",
   "task.browser_generic.title": "{browser} Cache ({profile})",
   "task.browser_generic.desc": "Реальні папки кешу профілю браузера: network cache, code cache, GPU cache та service worker cache.",
-  "task.app_cache.title": "Application Cache",
-  "task.app_cache.desc": "Безпечний кеш програм, який автоматично створиться знову."
+  "task.app_cache.title": "Кеш {app}",
+  "task.app_cache.desc": "Безпечний кеш {app}, який автоматично створиться знову."
 }

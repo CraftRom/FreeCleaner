@@ -224,6 +224,6 @@
   "cleanup_remaining_fmt": "Po czyszczeniu nadal pozostało: {title} -> plików: {files}, folderów: {dirs}",
   "task.browser_generic.title": "Pamięć podręczna {browser} ({profile})",
   "task.browser_generic.desc": "Rzeczywiste foldery pamięci podręcznej tego profilu przeglądarki.",
-  "task.app_cache.title": "Pamięć podręczna aplikacji",
-  "task.app_cache.desc": "Bezpieczna pamięć podręczna aplikacji, która zostanie odtworzona automatycznie."
+  "task.app_cache.title": "Pamięć podręczna {app}",
+  "task.app_cache.desc": "Bezpieczna pamięć podręczna {app}, która zostanie odtworzona automatycznie."
 }

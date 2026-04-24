@@ -297,6 +297,6 @@
   "all_files": "All files",
   "task.browser_generic.title": "{browser} Cache ({profile})",
   "task.browser_generic.desc": "Real cache folders for this browser profile: network cache, code cache, GPU cache and service worker cache.",
-  "task.app_cache.title": "Application Cache",
-  "task.app_cache.desc": "Safe application cache that can be rebuilt automatically."
+  "task.app_cache.title": "{app} Cache",
+  "task.app_cache.desc": "Safe {app} cache that can be rebuilt automatically."
 }

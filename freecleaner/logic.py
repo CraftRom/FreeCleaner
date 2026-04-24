@@ -916,19 +916,19 @@ class PathFinder:
         return targets
 
     @staticmethod
-    def get_app_cache_targets() -> List[Tuple[str, str, str, str]]:
+    def get_app_cache_targets() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
         appdata = os.environ.get("APPDATA", "")
         local = os.environ.get("LOCALAPPDATA", "")
         candidates = [
-            ("discord_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discord\Cache")),
-            ("discord_gpu_cache", "task.discord_gpu_cache.title", "task.discord_gpu_cache.desc", PathFinder._safe_join(appdata, r"discord\GPUCache")),
-            ("discord_code_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discord\Code Cache")),
-            ("telegram_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Telegram Desktop\tdata\user_data")),
-            ("teams_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Microsoft\Teams\Cache")),
-            ("slack_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Slack\Cache")),
-            ("spotify_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Spotify\Storage")),
+            ("discord_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discord\Cache"), {"app": "Discord"}),
+            ("discord_gpu_cache", "task.discord_gpu_cache.title", "task.discord_gpu_cache.desc", PathFinder._safe_join(appdata, r"discord\GPUCache"), {"app": "Discord"}),
+            ("discord_code_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discord\Code Cache"), {"app": "Discord"}),
+            ("telegram_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Telegram Desktop\tdata\user_data"), {"app": "Telegram"}),
+            ("teams_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Microsoft\Teams\Cache"), {"app": "Microsoft Teams"}),
+            ("slack_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Slack\Cache"), {"app": "Slack"}),
+            ("spotify_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Spotify\Storage"), {"app": "Spotify"}),
         ]
-        return [(k,t,d,p) for k,t,d,p in candidates if p and os.path.exists(p)]
+        return [(k,t,d,p,fmt) for k,t,d,p,fmt in candidates if p and os.path.exists(p)]
 
     @staticmethod
     def get_gaming_cache_targets() -> List[Tuple[str, str, str, str, bool]]:
