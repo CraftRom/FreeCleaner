@@ -82,9 +82,54 @@ def find_icon_path(filename: str) -> Optional[str]:
     return None
 
 IS_WINDOWS = os.name == "nt"
+
+
+def get_windows_version() -> Tuple[int, int, int]:
+    """Return a reliable Windows version tuple: (major, minor, build)."""
+    if not IS_WINDOWS:
+        return (0, 0, 0)
+
+    class _OSVERSIONINFOEXW(ctypes.Structure):
+        _fields_ = [
+            ("dwOSVersionInfoSize", ctypes.c_ulong),
+            ("dwMajorVersion", ctypes.c_ulong),
+            ("dwMinorVersion", ctypes.c_ulong),
+            ("dwBuildNumber", ctypes.c_ulong),
+            ("dwPlatformId", ctypes.c_ulong),
+            ("szCSDVersion", ctypes.c_wchar * 128),
+            ("wServicePackMajor", ctypes.c_ushort),
+            ("wServicePackMinor", ctypes.c_ushort),
+            ("wSuiteMask", ctypes.c_ushort),
+            ("wProductType", ctypes.c_byte),
+            ("wReserved", ctypes.c_byte),
+        ]
+
+    try:
+        info = _OSVERSIONINFOEXW()
+        info.dwOSVersionInfoSize = ctypes.sizeof(info)
+        status = ctypes.windll.ntdll.RtlGetVersion(ctypes.byref(info))
+        if status == 0:
+            return (int(info.dwMajorVersion), int(info.dwMinorVersion), int(info.dwBuildNumber))
+    except Exception:
+        pass
+
+    try:
+        v = sys.getwindowsversion()  # type: ignore[attr-defined]
+        return (int(v.major), int(v.minor), int(v.build))
+    except Exception:
+        return (0, 0, 0)
+
+
+WINDOWS_VERSION = get_windows_version()
+
+
+def is_windows_at_least(major: int, minor: int = 0, build: int = 0) -> bool:
+    return IS_WINDOWS and WINDOWS_VERSION >= (major, minor, build)
+
+
 CPU_COUNT = max(1, os.cpu_count() or 4)
-SCAN_WORKERS = min(max(4, CPU_COUNT), 12)
-CLEAN_WORKERS = min(max(4, CPU_COUNT * 2), 16)
+SCAN_WORKERS = min(max(2, CPU_COUNT), 8)
+CLEAN_WORKERS = min(max(2, CPU_COUNT), 8)
 
 
 
@@ -643,13 +688,22 @@ class WindowsOps:
 
     @staticmethod
     def run_as_admin() -> None:
-        if IS_WINDOWS:
-            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+        if not IS_WINDOWS:
+            return
+        try:
+            args = subprocess.list2cmdline(sys.argv)
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, args, None, 1)
+        except Exception:
+            pass
 
     @staticmethod
     def run_command(cmd: str, timeout: int = 180, noisy: bool = False) -> bool:
         try:
             creationflags = 0x08000000 if IS_WINDOWS else 0
+            startupinfo = None
+            if IS_WINDOWS and not noisy:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             completed = subprocess.run(
                 cmd,
                 shell=True,
@@ -657,6 +711,7 @@ class WindowsOps:
                 stderr=None if noisy else subprocess.DEVNULL,
                 timeout=timeout,
                 creationflags=creationflags,
+                startupinfo=startupinfo,
             )
             return completed.returncode == 0
         except Exception:
@@ -676,7 +731,11 @@ class WindowsOps:
     @staticmethod
     def reg_add(path: str, name: str, value: Union[int, str], reg_type: str = "REG_DWORD") -> bool:
         safe_value = str(value).replace('"', '\"')
-        cmd = f'reg add "{path}" /v "{name}" /t {reg_type} /d "{safe_value}" /f'
+        value_type = (reg_type or "REG_DWORD").upper()
+        if isinstance(value, str) and value_type == "REG_DWORD" and value.lower().startswith("0x"):
+            cmd = f'reg add "{path}" /v "{name}" /t {value_type} /d {safe_value} /f'
+        else:
+            cmd = f'reg add "{path}" /v "{name}" /t {value_type} /d "{safe_value}" /f'
         return WindowsOps.run_command(cmd, timeout=45)
 
     @staticmethod
@@ -878,6 +937,32 @@ class WindowsOps:
         if not latest:
             return False
         return WindowsOps.restore_registry_backup_dir(latest)
+
+    @staticmethod
+    def supports_ms_settings() -> bool:
+        return is_windows_at_least(10, 0, 10240)
+
+    @staticmethod
+    def supports_hags() -> bool:
+        return is_windows_at_least(10, 0, 19041)
+
+    @staticmethod
+    def supports_power_throttling() -> bool:
+        return is_windows_at_least(10, 0, 16299)
+
+    @staticmethod
+    def supports_ultimate_performance() -> bool:
+        return is_windows_at_least(10, 0, 17134)
+
+    @staticmethod
+    def clear_recycle_bin() -> bool:
+        if not IS_WINDOWS:
+            return False
+        if WindowsOps.run_command('powershell -NoProfile -ExecutionPolicy Bypass -Command "Clear-RecycleBin -Force -ErrorAction Stop"', timeout=120):
+            return True
+        system_drive = os.environ.get("SystemDrive", "C:")
+        target = os.path.join(system_drive + os.sep, "$Recycle.Bin")
+        return WindowsOps.run_command(f'cmd /c rd /s /q "{target}"', timeout=120)
 
     @staticmethod
     def try_enable_ultimate_performance() -> bool:

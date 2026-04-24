@@ -1123,7 +1123,7 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_deep, CleanerTask(
             key="recycle", title_key="task.recycle.title", desc_key="task.recycle.desc",
             kind="command", category="deep", default=False,
-            command=lambda: self.run_logged_command('powershell -NoProfile -Command "Clear-RecycleBin -Force"', "recycle_ok", "recycle_fail", timeout=120),
+            command=lambda: self.log(self.tr("recycle_ok") if WindowsOps.clear_recycle_bin() else self.tr("recycle_fail")),
         ))
 
         self.add_task(self.card_deep, CleanerTask(
@@ -1179,23 +1179,24 @@ class Cleaner(ctk.CTk):
             kind="command", category="optimizer", default=False, state=state, requires_admin=True,
             command=lambda: self.run_logged_command("powercfg /S SCHEME_MIN", "high_perf_ok", "high_perf_fail", timeout=90),
         ))
+        ultimate_state = state if WindowsOps.supports_ultimate_performance() else "disabled"
         self.add_task(self.card_opt, CleanerTask(
             key="ultimate_perf_plan", title_key="task.ultimate_perf_plan.title", desc_key="task.ultimate_perf_plan.desc",
-            kind="command", category="optimizer", default=False, state=state, requires_admin=True, command=self.enable_ultimate_performance,
+            kind="command", category="optimizer", default=False, state=ultimate_state, requires_admin=True, command=self.enable_ultimate_performance,
         ))
 
     def register_optimizer_registry_tasks(self):
         state = "normal" if self.is_admin else "disabled"
         self.add_task(self.card_opt_adv, CleanerTask(
             key="disable_hags", title_key="task.disable_hags.title", desc_key="task.disable_hags.desc",
-            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            kind="command", category="optimizer", default=False, state=state if WindowsOps.supports_hags() else "disabled", requires_admin=True,
             command=self.disable_hags,
             registry_keys=[r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"],
             reboot_required=True,
         ))
         self.add_task(self.card_opt_adv, CleanerTask(
             key="disable_power_throttling", title_key="task.disable_power_throttling.title", desc_key="task.disable_power_throttling.desc",
-            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            kind="command", category="optimizer", default=False, state=state if WindowsOps.supports_power_throttling() else "disabled", requires_admin=True,
             command=self.disable_power_throttling,
             registry_keys=[r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling"],
             reboot_required=True,
@@ -1426,12 +1427,16 @@ class Cleaner(ctk.CTk):
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
     def open_settings_uri(self, uri: str, success_key: str, fail_key: str):
         ok = False
-        if IS_WINDOWS:
+        if IS_WINDOWS and WindowsOps.supports_ms_settings():
             try:
                 os.startfile(uri)  # type: ignore[attr-defined]
                 ok = True
             except Exception:
                 ok = WindowsOps.run_command(f'start "" "{uri}"', timeout=20)
+        if not ok:
+            # Windows 7/8 do not support ms-settings: URIs. Fall back to Control Panel
+            # instead of logging a false hard error.
+            ok = WindowsOps.run_command("control.exe", timeout=20)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
 
     def open_visual_effects_settings(self):
@@ -1464,10 +1469,16 @@ class Cleaner(ctk.CTk):
         self.log(self.tr("game_mode_ok") if all(results) else self.tr("game_mode_fail"))
 
     def disable_hags(self):
+        if not WindowsOps.supports_hags():
+            self.log(self.tr("hags_off_fail"))
+            return
         ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1)
         self.log(self.tr("hags_off_ok") if ok else self.tr("hags_off_fail"))
 
     def disable_power_throttling(self):
+        if not WindowsOps.supports_power_throttling():
+            self.log(self.tr("power_throttling_fail"))
+            return
         ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 1)
         self.log(self.tr("power_throttling_ok") if ok else self.tr("power_throttling_fail"))
 
@@ -1512,6 +1523,9 @@ class Cleaner(ctk.CTk):
         self.log(self.tr("mmcss_profile_ok") if all(results) else self.tr("mmcss_profile_fail"))
 
     def enable_ultimate_performance(self):
+        if not WindowsOps.supports_ultimate_performance():
+            self.log(self.tr("ultimate_perf_fail"))
+            return
         ok = WindowsOps.try_enable_ultimate_performance()
         self.log(self.tr("ultimate_perf_ok") if ok else self.tr("ultimate_perf_fail"))
 
@@ -1519,7 +1533,10 @@ class Cleaner(ctk.CTk):
         self.dism_running = True
         try:
             self.log(self.tr("dism_started"))
-            ok = WindowsOps.run_command("dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase", timeout=3600, noisy=True)
+            command = "dism.exe /Online /Cleanup-Image /StartComponentCleanup"
+            if WindowsOps.supports_ultimate_performance():
+                command += " /ResetBase"
+            ok = WindowsOps.run_command(command, timeout=3600, noisy=True)
             self.log(self.tr("dism_ok") if ok else self.tr("dism_fail"))
         finally:
             self.dism_running = False

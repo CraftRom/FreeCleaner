@@ -1,6 +1,10 @@
-# Runtime dependencies for FreeCleaner
-customtkinter
-Pillow
+# Runtime dependencies for FreeCleaner.
+# Python 3.8 is the last Python line that can run on Windows 7.
+# Keep these ranges conservative so one codebase can be packaged for Windows 7-11.
+customtkinter>=5.2.0,<5.3
+Pillow>=9.5,<10.5; python_version<'3.9'
+Pillow>=10.0,<11.0; python_version>='3.9'
 
 # Optional build dependency:
-pyinstaller
+pyinstaller>=5.13,<6.0; python_version<'3.9'
+pyinstaller>=6.0; python_version>='3.9'

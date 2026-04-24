@@ -20,7 +20,7 @@ on:
 jobs:
   build_release_notify:
     name: Build EXE, Create Release & Upload Assets
-    runs-on: windows-latest
+    runs-on: windows-2022
     permissions:
       contents: write
 
@@ -31,7 +31,7 @@ jobs:
       ORIGINAL_FILENAME: FreeCleaner.exe
       FILE_DESCRIPTION: FreeCleaner Windows cleaner, auto system language, and persistent language preference
       SPEC_FILE: FreeCleaner.spec
-      PYTHON_VERSION: '3.13'
+      PYTHON_VERSION: '3.8'
 
     steps:
       - name: Checkout repository
@@ -142,11 +142,10 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade "pip<25"
           if (Test-Path requirements.txt) {
             pip install -r requirements.txt
           }
-          pip install pyinstaller
 
       - name: Generate version_info.txt
         shell: pwsh
