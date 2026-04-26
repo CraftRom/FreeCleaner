@@ -1416,19 +1416,127 @@ class WindowsOps:
         if not IS_WINDOWS:
             return False
 
-        # Prefer the Windows shell API.  It is safer than deleting $Recycle.Bin
-        # directly and works across Windows 7-11.
+        # Never delete C:\$Recycle.Bin directly. It is a protected system
+        # folder and direct removal can leave stale SID folders, broken ACLs, or
+        # false failures. The Shell API is the correct Windows 7-11 path.
         try:
+            class _SHQUERYRBINFO(ctypes.Structure):
+                _pack_ = 4
+                _fields_ = [
+                    ("cbSize", ctypes.wintypes.DWORD),
+                    ("i64Size", ctypes.c_longlong),
+                    ("i64NumItems", ctypes.c_longlong),
+                ]
+
+            shell32 = ctypes.windll.shell32
+
+            query = getattr(shell32, "SHQueryRecycleBinW", None)
+            if query:
+                query.argtypes = [ctypes.wintypes.LPCWSTR, ctypes.POINTER(_SHQUERYRBINFO)]
+                query.restype = ctypes.c_long
+                info = _SHQUERYRBINFO()
+                info.cbSize = ctypes.sizeof(_SHQUERYRBINFO)
+                query_result = int(query(None, ctypes.byref(info)))
+                # Empty recycle bin is not a failure; the UI should not report an
+                # error just because there was nothing to remove.
+                if query_result == 0 and int(info.i64NumItems) <= 0:
+                    return True
+
+            empty = shell32.SHEmptyRecycleBinW
+            empty.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.LPCWSTR, ctypes.wintypes.DWORD]
+            empty.restype = ctypes.c_long
+
             SHERB_NOCONFIRMATION = 0x00000001
             SHERB_NOPROGRESSUI = 0x00000002
             SHERB_NOSOUND = 0x00000004
             flags = SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND
-            result = ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, flags)
-            if int(result) == 0:
+            result = int(empty(None, None, flags))
+            if result == 0:
                 return True
         except Exception:
             pass
 
+        # Fallback 1: call the same Shell API from PowerShell. This helps when
+        # the frozen Python process has a ctypes/Shell32 loading issue.
+        shell_api_script = r'''
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class FreeCleanerRecycleBin
+{
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct SHQUERYRBINFO
+    {
+        public UInt32 cbSize;
+        public Int64 i64Size;
+        public Int64 i64NumItems;
+    }
+
+    [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern Int32 SHQueryRecycleBin(String pszRootPath, ref SHQUERYRBINFO pSHQueryRBInfo);
+
+    [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern Int32 SHEmptyRecycleBin(IntPtr hwnd, String pszRootPath, UInt32 dwFlags);
+}
+"@
+$info = New-Object FreeCleanerRecycleBin+SHQUERYRBINFO
+$info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($info)
+$queryResult = [FreeCleanerRecycleBin]::SHQueryRecycleBin($null, [ref]$info)
+if ($queryResult -eq 0 -and $info.i64NumItems -le 0) { exit 0 }
+$result = [FreeCleanerRecycleBin]::SHEmptyRecycleBin([IntPtr]::Zero, $null, 0x00000007)
+if ($result -eq 0) { exit 0 }
+exit 1
+'''
+        if WindowsOps.run_command_args(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                shell_api_script,
+            ],
+            timeout=120,
+        ):
+            return True
+
+        # Fallback 2: Windows PowerShell 5+ exposes Clear-RecycleBin. Keep it
+        # as a last resort because it is absent on some older systems.
+        clear_cmdlet_script = r'''
+$ErrorActionPreference = 'Stop'
+if (-not (Get-Command Clear-RecycleBin -ErrorAction SilentlyContinue)) { exit 1 }
+try {
+    Clear-RecycleBin -Force -ErrorAction Stop
+    exit 0
+} catch {
+    # If it fails only because there is nothing to clear, treat it as success.
+    try {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class FreeCleanerRecycleBinQueryOnly
+{
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct SHQUERYRBINFO
+    {
+        public UInt32 cbSize;
+        public Int64 i64Size;
+        public Int64 i64NumItems;
+    }
+    [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern Int32 SHQueryRecycleBin(String pszRootPath, ref SHQUERYRBINFO pSHQueryRBInfo);
+}
+"@
+        $info = New-Object FreeCleanerRecycleBinQueryOnly+SHQUERYRBINFO
+        $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($info)
+        $queryResult = [FreeCleanerRecycleBinQueryOnly]::SHQueryRecycleBin($null, [ref]$info)
+        if ($queryResult -eq 0 -and $info.i64NumItems -le 0) { exit 0 }
+    } catch {}
+    exit 1
+}
+'''
         return WindowsOps.run_command_args(
             [
                 "powershell.exe",
@@ -1436,7 +1544,7 @@ class WindowsOps:
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
-                "Clear-RecycleBin -Force -ErrorAction Stop",
+                clear_cmdlet_script,
             ],
             timeout=120,
         )
