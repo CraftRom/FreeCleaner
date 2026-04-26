@@ -165,10 +165,17 @@ class Cleaner(ctk.CTk):
         self.lang = self.detect_initial_language()
         self.title(self.app_title())
         self.configure(fg_color=COLORS["bg_main"])
+        self._layout_state: Dict[str, Any] = {}
         self.configure_window_geometry()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self._responsive_after_id = None
-        self._layout_state: Dict[str, Any] = {}
+        self._log_line_count = 0
+        self._max_log_lines = 900
+        self._progress_after_id = None
+        self._pending_progress: Optional[Tuple[float, Optional[float]]] = None
+        self._running_pulse_after_id = None
+        self._running_pulse_phase = 0
+        self._selection_refresh_suspended = False
         self._search_after_id = None
         self._last_search_query = ""
         self._about_header_icon_cache = None
@@ -179,6 +186,7 @@ class Cleaner(ctk.CTk):
         self._update_download_in_progress = False
         self._update_download_cancel: Optional[threading.Event] = None
         self.apply_window_icon()
+        self.after(45, lambda: self.fade_in_window(self))
 
         self.is_admin = WindowsOps.is_admin()
         self.vars: Dict[str, ctk.BooleanVar] = {}
@@ -218,14 +226,50 @@ class Cleaner(ctk.CTk):
         self.after(1400, lambda: self.check_for_updates(silent_if_latest=True, source="startup"))
 
 
-    def configure_window_geometry(self):
-        screen_w = max(980, int(self.winfo_screenwidth() or 1540))
-        screen_h = max(700, int(self.winfo_screenheight() or 980))
+    def _apply_dynamic_ui_scaling(self, screen_w: int, screen_h: int) -> None:
+        """Keep the UI readable on small notebooks and sharper on large monitors."""
+        try:
+            if screen_w <= 1180 or screen_h <= 720:
+                scale = 0.90
+            elif screen_w >= 2200 and screen_h >= 1200:
+                scale = 1.06
+            elif screen_w >= 1700 and screen_h >= 950:
+                scale = 1.02
+            else:
+                scale = 1.0
+            if self._layout_state.get("ui_scale") != scale:
+                ctk.set_widget_scaling(scale)
+                self._layout_state["ui_scale"] = scale
+        except Exception:
+            pass
 
-        target_w = min(1580, max(1080, int(screen_w * 0.93)))
-        target_h = min(1000, max(720, int(screen_h * 0.91)))
-        min_w = min(target_w, max(980, int(screen_w * 0.68)))
-        min_h = min(target_h, max(680, int(screen_h * 0.72)))
+    def configure_window_geometry(self):
+        screen_w = max(900, int(self.winfo_screenwidth() or 1366))
+        screen_h = max(620, int(self.winfo_screenheight() or 768))
+        self._apply_dynamic_ui_scaling(screen_w, screen_h)
+
+        usable_w = max(860, screen_w - 40)
+        usable_h = max(560, screen_h - 72)
+        if screen_w >= 1800:
+            preferred_w = 1420
+        elif screen_w >= 1500:
+            preferred_w = 1320
+        elif screen_w >= 1280:
+            preferred_w = 1160
+        else:
+            preferred_w = int(usable_w * 0.96)
+
+        if screen_h >= 1000:
+            preferred_h = 900
+        elif screen_h >= 820:
+            preferred_h = 780
+        else:
+            preferred_h = int(usable_h * 0.94)
+
+        target_w = min(usable_w, max(940, preferred_w))
+        target_h = min(usable_h, max(620, preferred_h))
+        min_w = min(target_w, 940 if screen_w >= 1280 else 860)
+        min_h = min(target_h, 620 if screen_h >= 760 else 560)
 
         pos_x = max(0, (screen_w - target_w) // 2)
         pos_y = max(0, (screen_h - target_h) // 2)
@@ -236,17 +280,45 @@ class Cleaner(ctk.CTk):
     def configure_toplevel_geometry(self, win: ctk.CTkToplevel, preferred: Sequence[int], minimum: Sequence[int]) -> None:
         screen_w = max(640, int(self.winfo_screenwidth() or preferred[0]))
         screen_h = max(520, int(self.winfo_screenheight() or preferred[1]))
+        usable_w = max(520, screen_w - 48)
+        usable_h = max(420, screen_h - 88)
 
         pref_w, pref_h = int(preferred[0]), int(preferred[1])
-        min_w = min(pref_w, max(440, int(minimum[0])))
-        min_h = min(pref_h, max(380, int(minimum[1])))
-        width = min(pref_w, max(min_w, int(screen_w * 0.84)))
-        height = min(pref_h, max(min_h, int(screen_h * 0.84)))
+        min_w = min(pref_w, max(420, int(minimum[0])))
+        min_h = min(pref_h, max(360, int(minimum[1])))
+        width = min(pref_w, max(min_w, int(usable_w * 0.86)))
+        height = min(pref_h, max(min_h, int(usable_h * 0.86)))
         pos_x = max(0, (screen_w - width) // 2)
         pos_y = max(0, (screen_h - height) // 2)
 
         win.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
         win.minsize(min_w, min_h)
+        self.fade_in_window(win, start=0.92, step=0.04)
+
+    def fade_in_window(self, win, *, start: float = 0.94, step: float = 0.03) -> None:
+        """Small opacity transition. It is cheap and ignored on platforms that reject alpha."""
+        try:
+            if not win or not win.winfo_exists():
+                return
+            win.attributes("-alpha", start)
+        except Exception:
+            return
+
+        def tick(value: float) -> None:
+            try:
+                if not win.winfo_exists():
+                    return
+                value = min(1.0, value + step)
+                win.attributes("-alpha", value)
+                if value < 1.0:
+                    win.after(16, lambda: tick(value))
+            except Exception:
+                pass
+
+        try:
+            win.after(16, lambda: tick(start))
+        except Exception:
+            pass
 
     def schedule_responsive_layout(self):
         pending = getattr(self, "_responsive_after_id", None)
@@ -255,21 +327,22 @@ class Cleaner(ctk.CTk):
                 self.after_cancel(pending)
             except Exception:
                 pass
-        self._responsive_after_id = self.after(90, self.refresh_responsive_layout)
+        self._responsive_after_id = self.after(70, self.refresh_responsive_layout)
 
     def on_window_configure(self, event=None):
         if event is not None and getattr(event, "widget", None) is not self:
             return
         try:
             size_key = (int(self.winfo_width() or 0), int(self.winfo_height() or 0))
-            if self._layout_state.get("last_root_size") == size_key:
+            last_size = self._layout_state.get("last_root_size")
+            if last_size and abs(last_size[0] - size_key[0]) < 8 and abs(last_size[1] - size_key[1]) < 8:
                 return
             self._layout_state["last_root_size"] = size_key
         except Exception:
             pass
         self.schedule_responsive_layout()
 
-    def layout_summary_cards(self, columns: int):
+    def layout_summary_cards(self, columns: int, compact: bool = False):
         cards = [
             self.card_selected,
             self.card_profile,
@@ -277,9 +350,16 @@ class Cleaner(ctk.CTk):
             self.card_admin,
         ]
         columns = 4 if columns >= 4 else 2 if columns >= 2 else 1
-        if self._layout_state.get("summary_columns") == columns:
+        compact = bool(compact)
+        for card in cards:
+            try:
+                card.set_compact(compact)
+            except Exception:
+                pass
+        state = (columns, compact)
+        if self._layout_state.get("summary_columns") == state:
             return
-        self._layout_state["summary_columns"] = columns
+        self._layout_state["summary_columns"] = state
 
         for card in cards:
             card.grid_forget()
@@ -326,6 +406,11 @@ class Cleaner(ctk.CTk):
         buttons = [self.btn_start, self.btn_analyze, self.btn_reset_all]
         for button in buttons:
             button.pack_forget()
+
+        btn_height = 42 if stacked else 48
+        self.btn_start.configure(height=btn_height, font=("Segoe UI", 15 if stacked else 16, "bold"))
+        self.btn_analyze.configure(height=btn_height, font=("Segoe UI", 13 if stacked else 14, "bold"), width=148 if stacked else 160)
+        self.btn_reset_all.configure(height=btn_height, font=("Segoe UI", 13 if stacked else 14, "bold"), width=140 if stacked else 150)
 
         if stacked:
             for button in buttons:
@@ -410,40 +495,55 @@ class Cleaner(ctk.CTk):
     def refresh_responsive_layout(self):
         try:
             self._responsive_after_id = None
-            width = max(int(self.winfo_width() or 0), int(self.winfo_reqwidth() or 0), 980)
-            height = max(int(self.winfo_height() or 0), int(self.winfo_reqheight() or 0), 680)
+            width = max(int(self.winfo_width() or 0), int(self.winfo_reqwidth() or 0), 860)
+            height = max(int(self.winfo_height() or 0), int(self.winfo_reqheight() or 0), 560)
 
-            compact_window = width < 1280 or height < 820
-            tight_window = width < 1140 or height < 760
-            sidebar_width = 390 if width >= 1600 else 350 if width >= 1420 else 320 if width >= 1260 else 288 if width >= 1120 else 260
-            footer_height = 202 if height >= 920 else 184 if height >= 800 else 168 if height >= 720 else 154
-            content_width = max(320, width - sidebar_width - (72 if compact_window else 94))
-            wraplength = max(300, min(980, content_width - 120))
-            main_pad_x = 18 if not compact_window else 14 if not tight_window else 10
-            main_pad_y = 18 if not compact_window else 14 if not tight_window else 10
-            tab_stacked = content_width < 760
+            compact_window = width < 1240 or height < 760
+            tight_window = width < 1060 or height < 700
+            sidebar_width = 370 if width >= 1600 else 338 if width >= 1420 else 306 if width >= 1240 else 276 if width >= 1060 else 246
+            footer_height = 188 if height >= 900 else 166 if height >= 760 else 146 if height >= 670 else 132
+            content_width = max(300, width - sidebar_width - (58 if compact_window else 78))
+            wraplength = max(280, min(980, content_width - (96 if compact_window else 120)))
+            main_pad_x = 18 if not compact_window else 12 if not tight_window else 8
+            main_pad_y = 18 if not compact_window else 12 if not tight_window else 8
+            tab_stacked = content_width < 720
             tab_subtitle_wrap = max(180, min(380, content_width // (1 if tab_stacked else 2) - 54))
 
             if self._layout_state.get("sidebar_width") != sidebar_width:
                 self._layout_state["sidebar_width"] = sidebar_width
                 self.sidebar.configure(width=sidebar_width)
+            if self._layout_state.get("sidebar_compact") != tight_window:
+                self._layout_state["sidebar_compact"] = tight_window
+                self.brand_label.configure(font=("Segoe UI Black", 24 if tight_window else 30))
+                self.app_subtitle.configure(font=("Segoe UI", 10 if tight_window else 12), wraplength=max(180, sidebar_width - 42))
+                self.event_log_label.configure(font=("Segoe UI", 11 if tight_window else 12, "bold"))
+                self.console.configure(font=("Consolas", 10 if tight_window else 11))
             if self._layout_state.get("footer_height") != footer_height:
                 self._layout_state["footer_height"] = footer_height
                 self.footer.configure(height=footer_height)
             if self._layout_state.get("main_padding") != (main_pad_x, main_pad_y):
                 self._layout_state["main_padding"] = (main_pad_x, main_pad_y)
                 self.main_wrap.grid_configure(padx=main_pad_x, pady=main_pad_y)
-            console_height = 200 if not compact_window else 160 if not tight_window else 120
+            console_height = 176 if not compact_window else 132 if not tight_window else 96
             if self._layout_state.get("console_height") != console_height:
                 self._layout_state["console_height"] = console_height
                 self.console.configure(height=console_height)
 
-            summary_columns = 4 if content_width >= 1080 else 2 if content_width >= 620 else 1
-            self.layout_summary_cards(summary_columns)
-            self.layout_toolbar(content_width < 760)
-            self.layout_action_buttons(content_width < 900)
+            summary_columns = 4 if content_width >= 1040 else 2 if content_width >= 590 else 1
+            self.layout_summary_cards(summary_columns, compact=compact_window)
+            self.layout_toolbar(content_width < 720)
+            self.layout_action_buttons(content_width < 860 or height < 700)
             self.layout_tab_bar(tab_stacked, tab_subtitle_wrap)
-            self.layout_sidebar_bottom(sidebar_width < 300)
+            self.layout_sidebar_bottom(sidebar_width < 285)
+
+            section_compact = tight_window or content_width < 700
+            if self._layout_state.get("section_compact") != section_compact:
+                self._layout_state["section_compact"] = section_compact
+                for card in self.section_cards:
+                    try:
+                        card.set_compact(section_compact)
+                    except Exception:
+                        pass
 
             if self._layout_state.get("desc_wraplength") != wraplength:
                 self._layout_state["desc_wraplength"] = wraplength
@@ -1378,6 +1478,8 @@ class Cleaner(ctk.CTk):
             card.filter_rows(normalized_query)
 
     def refresh_selection_stats(self):
+        if getattr(self, "_selection_refresh_suspended", False):
+            return
         count = 0
         for key, var in self.vars.items():
             if not var.get():
@@ -1402,7 +1504,8 @@ class Cleaner(ctk.CTk):
 
     def flush_log_queue(self):
         messages: List[str] = []
-        while True:
+        batch_limit = 80
+        while len(messages) < batch_limit:
             try:
                 messages.append(self.log_queue.get_nowait())
             except queue.Empty:
@@ -1410,9 +1513,17 @@ class Cleaner(ctk.CTk):
         if messages:
             self.console.configure(state="normal")
             self.console.insert("end", "\n".join(messages) + "\n")
+            self._log_line_count += len(messages)
+            if self._log_line_count > self._max_log_lines:
+                overflow = self._log_line_count - self._max_log_lines
+                try:
+                    self.console.delete("1.0", f"{overflow + 1}.0")
+                    self._log_line_count = self._max_log_lines
+                except Exception:
+                    pass
             self.console.see("end")
             self.console.configure(state="disabled")
-        self.after(140, self.flush_log_queue)
+        self.after(60 if messages else 160, self.flush_log_queue)
 
     def copy_log_to_clipboard(self):
         content = self.console.get("1.0", "end")
@@ -1423,19 +1534,29 @@ class Cleaner(ctk.CTk):
     def clear_log(self):
         self.console.configure(state="normal")
         self.console.delete("1.0", "end")
+        self._log_line_count = 0
         self.console.configure(state="disabled")
         self.log(self.tr("log_cleared"))
 
     def clear_selection(self):
-        for key, var in self.vars.items():
-            if self.tasks[key].state != "disabled":
-                var.set(False)
+        self._selection_refresh_suspended = True
+        try:
+            for key, var in self.vars.items():
+                if self.tasks[key].state != "disabled" and var.get():
+                    var.set(False)
+        finally:
+            self._selection_refresh_suspended = False
         self.analysis_total_bytes = 0
         self.total_size_bytes = 0
         self.lbl_analysis.configure(text=self.tr("selected_reset_hint"), text_color=COLORS["text_gray"])
         self.set_profile_name(self.tr("profile_manual"), COLORS["gamer"])
         self.refresh_selection_stats()
         self.log(self.tr("selection_cleared"))
+
+    def _set_task_selected(self, key: str, selected: bool) -> None:
+        var = self.vars.get(key)
+        if var is not None and var.get() != selected:
+            var.set(selected)
 
     def invoke_instant_task(self, task: CleanerTask):
         if task.state == "disabled":
@@ -1452,15 +1573,19 @@ class Cleaner(ctk.CTk):
     def apply_safe_preset(self):
         self.clear_selection()
         safe_keywords = ("temp", "cache", "dns")
-        for key, var in self.vars.items():
-            task = self.tasks.get(key)
-            if not task or task.state == "disabled":
-                continue
-            if any(word in key for word in safe_keywords):
-                if task.kind == "directory" and not task.requires_admin:
-                    var.set(True)
-            if task.key == "dns_flush":
-                var.set(True)
+        self._selection_refresh_suspended = True
+        try:
+            for key, var in self.vars.items():
+                task = self.tasks.get(key)
+                if not task or task.state == "disabled":
+                    continue
+                if any(word in key for word in safe_keywords):
+                    if task.kind == "directory" and not task.requires_admin:
+                        self._set_task_selected(key, True)
+                if task.key == "dns_flush":
+                    self._set_task_selected(key, True)
+        finally:
+            self._selection_refresh_suspended = False
         self.set_profile_name(self.tr("safe"), COLORS["system"])
         self.refresh_selection_stats()
         self.log(self.tr("safe_profile_on"))
@@ -1472,14 +1597,18 @@ class Cleaner(ctk.CTk):
             "discord_cache", "discord_gpu_cache", "steam_htmlcache", "epic_webcache",
             "battle_net_cache", "temp_capture_cache", "disable_gamedvr", "enable_game_mode", "disable_notifications"
         }
-        for key, var in self.vars.items():
-            task = self.tasks.get(key)
-            if not task or task.state == "disabled":
-                continue
-            if key in preferred:
-                var.set(True)
-            elif task.category == "gamer" and "shader" not in key and "perf_plan" not in key and task.kind == "directory":
-                var.set(True)
+        self._selection_refresh_suspended = True
+        try:
+            for key, var in self.vars.items():
+                task = self.tasks.get(key)
+                if not task or task.state == "disabled":
+                    continue
+                if key in preferred:
+                    self._set_task_selected(key, True)
+                elif task.category == "gamer" and "shader" not in key and "perf_plan" not in key and task.kind == "directory":
+                    self._set_task_selected(key, True)
+        finally:
+            self._selection_refresh_suspended = False
         self.set_profile_name(self.tr("profile_streamer"), COLORS["gamer"])
         self.refresh_selection_stats()
         self.log(self.tr("streamer_profile_on"))
@@ -1494,12 +1623,16 @@ class Cleaner(ctk.CTk):
         }
         if self.is_admin:
             preferred.add("ultimate_perf_plan")
-        for key, var in self.vars.items():
-            task = self.tasks.get(key)
-            if not task or task.state == "disabled":
-                continue
-            if key in preferred:
-                var.set(True)
+        self._selection_refresh_suspended = True
+        try:
+            for key, var in self.vars.items():
+                task = self.tasks.get(key)
+                if not task or task.state == "disabled":
+                    continue
+                if key in preferred:
+                    self._set_task_selected(key, True)
+        finally:
+            self._selection_refresh_suspended = False
         self.set_profile_name(self.tr("profile_low_end"), COLORS["success"])
         self.refresh_selection_stats()
         self.log(self.tr("low_end_profile_on"))
@@ -1523,8 +1656,45 @@ class Cleaner(ctk.CTk):
         )
         self.btn_analyze.configure(state="disabled" if running else "normal")
         self.btn_cancel.configure(state="normal" if running else "disabled")
-        if not running:
+        if running:
+            self.start_running_animation()
+        else:
+            self.stop_running_animation()
             self.progress.stop()
+
+    def start_running_animation(self) -> None:
+        self.stop_running_animation(reset=False)
+        self._running_pulse_phase = 0
+        self._animate_running_state()
+
+    def _animate_running_state(self) -> None:
+        if not getattr(self, "is_running", False):
+            return
+        phase = getattr(self, "_running_pulse_phase", 0) % 4
+        colors = ["#4B5563", "#526176", "#64748B", "#526176"]
+        progress_colors = [COLORS["system"], COLORS["gamer"], COLORS["success"], COLORS["gamer"]]
+        try:
+            self.btn_start.configure(fg_color=colors[phase])
+            self.progress.configure(progress_color=progress_colors[phase])
+        except Exception:
+            return
+        self._running_pulse_phase = phase + 1
+        self._running_pulse_after_id = self.after(420, self._animate_running_state)
+
+    def stop_running_animation(self, *, reset: bool = True) -> None:
+        pending = getattr(self, "_running_pulse_after_id", None)
+        if pending:
+            try:
+                self.after_cancel(pending)
+            except Exception:
+                pass
+        self._running_pulse_after_id = None
+        if reset:
+            try:
+                self.btn_start.configure(fg_color=COLORS["success"])
+                self.progress.configure(progress_color=COLORS["success"])
+            except Exception:
+                pass
 
     def run_logged_command(self, cmd: str, success_key: str, fail_key: str, timeout: int = 180):
         ok = WindowsOps.run_command(cmd, timeout=timeout)
@@ -1690,7 +1860,7 @@ class Cleaner(ctk.CTk):
                 force
                 or self._last_progress_ui_at <= 0
                 or bytes_delta >= 1024 * 1024
-                or (now - self._last_progress_ui_at) >= 0.12
+                or (now - self._last_progress_ui_at) >= 0.18
             )
             if not should_update:
                 return
@@ -1698,11 +1868,29 @@ class Cleaner(ctk.CTk):
             self._last_progress_ui_at = now
             self._last_progress_ui_bytes = self.cleaned_bytes
             mb = self.cleaned_bytes / (1024 ** 2)
-            progress = min(self.cleaned_bytes / self.total_size_bytes, 1.0) if self.total_size_bytes > 0 else 0.0
+            progress = min(self.cleaned_bytes / self.total_size_bytes, 1.0) if self.total_size_bytes > 0 else None
+            self._pending_progress = (mb, progress)
 
-        self.after(0, lambda: self.lbl_stats.configure(text=self.trf("freed_fmt", mb=mb), text_color=COLORS["success"]))
-        if self.total_size_bytes > 0:
-            self.after(0, lambda value=progress: self.progress.set(value))
+        self.schedule_progress_paint()
+
+    def schedule_progress_paint(self) -> None:
+        if getattr(self, "_progress_after_id", None):
+            return
+        try:
+            self._progress_after_id = self.after(45, self.paint_progress)
+        except Exception:
+            self._progress_after_id = None
+
+    def paint_progress(self) -> None:
+        self._progress_after_id = None
+        pending = getattr(self, "_pending_progress", None)
+        if not pending:
+            return
+        mb, progress = pending
+        self._pending_progress = None
+        self.lbl_stats.configure(text=self.trf("freed_fmt", mb=mb), text_color=COLORS["success"])
+        if progress is not None:
+            self.progress.set(progress)
 
     def analyze_directory_tasks(self, dir_tasks: List[CleanerTask]) -> Tuple[int, Dict[str, int], List[Tuple[str, int]]]:
         total = 0

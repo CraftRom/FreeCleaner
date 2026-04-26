@@ -24,8 +24,6 @@ def init_ui_theme() -> None:
         pass
 
 
-
-
 def _hex_to_rgb(color: str) -> Tuple[int, int, int]:
     color = color.lstrip('#')
     if len(color) != 6:
@@ -70,18 +68,40 @@ class SummaryCard(ctk.CTkFrame):
     def __init__(self, master, title: str, value: str, color: str):
         super().__init__(master, fg_color=COLORS["bg_card"], corner_radius=14, border_width=1, border_color=COLORS["border"])
         self.grid_columnconfigure(0, weight=1)
+        self._title_text = title
+        self._value_text = value
+        self._value_color = color
+        self._compact = False
         self.title_label = ctk.CTkLabel(self, text=title, text_color=COLORS["text_gray"], font=("Segoe UI", 11, "bold"))
         self.title_label.grid(row=0, column=0, sticky="w", padx=14, pady=(12, 2))
         self.value_label = ctk.CTkLabel(self, text=value, text_color=color, font=("Segoe UI Semibold", 22, "bold"))
         self.value_label.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 12))
 
     def set(self, text: str, color: Optional[str] = None):
-        self.value_label.configure(text=text)
-        if color:
-            self.value_label.configure(text_color=color)
+        target_color = color or self._value_color
+        if text != self._value_text:
+            self._value_text = text
+            self.value_label.configure(text=text)
+        if target_color != self._value_color:
+            self._value_color = target_color
+            self.value_label.configure(text_color=target_color)
 
     def set_title(self, text: str):
+        if text == self._title_text:
+            return
+        self._title_text = text
         self.title_label.configure(text=text)
+
+    def set_compact(self, compact: bool):
+        compact = bool(compact)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.configure(corner_radius=12 if compact else 14)
+        self.title_label.configure(font=("Segoe UI", 10 if compact else 11, "bold"))
+        self.value_label.configure(font=("Segoe UI Semibold", 18 if compact else 22, "bold"))
+        self.title_label.grid_configure(padx=12 if compact else 14, pady=(9 if compact else 12, 1 if compact else 2))
+        self.value_label.grid_configure(padx=12 if compact else 14, pady=(0, 9 if compact else 12))
 
 
 class SectionCard(ctk.CTkFrame):
@@ -89,19 +109,20 @@ class SectionCard(ctk.CTkFrame):
         super().__init__(master, fg_color=COLORS["bg_card"], corner_radius=14, border_width=1, border_color=COLORS["border"], **kwargs)
         self.owner = owner
         self.grid_columnconfigure(0, weight=1)
-        self.rows: List[Tuple[Any, ctk.CTkLabel, CleanerTask]] = []
+        self.rows: List[Tuple[Any, ctk.CTkLabel, CleanerTask, ctk.CTkFrame, bool]] = []
         self.desc_wraplength = 780
+        self._compact = False
 
         self.accent = ctk.CTkFrame(self, height=4, fg_color=color, corner_radius=3)
         self.accent.grid(row=0, column=0, sticky="ew", padx=1, pady=(1, 8))
 
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
-        header.grid_columnconfigure(0, weight=1)
+        self.header = ctk.CTkFrame(self, fg_color="transparent")
+        self.header.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
+        self.header.grid_columnconfigure(0, weight=1)
 
-        self.header_title = ctk.CTkLabel(header, text=title, text_color=color, font=("Segoe UI", 16, "bold"))
+        self.header_title = ctk.CTkLabel(self.header, text=title, text_color=color, font=("Segoe UI", 16, "bold"))
         self.header_title.grid(row=0, column=0, sticky="w")
-        self.header_subtitle = ctk.CTkLabel(header, text=subtitle, text_color=COLORS["text_gray"], font=("Segoe UI", 11))
+        self.header_subtitle = ctk.CTkLabel(self.header, text=subtitle, text_color=COLORS["text_gray"], font=("Segoe UI", 11))
         self.header_subtitle.grid(row=1, column=0, sticky="w")
         self.row_counter = 2
 
@@ -155,57 +176,81 @@ class SectionCard(ctk.CTkFrame):
             anchor="w",
         )
         desc_padding = 22 if task.instant_action and task.kind == "command" else 42
+        desc_lbl._base_padx = desc_padding  # type: ignore[attr-defined]
         desc_lbl.grid(row=self.row_counter + 1, column=0, sticky="ew", padx=desc_padding, pady=(0, 12))
         if task.instant_action and task.kind == "command" and task.state == "normal":
             desc_lbl.bind("<Button-1>", lambda _e, t=task: self.owner.invoke_instant_task(t))
             desc_lbl.bind("<Enter>", lambda _e: desc_lbl.configure(text_color=COLORS["white"]))
             desc_lbl.bind("<Leave>", lambda _e: desc_lbl.configure(text_color=COLORS["text_gray"]))
-        self.rows.append((widget, desc_lbl, task))
+        self.rows.append((widget, desc_lbl, task, row_wrap, True))
         self.row_counter += 2
+
+    def _set_row_visible(self, index: int, visible: bool) -> None:
+        widget, desc_lbl, task, row_wrap, current = self.rows[index]
+        if visible == current:
+            return
+        if visible:
+            row_wrap.grid()
+            desc_lbl.grid()
+        else:
+            row_wrap.grid_remove()
+            desc_lbl.grid_remove()
+        self.rows[index] = (widget, desc_lbl, task, row_wrap, visible)
 
     def refresh_rows_language(self):
         query = self.owner.search_var.get().strip().lower() if hasattr(self.owner, "search_var") else ""
-        for widget, desc_lbl, task in self.rows:
-            widget.configure(text=self.owner.task_title(task))
-            desc_lbl.configure(text=self.owner.task_desc(task))
+        for index, (widget, desc_lbl, task, row_wrap, _visible) in enumerate(self.rows):
+            title = self.owner.task_title(task)
+            desc = self.owner.task_desc(task)
+            widget.configure(text=title)
+            desc_lbl.configure(text=desc)
             if task.state == "disabled":
-                for child in widget.master.winfo_children():
+                for child in row_wrap.winfo_children():
                     if isinstance(child, ctk.CTkLabel):
                         child.configure(text=self.owner.tr("badge_admin_needed"))
-            haystack = (self.owner.task_title(task) + " " + self.owner.task_desc(task)).lower()
-            visible = not query or query in haystack
-            if visible:
-                widget.master.grid()
-                desc_lbl.grid()
-            else:
-                widget.master.grid_remove()
-                desc_lbl.grid_remove()
+            haystack = (title + " " + desc).lower()
+            self._set_row_visible(index, not query or query in haystack)
 
     def update_layout(self, wraplength: int):
         wraplength = max(260, wraplength)
         if wraplength == self.desc_wraplength:
             return
         self.desc_wraplength = wraplength
-        for _, desc_lbl, _ in self.rows:
+        for _, desc_lbl, _, _, _ in self.rows:
             desc_lbl.configure(wraplength=self.desc_wraplength)
 
     def set_header(self, title: str, subtitle: str):
-        self.header_title.configure(text=title)
-        self.header_subtitle.configure(text=subtitle)
+        if self.header_title.cget("text") != title:
+            self.header_title.configure(text=title)
+        if self.header_subtitle.cget("text") != subtitle:
+            self.header_subtitle.configure(text=subtitle)
 
     def filter_rows(self, query: str):
         query = query.strip().lower()
-        for widget, desc_lbl, task in self.rows:
+        for index, (widget, desc_lbl, task, _row_wrap, _visible) in enumerate(self.rows):
             haystack = (self.owner.task_title(task) + " " + self.owner.task_desc(task)).lower()
-            visible = not query or query in haystack
-            if visible:
-                widget.master.grid()
-                desc_lbl.grid()
+            self._set_row_visible(index, not query or query in haystack)
+
+    def set_compact(self, compact: bool) -> None:
+        compact = bool(compact)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.configure(corner_radius=12 if compact else 14)
+        self.accent.configure(height=3 if compact else 4)
+        self.header_title.configure(font=("Segoe UI", 14 if compact else 16, "bold"))
+        self.header_subtitle.configure(font=("Segoe UI", 10 if compact else 11))
+        self.header.grid_configure(padx=14 if compact else 16, pady=(0, 9 if compact else 12))
+        self.accent.grid_configure(pady=(1, 6 if compact else 8))
+        for widget, desc_lbl, task, row_wrap, _visible in self.rows:
+            if isinstance(widget, ctk.CTkButton):
+                widget.configure(font=("Segoe UI", 12 if compact else 13, "bold"), height=36 if compact else 42, corner_radius=10 if compact else 12)
             else:
-                widget.master.grid_remove()
-                desc_lbl.grid_remove()
-
-
+                widget.configure(font=("Segoe UI", 12 if compact else 13, "bold"))
+            row_wrap.grid_configure(padx=12 if compact else 14, pady=(3 if compact else 4, 1 if compact else 2))
+            base_padx = int(getattr(desc_lbl, "_base_padx", 42))
+            desc_lbl.configure(font=("Segoe UI", 10 if compact else 11))
+            desc_lbl.grid_configure(padx=max(18, base_padx - (8 if compact else 0)), pady=(0, 8 if compact else 12))
 
 
 class ModernTabButton(ctk.CTkFrame):
@@ -213,6 +258,9 @@ class ModernTabButton(ctk.CTkFrame):
         self.accent = accent
         self.command = command
         self._active = False
+        self._hovered = False
+        self._compact = False
+        self._last_active_state: Optional[bool] = None
         super().__init__(
             master,
             fg_color=COLORS["bg_card"],
@@ -264,22 +312,36 @@ class ModernTabButton(ctk.CTkFrame):
 
     def _on_click(self, _event=None):
         try:
+            self.configure(border_color=self.accent)
+            self.after(110, lambda: self.set_active(self._active))
+        except Exception:
+            pass
+        try:
             self.command()
         except Exception:
             pass
 
     def _on_enter(self, _event=None):
+        if self._hovered:
+            return
+        self._hovered = True
         if not self._active:
             self.configure(fg_color=mix_colors(COLORS["bg_card"], self.accent, 0.08), border_color=mix_colors(COLORS["border"], self.accent, 0.35))
             self.highlight.configure(fg_color=mix_colors(COLORS["bg_card"], self.accent, 0.38))
             self.chevron.configure(text_color=mix_colors(COLORS["text_gray"], self.accent, 0.55))
 
     def _on_leave(self, _event=None):
+        self._hovered = False
         if not self._active:
+            self._last_active_state = None
             self.set_active(False)
 
     def set_active(self, active: bool) -> None:
-        self._active = bool(active)
+        active = bool(active)
+        if self._last_active_state is active and not self._hovered:
+            return
+        self._last_active_state = active
+        self._active = active
         if self._active:
             self.configure(
                 fg_color=mix_colors(COLORS["bg_soft"], self.accent, 0.18),
@@ -299,8 +361,10 @@ class ModernTabButton(ctk.CTkFrame):
             self.dot.configure(fg_color=mix_colors(self.accent, COLORS["text_gray"], 0.30))
 
     def set_text(self, title: str, subtitle: str) -> None:
-        self.title_label.configure(text=title)
-        self.subtitle_label.configure(text=subtitle)
+        if self.title_label.cget("text") != title:
+            self.title_label.configure(text=title)
+        if self.subtitle_label.cget("text") != subtitle:
+            self.subtitle_label.configure(text=subtitle)
 
     def set_subtitle_wrap(self, wraplength: int) -> None:
         wraplength = max(180, int(wraplength))
@@ -311,6 +375,12 @@ class ModernTabButton(ctk.CTkFrame):
 
     def set_compact(self, compact: bool) -> None:
         compact = bool(compact)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.configure(corner_radius=14 if compact else 18)
         self.chevron.configure(font=("Segoe UI", 18 if compact else 20, "bold"))
         self.title_label.configure(font=("Segoe UI Semibold", 14 if compact else 15, "bold"))
         self.subtitle_label.configure(font=("Segoe UI", 10 if compact else 11))
+        self.content.grid_configure(padx=12 if compact else 14, pady=(0, 9 if compact else 12))
+        self.highlight.grid_configure(padx=9 if compact else 10, pady=(8 if compact else 10, 5 if compact else 6))
