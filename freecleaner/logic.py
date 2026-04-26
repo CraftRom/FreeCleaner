@@ -1146,6 +1146,35 @@ class WindowsOps:
             return False
 
     @staticmethod
+    def run_command_args(args: List[str], timeout: int = 180, noisy: bool = False) -> bool:
+        """Run a command without shell interpolation.
+
+        Used for filesystem cleanup fallbacks where paths can contain spaces,
+        quotes, ampersands or non-Latin characters.  Keeping shell=False avoids
+        accidental command parsing bugs and makes cleanup errors much rarer.
+        """
+        if not args:
+            return False
+        try:
+            creationflags = 0x08000000 if IS_WINDOWS else 0
+            startupinfo = None
+            if IS_WINDOWS and not noisy:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            completed = subprocess.run(
+                args,
+                shell=False,
+                stdout=None if noisy else subprocess.DEVNULL,
+                stderr=None if noisy else subprocess.DEVNULL,
+                timeout=timeout,
+                creationflags=creationflags,
+                startupinfo=startupinfo,
+            )
+            return completed.returncode == 0
+        except Exception:
+            return False
+
+    @staticmethod
     def schedule_delete_on_reboot(path: str) -> bool:
         if not IS_WINDOWS or not path:
             return False
@@ -1386,11 +1415,31 @@ class WindowsOps:
     def clear_recycle_bin() -> bool:
         if not IS_WINDOWS:
             return False
-        if WindowsOps.run_command('powershell -NoProfile -ExecutionPolicy Bypass -Command "Clear-RecycleBin -Force -ErrorAction Stop"', timeout=120):
-            return True
-        system_drive = os.environ.get("SystemDrive", "C:")
-        target = os.path.join(system_drive + os.sep, "$Recycle.Bin")
-        return WindowsOps.run_command(f'cmd /c rd /s /q "{target}"', timeout=120)
+
+        # Prefer the Windows shell API.  It is safer than deleting $Recycle.Bin
+        # directly and works across Windows 7-11.
+        try:
+            SHERB_NOCONFIRMATION = 0x00000001
+            SHERB_NOPROGRESSUI = 0x00000002
+            SHERB_NOSOUND = 0x00000004
+            flags = SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND
+            result = ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, flags)
+            if int(result) == 0:
+                return True
+        except Exception:
+            pass
+
+        return WindowsOps.run_command_args(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "Clear-RecycleBin -Force -ErrorAction Stop",
+            ],
+            timeout=120,
+        )
 
     @staticmethod
     def try_enable_ultimate_performance() -> bool:
@@ -1406,6 +1455,16 @@ class WindowsOps:
 
 
 class SafeFS:
+    """Filesystem helpers optimized for safe cache cleanup.
+
+    The cleaner intentionally removes the *contents* of a selected cache/log
+    folder and keeps the target root folder itself.  That avoids breaking apps
+    that expect their cache directory to keep existing after cleanup.
+    """
+
+    PROGRESS_FLUSH_BYTES = 4 * 1024 * 1024
+    PROGRESS_FLUSH_SECONDS = 0.12
+
     @staticmethod
     def _extended_path(path: str) -> str:
         if not IS_WINDOWS:
@@ -1421,6 +1480,70 @@ class SafeFS:
             return path
 
     @staticmethod
+    def _norm_abs(path: str) -> str:
+        try:
+            return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+        except Exception:
+            return os.path.normcase(os.path.normpath(path or ""))
+
+    @staticmethod
+    def _is_drive_root(path: str) -> bool:
+        try:
+            abs_path = os.path.abspath(path)
+            drive, tail = os.path.splitdrive(abs_path)
+            if drive:
+                return tail in ("\\", "/", "")
+            return os.path.dirname(abs_path) == abs_path
+        except Exception:
+            return False
+
+    @staticmethod
+    def is_safe_clean_target(path: str) -> bool:
+        """Reject dangerous roots even if a bad task/path is registered later."""
+        if not path:
+            return False
+        try:
+            abs_path = os.path.abspath(path)
+        except Exception:
+            return False
+
+        if SafeFS._is_drive_root(abs_path):
+            return False
+
+        norm = SafeFS._norm_abs(abs_path)
+        blocked: Set[str] = set()
+
+        for env_name in (
+            "WINDIR",
+            "SYSTEMROOT",
+            "PROGRAMFILES",
+            "PROGRAMW6432",
+            "PROGRAMFILES(X86)",
+            "PROGRAMDATA",
+            "USERPROFILE",
+            "HOMEDRIVE",
+            "APPDATA",
+            "LOCALAPPDATA",
+        ):
+            value = os.environ.get(env_name)
+            if value:
+                if env_name == "HOMEDRIVE":
+                    value = value + os.sep
+                blocked.add(SafeFS._norm_abs(value))
+
+        windir = os.environ.get("WINDIR") or os.environ.get("SYSTEMROOT")
+        if windir:
+            blocked.add(SafeFS._norm_abs(os.path.join(windir, "System32")))
+            blocked.add(SafeFS._norm_abs(os.path.join(windir, "SysWOW64")))
+            blocked.add(SafeFS._norm_abs(os.path.join(windir, "WinSxS")))
+
+        users_root = os.path.dirname(os.path.expanduser("~"))
+        if users_root:
+            blocked.add(SafeFS._norm_abs(users_root))
+
+        return norm not in blocked
+
+    @staticmethod
     def _clear_attributes(path: str, is_dir: bool = False) -> None:
         candidates = [path]
         extended = SafeFS._extended_path(path)
@@ -1429,7 +1552,7 @@ class SafeFS:
 
         for candidate in candidates:
             try:
-                os.chmod(candidate, stat.S_IWRITE | stat.S_IREAD)
+                os.chmod(candidate, stat.S_IWRITE | stat.S_IREAD | (stat.S_IEXEC if is_dir else 0))
             except OSError:
                 pass
 
@@ -1449,6 +1572,16 @@ class SafeFS:
         WindowsOps.run_command(f'attrib -r -s -h "{escaped}\\*" /s /d', timeout=180)
 
     @staticmethod
+    def _file_size(path: str) -> int:
+        try:
+            return int(os.lstat(path).st_size)
+        except OSError:
+            try:
+                return int(os.path.getsize(path))
+            except OSError:
+                return 0
+
+    @staticmethod
     def _remove_file_native(path: str) -> bool:
         for candidate in (path, SafeFS._extended_path(path)):
             try:
@@ -1456,6 +1589,8 @@ class SafeFS:
                 return True
             except FileNotFoundError:
                 return True
+            except IsADirectoryError:
+                return False
             except OSError:
                 continue
         return False
@@ -1474,28 +1609,50 @@ class SafeFS:
 
     @staticmethod
     def _remove_file_shell(path: str) -> bool:
-        quoted = os.path.abspath(path).replace('"', '""')
+        if not IS_WINDOWS:
+            return False
+        if not os.path.exists(path):
+            return True
+
         commands = [
-            f'cmd /c del /f /q /a "{quoted}"',
-            'powershell -NoProfile -ExecutionPolicy Bypass -Command '
-            f'"$p = [System.IO.Path]::GetFullPath(''{quoted}''); if (Test-Path -LiteralPath $p) {{ Remove-Item -LiteralPath $p -Force -ErrorAction Stop }}"',
+            ["cmd.exe", "/c", "del", "/f", "/q", "/a", os.path.abspath(path)],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "$ErrorActionPreference='Stop'; if (Test-Path -LiteralPath $args[0]) { Remove-Item -LiteralPath $args[0] -Force -ErrorAction Stop }",
+                os.path.abspath(path),
+            ],
         ]
-        for cmd in commands:
-            if WindowsOps.run_command(cmd, timeout=120):
+        for args in commands:
+            if WindowsOps.run_command_args(args, timeout=120):
                 if not os.path.exists(path):
                     return True
         return not os.path.exists(path)
 
     @staticmethod
     def _remove_dir_shell(path: str) -> bool:
-        quoted = os.path.abspath(path).replace('"', '""')
+        if not IS_WINDOWS:
+            return False
+        if not os.path.exists(path):
+            return True
+
         commands = [
-            f'cmd /c rd /s /q "{quoted}"',
-            'powershell -NoProfile -ExecutionPolicy Bypass -Command '
-            f'"$p = [System.IO.Path]::GetFullPath(''{quoted}''); if (Test-Path -LiteralPath $p) {{ Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop }}"',
+            ["cmd.exe", "/c", "rd", "/s", "/q", os.path.abspath(path)],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "$ErrorActionPreference='Stop'; if (Test-Path -LiteralPath $args[0]) { Remove-Item -LiteralPath $args[0] -Recurse -Force -ErrorAction Stop }",
+                os.path.abspath(path),
+            ],
         ]
-        for cmd in commands:
-            if WindowsOps.run_command(cmd, timeout=180):
+        for args in commands:
+            if WindowsOps.run_command_args(args, timeout=180):
                 if not os.path.exists(path):
                     return True
         return not os.path.exists(path)
@@ -1514,7 +1671,7 @@ class SafeFS:
     def _count_remaining_entries(path: str) -> Tuple[int, int]:
         if not path or not os.path.exists(path):
             return 0, 0
-        if os.path.isfile(path):
+        if os.path.isfile(path) or os.path.islink(path):
             return (1, 0)
 
         files = 0
@@ -1523,16 +1680,17 @@ class SafeFS:
         seen: Set[str] = set()
         while stack:
             current = stack.pop()
-            if current in seen:
+            norm = SafeFS._norm_abs(current)
+            if norm in seen:
                 continue
-            seen.add(current)
+            seen.add(norm)
             try:
                 with os.scandir(current) as it:
                     for entry in it:
                         try:
                             if entry.is_symlink():
-                                continue
-                            if entry.is_file(follow_symlinks=False):
+                                files += 1
+                            elif entry.is_file(follow_symlinks=False):
                                 files += 1
                             elif entry.is_dir(follow_symlinks=False):
                                 dirs += 1
@@ -1544,16 +1702,27 @@ class SafeFS:
         return files, dirs
 
     @staticmethod
-    def fast_size(path: str) -> int:
+    def fast_size(path: str, cancel_event: Optional[threading.Event] = None) -> int:
         if not path or not os.path.exists(path):
             return 0
         total = 0
         stack = [path]
+        seen: Set[str] = set()
         while stack:
+            if cancel_event is not None and cancel_event.is_set():
+                break
             current = stack.pop()
+            norm = SafeFS._norm_abs(current)
+            if norm in seen:
+                continue
+            seen.add(norm)
             try:
+                if os.path.islink(current):
+                    continue
                 with os.scandir(current) as it:
                     for entry in it:
+                        if cancel_event is not None and cancel_event.is_set():
+                            break
                         try:
                             if entry.is_symlink():
                                 continue
@@ -1565,16 +1734,19 @@ class SafeFS:
                             continue
             except (PermissionError, FileNotFoundError, NotADirectoryError, OSError):
                 try:
-                    total += os.path.getsize(current)
+                    if not os.path.islink(current):
+                        total += os.path.getsize(current)
                 except OSError:
                     pass
         return total
 
     @staticmethod
-    def fast_size_many(paths: List[str]) -> int:
+    def fast_size_many(paths: List[str], cancel_event: Optional[threading.Event] = None) -> int:
         total = 0
         for path in PathFinder.unique_existing(paths):
-            total += SafeFS.fast_size(path)
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            total += SafeFS.fast_size(path, cancel_event)
         return total
 
     @staticmethod
@@ -1610,122 +1782,136 @@ class SafeFS:
         if not path or not os.path.exists(path):
             return result
 
-        if os.path.isfile(path):
-            try:
-                size = os.path.getsize(path)
-            except OSError:
-                size = 0
-            SafeFS._clear_attributes(path, is_dir=False)
-            removed = SafeFS._remove_file_native(path) or SafeFS._remove_file_shell(path)
-            if removed:
-                if size > 0:
-                    on_bytes_removed(size)
-                    result["removed_bytes"] += size
-                result["files_removed"] += 1
-                return result
-            if SafeFS._schedule_for_delete(path):
-                result["scheduled_reboot"] += 1
-                return result
-            result["errors"] += 1
-            result["remaining_files"] = 1
+        if not SafeFS.is_safe_clean_target(path):
+            result["errors"] = 1
             return result
 
-        SafeFS._prepare_tree(path)
+        pending_progress_bytes = 0
+        last_flush = time.monotonic()
 
-        all_dirs: List[str] = []
-        all_files: List[str] = []
-        try:
-            for root, dirs, files in os.walk(path, topdown=False):
-                if cancel_event.is_set():
-                    return result
-                for name in files:
-                    all_files.append(os.path.join(root, name))
-                for name in dirs:
-                    all_dirs.append(os.path.join(root, name))
-        except OSError:
-            result["errors"] += 1
-
-        for file_path in all_files:
-            if cancel_event.is_set():
-                return result
+        def flush_progress(force: bool = False) -> None:
+            nonlocal pending_progress_bytes, last_flush
+            if pending_progress_bytes <= 0:
+                return
+            now = time.monotonic()
+            if not force and pending_progress_bytes < SafeFS.PROGRESS_FLUSH_BYTES and (now - last_flush) < SafeFS.PROGRESS_FLUSH_SECONDS:
+                return
+            chunk = pending_progress_bytes
+            pending_progress_bytes = 0
+            last_flush = now
             try:
-                size = os.path.getsize(file_path)
-            except OSError:
-                size = 0
-
-            SafeFS._clear_attributes(file_path, is_dir=False)
-            removed = SafeFS._remove_file_native(file_path)
-            if not removed:
-                time.sleep(0.02)
-                SafeFS._clear_attributes(file_path, is_dir=False)
-                removed = SafeFS._remove_file_native(file_path) or SafeFS._remove_file_shell(file_path)
-
-            if removed:
-                if size > 0:
-                    on_bytes_removed(size)
-                    result["removed_bytes"] += size
-                result["files_removed"] += 1
-                continue
-
-            if SafeFS._schedule_for_delete(file_path):
-                result["scheduled_reboot"] += 1
-                continue
-
-            result["errors"] += 1
-
-        def _rmtree_onerror(func, failing_path, _exc_info):
-            SafeFS._clear_attributes(failing_path, is_dir=os.path.isdir(failing_path))
-            try:
-                func(failing_path)
+                on_bytes_removed(chunk)
             except Exception:
                 pass
 
-        for dir_path in sorted(all_dirs, key=len, reverse=True):
-            if cancel_event.is_set():
+        def mark_file_removed(size: int) -> None:
+            nonlocal pending_progress_bytes
+            result["files_removed"] += 1
+            if size > 0:
+                result["removed_bytes"] += size
+                pending_progress_bytes += size
+                flush_progress(False)
+
+        def remove_single_file(file_path: str) -> bool:
+            try:
+                size = SafeFS._file_size(file_path)
+                SafeFS._clear_attributes(file_path, is_dir=False)
+                removed = SafeFS._remove_file_native(file_path)
+                if not removed:
+                    SafeFS._clear_attributes(file_path, is_dir=False)
+                    removed = SafeFS._remove_file_native(file_path) or SafeFS._remove_file_shell(file_path)
+                if removed:
+                    mark_file_removed(size)
+                    return True
+                if SafeFS._schedule_for_delete(file_path):
+                    result["scheduled_reboot"] += 1
+                    return True
+                result["errors"] += 1
+                return False
+            except Exception:
+                result["errors"] += 1
+                return False
+
+        try:
+            if os.path.isfile(path) or os.path.islink(path):
+                if not remove_single_file(path):
+                    result["remaining_files"] = 1 if os.path.exists(path) else 0
+                flush_progress(True)
                 return result
-            if not os.path.exists(dir_path):
-                continue
 
-            SafeFS._clear_attributes(dir_path, is_dir=True)
-            removed = SafeFS._remove_dir_native(dir_path)
-            if not removed:
-                try:
-                    shutil.rmtree(dir_path, ignore_errors=False, onerror=_rmtree_onerror)
-                    removed = not os.path.exists(dir_path)
-                except Exception:
-                    removed = False
-            if not removed:
-                removed = SafeFS._remove_dir_shell(dir_path)
-
-            if removed:
-                result["dirs_removed"] += 1
-                continue
-
-            if SafeFS._schedule_for_delete(dir_path):
-                result["scheduled_reboot"] += 1
-                continue
-
-            result["errors"] += 1
-
-        # Extra passes for stubborn empty folders under the target root.
-        for _ in range(2):
-            if cancel_event.is_set():
+            if not os.path.isdir(path):
                 return result
-            for root, dirs, _files in os.walk(path, topdown=False):
+
+            SafeFS._prepare_tree(path)
+
+            def on_walk_error(_error: OSError) -> None:
+                result["errors"] += 1
+
+            # Stream the tree instead of building all_files/all_dirs first.
+            # This is much faster and uses constant memory on huge cache folders.
+            for root, dirs, files in os.walk(path, topdown=False, onerror=on_walk_error, followlinks=False):
+                if cancel_event.is_set():
+                    flush_progress(True)
+                    return result
+
+                for name in files:
+                    if cancel_event.is_set():
+                        flush_progress(True)
+                        return result
+                    file_path = os.path.join(root, name)
+                    remove_single_file(file_path)
+
                 for name in dirs:
+                    if cancel_event.is_set():
+                        flush_progress(True)
+                        return result
                     dir_path = os.path.join(root, name)
-                    if not os.path.isdir(dir_path):
+                    if not os.path.exists(dir_path):
                         continue
+
+                    # Do not recurse through symlink targets.  Remove the link
+                    # itself only if Windows/native rmdir handles it.
                     SafeFS._clear_attributes(dir_path, is_dir=True)
-                    if SafeFS._remove_dir_native(dir_path):
+                    removed = SafeFS._remove_dir_native(dir_path)
+                    if not removed:
+                        removed = SafeFS._remove_dir_shell(dir_path)
+
+                    if removed:
                         result["dirs_removed"] += 1
+                        continue
 
-        remaining_files, remaining_dirs = SafeFS._count_remaining_entries(path)
-        result["remaining_files"] = remaining_files
-        result["remaining_dirs"] = remaining_dirs
+                    if SafeFS._schedule_for_delete(dir_path):
+                        result["scheduled_reboot"] += 1
+                        continue
 
-        if remaining_files or remaining_dirs:
-            result["errors"] += remaining_files + remaining_dirs
+                    result["errors"] += 1
 
-        return result
+            # One light second pass: catches folders that became empty after
+            # locked files were skipped/scheduled without doing expensive loops.
+            if not cancel_event.is_set():
+                try:
+                    for root, dirs, _files in os.walk(path, topdown=False, followlinks=False):
+                        for name in dirs:
+                            dir_path = os.path.join(root, name)
+                            if not os.path.isdir(dir_path):
+                                continue
+                            SafeFS._clear_attributes(dir_path, is_dir=True)
+                            if SafeFS._remove_dir_native(dir_path):
+                                result["dirs_removed"] += 1
+                except OSError:
+                    result["errors"] += 1
+
+            remaining_files, remaining_dirs = SafeFS._count_remaining_entries(path)
+            result["remaining_files"] = remaining_files
+            result["remaining_dirs"] = remaining_dirs
+
+            # Keep scheduled-on-reboot items visible in the separate counter but
+            # do not double-count every remaining child as a new failure.
+            if remaining_files or remaining_dirs:
+                result["errors"] += max(0, (remaining_files + remaining_dirs) - result["scheduled_reboot"])
+
+            flush_progress(True)
+            return result
+        finally:
+            flush_progress(True)
 

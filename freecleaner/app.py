@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox
 import os
 import ctypes
 import threading
+import time
 import concurrent.futures
 import subprocess
 import re
@@ -190,6 +191,8 @@ class Cleaner(ctk.CTk):
         self.cleaned_bytes = 0
         self.total_size_bytes = 0
         self.analysis_total_bytes = 0
+        self._last_progress_ui_at = 0.0
+        self._last_progress_ui_bytes = 0
         self.last_analysis: Dict[str, int] = {}
         self.dism_running = False
         self.current_profile_name = self.tr("profile_manual")
@@ -1657,6 +1660,8 @@ class Cleaner(ctk.CTk):
         self.cancel_event.clear()
         self.cleaned_bytes = 0
         self.total_size_bytes = 0
+        self._last_progress_ui_at = 0.0
+        self._last_progress_ui_bytes = 0
         self.progress.set(0)
         self.progress.start()
         self.set_running_state(True)
@@ -1675,14 +1680,29 @@ class Cleaner(ctk.CTk):
             chosen.append(task)
         return chosen
 
-    def update_progress(self, removed_bytes: int):
+    def update_progress(self, removed_bytes: int, force: bool = False):
+        """Update cleanup counters without flooding Tk with per-file redraws."""
         with self.total_lock:
             self.cleaned_bytes += max(0, removed_bytes)
+            now = time.monotonic()
+            bytes_delta = self.cleaned_bytes - self._last_progress_ui_bytes
+            should_update = (
+                force
+                or self._last_progress_ui_at <= 0
+                or bytes_delta >= 1024 * 1024
+                or (now - self._last_progress_ui_at) >= 0.12
+            )
+            if not should_update:
+                return
+
+            self._last_progress_ui_at = now
+            self._last_progress_ui_bytes = self.cleaned_bytes
             mb = self.cleaned_bytes / (1024 ** 2)
-            self.after(0, lambda: self.lbl_stats.configure(text=self.trf("freed_fmt", mb=mb), text_color=COLORS["success"]))
-            if self.total_size_bytes > 0:
-                progress = min(self.cleaned_bytes / self.total_size_bytes, 1.0)
-                self.after(0, lambda value=progress: self.progress.set(value))
+            progress = min(self.cleaned_bytes / self.total_size_bytes, 1.0) if self.total_size_bytes > 0 else 0.0
+
+        self.after(0, lambda: self.lbl_stats.configure(text=self.trf("freed_fmt", mb=mb), text_color=COLORS["success"]))
+        if self.total_size_bytes > 0:
+            self.after(0, lambda value=progress: self.progress.set(value))
 
     def analyze_directory_tasks(self, dir_tasks: List[CleanerTask]) -> Tuple[int, Dict[str, int], List[Tuple[str, int]]]:
         total = 0
@@ -1700,7 +1720,7 @@ class Cleaner(ctk.CTk):
             pending_tasks = pending_tasks[workers:]
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                future_map = {pool.submit(SafeFS.fast_size_many, self._task_paths(task)): task for task in batch}
+                future_map = {pool.submit(SafeFS.fast_size_many, self._task_paths(task), self.cancel_event): task for task in batch}
                 for future in concurrent.futures.as_completed(future_map):
                     task = future_map[future]
                     if self.cancel_event.is_set():
@@ -1773,6 +1793,7 @@ class Cleaner(ctk.CTk):
                         break
                     try:
                         result = future.result()
+                        self.update_progress(0, force=True)
                     except Exception:
                         self.log(self.trf("cleanup_target_failed_fmt", title=self.task_title(task)))
                         continue
