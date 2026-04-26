@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 import os
 import ctypes
 import threading
@@ -44,7 +44,12 @@ from .logic import (
     fetch_latest_github_release,
     download_url_to_file,
     guess_download_filename,
-    get_default_download_dir,
+    get_updates_dir,
+    get_update_download_path,
+    cleanup_old_update_files,
+    is_installable_update_file,
+    launch_update_installer,
+    schedule_update_cleanup_after_install,
     SCAN_WORKERS,
     CLEAN_WORKERS,
     get_adaptive_workers,
@@ -223,6 +228,7 @@ class Cleaner(ctk.CTk):
         self.log(self.tr("mode_admin") if self.is_admin else self.tr("mode_limited"))
         self.refresh_selection_stats()
         self.apply_language()
+        self.after(900, lambda: self.cleanup_stale_update_files(silent=True))
         self.after(1400, lambda: self.check_for_updates(silent_if_latest=True, source="startup"))
 
 
@@ -2466,28 +2472,35 @@ class Cleaner(ctk.CTk):
             text.insert("end", "\n")
         text.configure(state="disabled")
 
+    def cleanup_stale_update_files(self, *, silent: bool = True) -> None:
+        try:
+            removed = cleanup_old_update_files()
+            if removed and not silent:
+                self.log(self.trf("update_cleanup_removed", count=removed))
+        except Exception as exc:
+            if not silent:
+                self.log(str(exc))
+
+
     def download_update(self, info: UpdateInfo, *, parent=None, progress_bar=None, status_label=None, action_button=None, later_button=None, done_callback=None) -> None:
         if self._update_download_in_progress:
             self.log(self.tr("update_download_busy"))
             return
 
         parent_win = parent or getattr(self, "_update_win", None) or self
-        default_name = guess_download_filename(info.download_url or info.html_url, info.asset_name or f"FreeCleaner-{info.version_text}.exe")
-        initial_dir = get_default_download_dir()
-        try:
-            save_path = filedialog.asksaveasfilename(
-                parent=parent_win,
-                title=self.tr("update_save_dialog_title"),
-                initialdir=initial_dir,
-                initialfile=default_name,
-                defaultextension=os.path.splitext(default_name)[1] or ".exe",
-                filetypes=[("Executable", "*.exe"), ("ZIP archive", "*.zip"), (self.tr("all_files"), "*.*")],
-            )
-        except Exception:
-            save_path = ""
+        download_url = info.download_url or info.html_url
+        default_name = guess_download_filename(download_url, info.asset_name or f"FreeCleaner-{info.version_text}-setup.exe")
+        if info.asset_name:
+            default_name = info.asset_name
+        save_path = get_update_download_path(default_name, fallback=f"FreeCleaner-{info.version_text}-setup.exe")
+        update_dir = get_updates_dir(create=True)
 
-        if not save_path:
-            return
+        try:
+            removed = cleanup_old_update_files()
+            if removed:
+                self.log(self.trf("update_cleanup_removed", count=removed))
+        except Exception:
+            pass
 
         self._update_download_in_progress = True
         cancel_event = threading.Event()
@@ -2510,15 +2523,22 @@ class Cleaner(ctk.CTk):
                 pass
         if status_label is not None:
             try:
-                status_label.configure(text=self.trf("update_download_progress", progress="0% • 0 B"))
+                status_label.configure(text=self.trf("update_download_location", path=update_dir))
             except Exception:
                 pass
 
         self.log(self.trf("update_download_started", version=self._format_version_label(info.version_text)))
+        self.log(self.trf("update_download_location", path=update_dir))
         start_time = datetime.now().timestamp()
+        last_progress_at = {"value": 0.0}
 
         def progress(downloaded: int, total: Optional[int]) -> None:
-            elapsed = max(datetime.now().timestamp() - start_time, 0.001)
+            now = datetime.now().timestamp()
+            if now - last_progress_at["value"] < 0.12 and not (total and downloaded >= total):
+                return
+            last_progress_at["value"] = now
+
+            elapsed = max(now - start_time, 0.001)
             speed = downloaded / elapsed
             percent = 0.0
             progress_text = f"{self._human_size(downloaded)} • {self._human_size(speed)}/s"
@@ -2539,9 +2559,7 @@ class Cleaner(ctk.CTk):
                         pass
             self.after(0, apply)
 
-        def finish(success: bool, result: str) -> None:
-            self._update_download_in_progress = False
-            self._update_download_cancel = None
+        def set_buttons_idle() -> None:
             if action_button is not None:
                 try:
                     action_button.configure(state="normal", text=self.tr("update_download"))
@@ -2552,13 +2570,43 @@ class Cleaner(ctk.CTk):
                     later_button.configure(state="normal")
                 except Exception:
                     pass
-            if success:
-                self.log(self.trf("update_download_saved", path=result))
-                if progress_bar is not None:
+
+        def finish(success: bool, result: str) -> None:
+            self._update_download_in_progress = False
+            self._update_download_cancel = None
+
+            if not success:
+                set_buttons_idle()
+                self.log(self.trf("update_download_failed_reason", reason=result))
+                if status_label is not None:
                     try:
-                        progress_bar.set(1)
+                        status_label.configure(text=self.trf("update_download_failed_reason", reason=result))
                     except Exception:
                         pass
+                try:
+                    messagebox.showerror(self.tr("update_dialog_title"), self.trf("update_download_failed_reason", reason=result), parent=parent_win)
+                except Exception:
+                    pass
+                return
+
+            self.log(self.trf("update_download_saved", path=result))
+            if progress_bar is not None:
+                try:
+                    progress_bar.set(1)
+                except Exception:
+                    pass
+            if status_label is not None:
+                try:
+                    status_label.configure(text=self.trf("update_install_starting", path=result))
+                except Exception:
+                    pass
+
+            if not is_installable_update_file(result):
+                set_buttons_idle()
+                try:
+                    launch_update_installer(result)
+                except Exception:
+                    pass
                 if status_label is not None:
                     try:
                         status_label.configure(text=self.trf("update_download_complete", path=result))
@@ -2573,20 +2621,53 @@ class Cleaner(ctk.CTk):
                         done_callback(result)
                     except Exception:
                         pass
-            else:
-                self.log(self.trf("update_download_failed_reason", reason=result))
+                return
+
+            ok, message, installer_pid = launch_update_installer(result)
+            if not ok:
+                set_buttons_idle()
+                self.log(self.trf("update_install_failed_reason", reason=message))
                 if status_label is not None:
                     try:
-                        status_label.configure(text=self.trf("update_download_failed_reason", reason=result))
+                        status_label.configure(text=self.trf("update_install_failed_reason", reason=message))
                     except Exception:
                         pass
                 try:
-                    messagebox.showerror(self.tr("update_dialog_title"), self.trf("update_download_failed_reason", reason=result), parent=parent_win)
+                    messagebox.showerror(self.tr("update_dialog_title"), self.trf("update_install_failed_reason", reason=message), parent=parent_win)
+                except Exception:
+                    pass
+                return
+
+            cleanup_scheduled = schedule_update_cleanup_after_install(installer_pid, update_dir)
+            self.log(self.trf("update_install_started", path=result))
+            if cleanup_scheduled:
+                self.log(self.tr("update_install_cleanup_scheduled"))
+            if status_label is not None:
+                try:
+                    status_label.configure(text=self.tr("update_install_closing_app"))
+                except Exception:
+                    pass
+            if action_button is not None:
+                try:
+                    action_button.configure(state="disabled", text=self.tr("update_install_started_button"))
                 except Exception:
                     pass
 
+            if callable(done_callback):
+                try:
+                    done_callback(result)
+                except Exception:
+                    pass
+
+            try:
+                if parent_win is not self and getattr(parent_win, "winfo_exists", lambda: False)():
+                    parent_win.grab_release()
+            except Exception:
+                pass
+            self.after(1800, self.destroy)
+
         def worker() -> None:
-            ok, result = download_url_to_file(info.download_url or info.html_url, save_path, progress_cb=progress, cancel_event=cancel_event)
+            ok, result = download_url_to_file(download_url, save_path, progress_cb=progress, cancel_event=cancel_event)
             self.after(0, lambda: finish(ok, result))
 
         threading.Thread(target=worker, daemon=True).start()

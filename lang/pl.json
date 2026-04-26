@@ -226,5 +226,18 @@
   "task.browser_generic.desc": "Rzeczywiste foldery pamięci podręcznej tego profilu przeglądarki.",
   "task.app_cache.title": "Pamięć podręczna {app}",
   "task.app_cache.desc": "Bezpieczna pamięć podręczna {app}, która zostanie odtworzona automatycznie.",
-  "adaptive_threads_fmt": "Adaptacyjna kontrola obciążenia: {status}"
+  "adaptive_threads_fmt": "Adaptacyjna kontrola obciążenia: {status}",
+  "update_download": "Pobierz i zainstaluj",
+  "update_opened_download": "Aktualizacja {version} jest pobierana do lokalnego folderu updates.",
+  "update_download_idle": "Instalator zostanie zapisany w folderze updates w katalogu instalacji FreeCleaner i uruchomiony automatycznie po pobraniu.",
+  "update_download_complete": "Aktualizacja pobrana:\n{path}",
+  "update_download_saved": "Aktualizacja zapisana w: {path}",
+  "update_download_location": "Folder aktualizacji: {path}",
+  "update_install_starting": "Pobieranie zakończone. Uruchamianie instalatora:\n{path}",
+  "update_install_started": "Instalator aktualizacji uruchomiony: {path}",
+  "update_install_failed_reason": "Nie udało się uruchomić instalatora aktualizacji: {reason}",
+  "update_install_cleanup_scheduled": "Stare pliki aktualizacji zostaną usunięte z folderu updates po instalacji.",
+  "update_install_closing_app": "Instalator uruchomiony. FreeCleaner zostanie zamknięty, aby zainstalować aktualizację.",
+  "update_install_started_button": "Instalator uruchomiony",
+  "update_cleanup_removed": "Usunięto stare pliki aktualizacji: {count}"
 }

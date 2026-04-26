@@ -226,5 +226,18 @@
   "task.browser_generic.desc": "Carpetas reales de caché de este perfil del navegador.",
   "task.app_cache.title": "Caché de {app}",
   "task.app_cache.desc": "Caché seguro de {app} que se reconstruye automáticamente.",
-  "adaptive_threads_fmt": "Control de carga adaptativo: {status}"
+  "adaptive_threads_fmt": "Control de carga adaptativo: {status}",
+  "update_download": "Descargar e instalar",
+  "update_opened_download": "La actualización para {version} se está descargando en la carpeta local updates.",
+  "update_download_idle": "El instalador se guardará en la carpeta updates dentro de la instalación de FreeCleaner y se iniciará automáticamente al terminar.",
+  "update_download_complete": "Actualización descargada:\n{path}",
+  "update_download_saved": "Actualización guardada en: {path}",
+  "update_download_location": "Carpeta de actualizaciones: {path}",
+  "update_install_starting": "Descarga completada. Iniciando instalador:\n{path}",
+  "update_install_started": "Instalador de actualización iniciado: {path}",
+  "update_install_failed_reason": "No se pudo iniciar el instalador de actualización: {reason}",
+  "update_install_cleanup_scheduled": "Los archivos antiguos de actualización se eliminarán de la carpeta updates después de la instalación.",
+  "update_install_closing_app": "Instalador iniciado. FreeCleaner se cerrará para permitir la instalación.",
+  "update_install_started_button": "Instalador iniciado",
+  "update_cleanup_removed": "Archivos antiguos de actualización eliminados: {count}"
 }

@@ -226,5 +226,18 @@
   "task.browser_generic.desc": "Echte Cache-Ordner dieses Browserprofils.",
   "task.app_cache.title": "{app}-Cache",
   "task.app_cache.desc": "Sicherer {app}-Cache, der automatisch neu erstellt wird.",
-  "adaptive_threads_fmt": "Adaptive Laststeuerung: {status}"
+  "adaptive_threads_fmt": "Adaptive Laststeuerung: {status}",
+  "update_download": "Herunterladen und installieren",
+  "update_opened_download": "Das Update für {version} wird in den lokalen updates-Ordner geladen.",
+  "update_download_idle": "Der Installer wird im updates-Ordner im FreeCleaner-Installationsverzeichnis gespeichert und danach automatisch gestartet.",
+  "update_download_complete": "Update heruntergeladen:\n{path}",
+  "update_download_saved": "Update gespeichert unter: {path}",
+  "update_download_location": "Update-Ordner: {path}",
+  "update_install_starting": "Download abgeschlossen. Installer wird gestartet:\n{path}",
+  "update_install_started": "Update-Installer gestartet: {path}",
+  "update_install_failed_reason": "Update-Installer konnte nicht gestartet werden: {reason}",
+  "update_install_cleanup_scheduled": "Alte Update-Dateien werden nach der Installation aus dem updates-Ordner entfernt.",
+  "update_install_closing_app": "Installer gestartet. FreeCleaner wird geschlossen, damit das Update installiert werden kann.",
+  "update_install_started_button": "Installer gestartet",
+  "update_cleanup_removed": "Alte Update-Dateien entfernt: {count}"
 }

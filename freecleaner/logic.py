@@ -39,6 +39,7 @@ VERSION_INFO_FILENAME = "version_info.txt"
 LANG_DIRNAME = "lang"
 ICONS_DIRNAME = os.path.join("assets", "icons")
 REGISTRY_BACKUP_DIRNAME = "registry_backups"
+UPDATES_DIRNAME = "updates"
 GITHUB_API_BASE = "https://api.github.com"
 
 
@@ -565,6 +566,218 @@ def get_default_download_dir() -> str:
     if os.path.isdir(downloads):
         return downloads
     return get_runtime_base_dir()
+
+
+def get_updates_dir(create: bool = True) -> str:
+    """Return the update cache directory in the installation/runtime root."""
+    base_dir = os.path.abspath(get_runtime_base_dir())
+    updates_dir = os.path.abspath(os.path.join(base_dir, UPDATES_DIRNAME))
+
+    try:
+        if os.path.commonpath([base_dir, updates_dir]) != base_dir:
+            updates_dir = os.path.abspath(os.path.join(base_dir, "updates"))
+    except Exception:
+        updates_dir = os.path.abspath(os.path.join(base_dir, "updates"))
+
+    if create:
+        os.makedirs(updates_dir, exist_ok=True)
+    return updates_dir
+
+
+def _safe_update_filename(filename: str, fallback: str = "FreeCleaner-update.exe") -> str:
+    name = os.path.basename((filename or "").strip()) or fallback
+    name = urllib.parse.unquote(name)
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .")
+    if not name:
+        name = fallback
+    return name[:180]
+
+
+def get_update_download_path(filename: str, fallback: str = "FreeCleaner-update.exe") -> str:
+    """Build a safe update destination path inside ./updates."""
+    name = _safe_update_filename(filename, fallback=fallback)
+    return os.path.join(get_updates_dir(create=True), name)
+
+
+def cleanup_old_update_files(keep_paths: Optional[Set[str]] = None) -> int:
+    """Delete stale files from ./updates and return the number of removed entries.
+
+    The function is intentionally limited to the runtime ./updates directory.
+    It never follows symlinks and never touches parent directories.
+    """
+    updates_dir = get_updates_dir(create=True)
+    root = os.path.abspath(updates_dir)
+    keep = {os.path.abspath(p) for p in (keep_paths or set()) if p}
+    removed = 0
+
+    if not os.path.isdir(root):
+        return 0
+
+    for name in list(os.listdir(root)):
+        path = os.path.abspath(os.path.join(root, name))
+        try:
+            if os.path.commonpath([root, path]) != root:
+                continue
+        except Exception:
+            continue
+        if path in keep:
+            continue
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                os.remove(path)
+            removed += 1
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+    return removed
+
+
+def is_installable_update_file(path: str) -> bool:
+    ext = os.path.splitext(path or "")[1].lower()
+    return IS_WINDOWS and ext in {".exe", ".msi"}
+
+
+def _powershell_literal(value: str) -> str:
+    return "'" + (value or "").replace("'", "''") + "'"
+
+
+def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str = "open") -> Tuple[bool, str, Optional[int]]:
+    if not IS_WINDOWS:
+        return False, "ShellExecute is available only on Windows.", None
+
+    try:
+        SEE_MASK_NOCLOSEPROCESS = 0x00000040
+        SW_SHOWNORMAL = 1
+
+        class SHELLEXECUTEINFOW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", ctypes.wintypes.DWORD),
+                ("fMask", ctypes.c_ulong),
+                ("hwnd", ctypes.wintypes.HWND),
+                ("lpVerb", ctypes.wintypes.LPCWSTR),
+                ("lpFile", ctypes.wintypes.LPCWSTR),
+                ("lpParameters", ctypes.wintypes.LPCWSTR),
+                ("lpDirectory", ctypes.wintypes.LPCWSTR),
+                ("nShow", ctypes.c_int),
+                ("hInstApp", ctypes.wintypes.HINSTANCE),
+                ("lpIDList", ctypes.c_void_p),
+                ("lpClass", ctypes.wintypes.LPCWSTR),
+                ("hkeyClass", ctypes.wintypes.HKEY),
+                ("dwHotKey", ctypes.wintypes.DWORD),
+                ("hIcon", ctypes.wintypes.HANDLE),
+                ("hProcess", ctypes.wintypes.HANDLE),
+            ]
+
+        sei = SHELLEXECUTEINFOW()
+        sei.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS
+        sei.hwnd = None
+        sei.lpVerb = verb
+        sei.lpFile = file_path
+        sei.lpParameters = parameters or None
+        sei.lpDirectory = os.path.dirname(file_path) or None
+        sei.nShow = SW_SHOWNORMAL
+
+        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)):
+            err = ctypes.get_last_error()
+            return False, f"ShellExecuteEx failed ({err}).", None
+
+        pid: Optional[int] = None
+        handle = sei.hProcess
+        if handle:
+            try:
+                pid_value = ctypes.windll.kernel32.GetProcessId(handle)
+                pid = int(pid_value) if pid_value else None
+            except Exception:
+                pid = None
+            try:
+                ctypes.windll.kernel32.CloseHandle(handle)
+            except Exception:
+                pass
+        return True, "Installer started.", pid
+    except Exception as exc:
+        return False, str(exc) or "Failed to start installer.", None
+
+
+def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[int]]:
+    """Launch a downloaded update installer and return (ok, message, pid)."""
+    path = os.path.abspath(installer_path or "")
+    if not path or not os.path.isfile(path):
+        return False, "Update file was not found.", None
+
+    ext = os.path.splitext(path)[1].lower()
+    if not IS_WINDOWS:
+        try:
+            webbrowser.open(path)
+            return True, "Update file opened.", None
+        except Exception as exc:
+            return False, str(exc) or "Could not open update file.", None
+
+    try:
+        if ext == ".msi":
+            proc = subprocess.Popen(["msiexec.exe", "/i", path], cwd=os.path.dirname(path) or None)
+            return True, "MSI installer started.", int(proc.pid)
+        if ext == ".exe":
+            ok, message, pid = _shell_execute_with_process(path)
+            if ok:
+                return ok, message, pid
+            ok, message, pid = _shell_execute_with_process(path, verb="runas")
+            if ok:
+                return ok, message, pid
+            proc = subprocess.Popen([path], cwd=os.path.dirname(path) or None)
+            return True, "Installer started.", int(proc.pid)
+        os.startfile(path)  # type: ignore[attr-defined]
+        return True, "Update file opened.", None
+    except Exception as exc:
+        return False, str(exc) or "Could not start update installer.", None
+
+
+def schedule_update_cleanup_after_install(installer_pid: Optional[int], updates_dir: Optional[str] = None) -> bool:
+    """Start a detached PowerShell cleanup task that removes ./updates after installer exit."""
+    if not IS_WINDOWS:
+        return False
+
+    root = os.path.abspath(updates_dir or get_updates_dir(create=True))
+    if not os.path.isdir(root):
+        return False
+
+    pid = int(installer_pid or 0)
+    if pid > 0:
+        wait_block = f"try {{ Wait-Process -Id {pid} -Timeout 7200 -ErrorAction SilentlyContinue }} catch {{ }};"
+    else:
+        wait_block = "Start-Sleep -Seconds 120;"
+
+    script = (
+        "$ErrorActionPreference='SilentlyContinue';"
+        + wait_block
+        + "Start-Sleep -Seconds 5;"
+        + "$dir=" + _powershell_literal(root) + ";"
+        + "if (Test-Path -LiteralPath $dir) {"
+        + "Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue | ForEach-Object {"
+        + "$p=$_.FullName;"
+        + "for ($i=0; $i -lt 20; $i++) {"
+        + "try { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop; break }"
+        + "catch { Start-Sleep -Seconds 3 }"
+        + "}"
+        + "}"
+        + "}"
+    )
+
+    try:
+        creationflags = 0x08000000  # CREATE_NO_WINDOW
+        subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
+        return True
+    except Exception:
+        return False
 
 
 def guess_download_filename(url: str, fallback: str = "download.bin") -> str:
