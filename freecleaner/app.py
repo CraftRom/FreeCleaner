@@ -36,6 +36,7 @@ from .logic import (
     APP_VERSION_RAW,
     CONFIG_PATH,
     CleanerTask,
+    RegistryValueSpec,
     PathFinder,
     WindowsOps,
     SafeFS,
@@ -624,7 +625,70 @@ class Cleaner(ctk.CTk):
         return self.trf(task.title_key, **(task.fmt or {}))
 
     def task_desc(self, task: CleanerTask) -> str:
-        return self.trf(task.desc_key, **(task.fmt or {}))
+        desc = self.trf(task.desc_key, **(task.fmt or {}))
+        status = self.registry_status_block(task)
+        return f"{desc}\n\n{status}" if status else desc
+
+    def registry_status_block(self, task: CleanerTask) -> str:
+        specs = task.registry_values or []
+        if not specs:
+            return ""
+        lines = [self.tr("registry_status_header")]
+        for item in WindowsOps.registry_statuses(specs):
+            status = str(item.get("status") or "error")
+            matches = bool(item.get("matches"))
+            requires_admin = bool(item.get("requires_admin"))
+            if matches:
+                marker = "✓"
+                label_key = "registry_status_done"
+            elif requires_admin and not self.is_admin:
+                marker = "⚠"
+                label_key = "registry_status_admin_only"
+            elif status == "missing":
+                marker = "•"
+                label_key = "registry_status_missing"
+            elif status == "different":
+                marker = "•"
+                label_key = "registry_status_change_needed"
+            elif status == "access_denied":
+                marker = "⚠"
+                label_key = "registry_status_access_denied"
+            elif status == "unavailable":
+                marker = "⚠"
+                label_key = "registry_status_unavailable"
+            else:
+                marker = "⚠"
+                label_key = "registry_status_error"
+            lines.append(self.trf(
+                "registry_status_line_fmt",
+                marker=marker,
+                label=str(item.get("label") or item.get("name") or "registry"),
+                current=str(item.get("current_display") or "missing"),
+                desired=str(item.get("desired_display") or ""),
+                status=self.tr(label_key),
+            ))
+        return "\n".join(lines)
+
+    def refresh_registry_status_descriptions(self) -> None:
+        for attr in ("card_opt", "card_opt_adv"):
+            card = getattr(self, attr, None)
+            if card is not None:
+                try:
+                    card.refresh_rows_language()
+                except Exception:
+                    pass
+
+    def refresh_registry_statuses(self) -> None:
+        self.refresh_registry_status_descriptions()
+        self.log(self.tr("registry_status_refresh_ok"))
+
+    @staticmethod
+    def registry_keys_for_specs(specs: Sequence[RegistryValueSpec]) -> List[str]:
+        keys: List[str] = []
+        for spec in specs or []:
+            if spec.key_path and spec.key_path not in keys:
+                keys.append(spec.key_path)
+        return keys
 
     def category_label(self, key: str) -> str:
         return self.tr(f"category_{key}")
@@ -871,6 +935,7 @@ class Cleaner(ctk.CTk):
         ok = WindowsOps.restore_registry_backup_dir(target)
         self.log(self.trf("registry_restore_ok", name=os.path.basename(target)) if ok else self.trf("registry_restore_fail", name=os.path.basename(target)))
         self.after(0, self.refresh_restore_backup_button)
+        self.after(0, self.refresh_registry_status_descriptions)
         return ok
 
     def _format_backup_time(self, path: str) -> str:
@@ -1377,21 +1442,48 @@ class Cleaner(ctk.CTk):
 
     def register_optimizer_tasks(self):
         state = "normal" if self.is_admin else "disabled"
+        game_mode_values = [
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1, label="HKCU GameBar\\AllowAutoGameMode"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1, label="HKCU GameBar\\AutoGameModeEnabled"),
+        ]
         self.add_task(self.card_opt, CleanerTask(
             key="enable_game_mode", title_key="task.enable_game_mode.title", desc_key="task.enable_game_mode.desc",
             kind="command", category="optimizer", default=False, command=self.enable_game_mode,
-            registry_keys=[r"HKCU\Software\Microsoft\GameBar"],
+            registry_keys=self.registry_keys_for_specs(game_mode_values),
+            registry_values=game_mode_values,
         ))
+        game_dvr_values = [
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0, label="HKCU GameConfigStore\\GameDVR_Enabled"),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2, label="HKCU GameConfigStore\\GameDVR_FSEBehaviorMode"),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode", 0, label="HKCU GameConfigStore\\GameDVR_HonorUserFSEBehaviorMode"),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehavior", 0, label="HKCU GameConfigStore\\GameDVR_FSEBehavior"),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_DXGIHonorFSEWindowsCompatible", 0, label="HKCU GameConfigStore\\GameDVR_DXGIHonorFSEWindowsCompatible"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0, label="HKCU GameDVR\\AppCaptureEnabled"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "HistoricalCaptureEnabled", 0, label="HKCU GameDVR\\HistoricalCaptureEnabled"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AudioCaptureEnabled", 0, label="HKCU GameDVR\\AudioCaptureEnabled"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", 0, label="HKCU GameBar\\UseNexusForGameBarEnabled"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel", 0, label="HKCU GameBar\\ShowStartupPanel"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1, label="HKCU GameBar\\AllowAutoGameMode"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1, label="HKCU GameBar\\AutoGameModeEnabled"),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 0, label="HKLM Policy GameDVR\\AllowGameDVR", requires_admin=True),
+        ]
         self.add_task(self.card_opt, CleanerTask(
             key="disable_gamedvr", title_key="task.disable_gamedvr.title", desc_key="task.disable_gamedvr.desc",
             kind="command", category="optimizer", default=False, command=self.disable_game_dvr,
-            registry_keys=[
-                r"HKCU\System\GameConfigStore",
-                r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR",
-                r"HKCU\Software\Microsoft\GameBar",
-                r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR",
-            ],
+            registry_keys=self.registry_keys_for_specs(game_dvr_values),
+            registry_values=game_dvr_values,
             reboot_required=True,
+        ))
+        mouse_values = [
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseSpeed", "0", "REG_SZ", label="HKCU Mouse\\MouseSpeed"),
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseThreshold1", "0", "REG_SZ", label="HKCU Mouse\\MouseThreshold1"),
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseThreshold2", "0", "REG_SZ", label="HKCU Mouse\\MouseThreshold2"),
+        ]
+        self.add_task(self.card_opt, CleanerTask(
+            key="disable_mouse_acceleration", title_key="task.disable_mouse_acceleration.title", desc_key="task.disable_mouse_acceleration.desc",
+            kind="command", category="optimizer", default=False, command=self.disable_mouse_acceleration,
+            registry_keys=self.registry_keys_for_specs(mouse_values),
+            registry_values=mouse_values,
         ))
         self.add_task(self.card_opt, CleanerTask(
             key="high_perf_plan", title_key="task.high_perf_plan.title", desc_key="task.high_perf_plan.desc",
@@ -1406,39 +1498,60 @@ class Cleaner(ctk.CTk):
 
     def register_optimizer_registry_tasks(self):
         state = "normal" if self.is_admin else "disabled"
+        hags_values = [
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1, label="HKLM GraphicsDrivers\\HwSchMode", requires_admin=True),
+        ]
         self.add_task(self.card_opt_adv, CleanerTask(
             key="disable_hags", title_key="task.disable_hags.title", desc_key="task.disable_hags.desc",
             kind="command", category="optimizer", default=False, state=state if WindowsOps.supports_hags() else "disabled", requires_admin=True,
             command=self.disable_hags,
-            registry_keys=[r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"],
+            registry_keys=self.registry_keys_for_specs(hags_values),
+            registry_values=hags_values,
             reboot_required=True,
         ))
+        power_throttling_values = [
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 1, label="HKLM PowerThrottling\\PowerThrottlingOff", requires_admin=True),
+        ]
         self.add_task(self.card_opt_adv, CleanerTask(
             key="disable_power_throttling", title_key="task.disable_power_throttling.title", desc_key="task.disable_power_throttling.desc",
             kind="command", category="optimizer", default=False, state=state if WindowsOps.supports_power_throttling() else "disabled", requires_admin=True,
             command=self.disable_power_throttling,
-            registry_keys=[r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling"],
+            registry_keys=self.registry_keys_for_specs(power_throttling_values),
+            registry_values=power_throttling_values,
             reboot_required=True,
         ))
+        network_values = [
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "NetworkThrottlingIndex", "0xffffffff", label="HKLM SystemProfile\\NetworkThrottlingIndex", requires_admin=True),
+        ]
         self.add_task(self.card_opt_adv, CleanerTask(
             key="network_throttling_off", title_key="task.network_throttling_off.title", desc_key="task.network_throttling_off.desc",
             kind="command", category="optimizer", default=False, state=state, requires_admin=True,
             command=self.disable_network_throttling,
-            registry_keys=[r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"],
+            registry_keys=self.registry_keys_for_specs(network_values),
+            registry_values=network_values,
             reboot_required=True,
         ))
+        mmcss_values = [
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", 0, label="HKLM SystemProfile\\SystemResponsiveness", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "GPU Priority", 8, label="HKLM Tasks\\Games\\GPU Priority", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Priority", 6, label="HKLM Tasks\\Games\\Priority", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Scheduling Category", "High", "REG_SZ", label="HKLM Tasks\\Games\\Scheduling Category", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "SFIO Priority", "High", "REG_SZ", label="HKLM Tasks\\Games\\SFIO Priority", requires_admin=True),
+        ]
         self.add_task(self.card_opt_adv, CleanerTask(
             key="mmcss_gaming_profile", title_key="task.mmcss_gaming_profile.title", desc_key="task.mmcss_gaming_profile.desc",
             kind="command", category="optimizer", default=False, state=state, requires_admin=True,
             command=self.apply_mmcss_gaming_profile,
-            registry_keys=[
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-            ],
+            registry_keys=self.registry_keys_for_specs(mmcss_values),
+            registry_values=mmcss_values,
             reboot_required=True,
         ))
 
     def register_optimizer_helper_tasks(self):
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="refresh_registry_statuses", title_key="task.refresh_registry_statuses.title", desc_key="task.refresh_registry_statuses.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.refresh_registry_statuses,
+        ))
         self.add_task(self.card_opt_tools, CleanerTask(
             key="open_game_mode_settings", title_key="task.open_game_mode_settings.title", desc_key="task.open_game_mode_settings.desc",
             kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:gaming-gamemode", "game_mode_page_ok", "game_mode_page_fail"),
@@ -1605,7 +1718,7 @@ class Cleaner(ctk.CTk):
 
     def _is_gaming_cleanup_task(self, task: CleanerTask) -> bool:
         if task.kind == "command":
-            return task.key in {"dns_flush", "enable_game_mode", "disable_gamedvr", "disable_notifications"}
+            return task.key in {"dns_flush", "enable_game_mode", "disable_gamedvr", "disable_mouse_acceleration", "disable_notifications"}
         if task.kind != "directory":
             return False
         if task.category in {"browsers", "gamer"}:
@@ -1717,6 +1830,17 @@ class Cleaner(ctk.CTk):
     def run_logged_command(self, cmd: str, success_key: str, fail_key: str, timeout: int = 180):
         ok = WindowsOps.run_command(cmd, timeout=timeout)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
+
+    def apply_registry_task_values(self, task_key: str, success_key: str, fail_key: str) -> bool:
+        task = self.tasks.get(task_key)
+        specs = list(task.registry_values or []) if task else []
+        runnable = [spec for spec in specs if not spec.requires_admin or self.is_admin]
+        results = WindowsOps.apply_registry_values(runnable)
+        ok = bool(results) and all(results)
+        self.log(self.tr(success_key) if ok else self.tr(fail_key))
+        self.refresh_registry_status_descriptions()
+        return ok
+
     def open_settings_uri(self, uri: str, success_key: str, fail_key: str):
         ok = False
         if IS_WINDOWS and WindowsOps.supports_ms_settings():
@@ -1737,82 +1861,31 @@ class Cleaner(ctk.CTk):
 
 
     def disable_game_dvr(self):
-        results = [
-            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0),
-            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2),
-            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode", 0),
-            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehavior", 0),
-            WindowsOps.reg_add(r"HKCU\System\GameConfigStore", "GameDVR_DXGIHonorFSEWindowsCompatible", 0),
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0),
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", 0),
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel", 0),
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1),
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1),
-        ]
-        if self.is_admin:
-            results.append(WindowsOps.reg_add(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 0))
-        self.log(self.tr("game_dvr_ok") if all(results) else self.tr("game_dvr_fail"))
+        self.apply_registry_task_values("disable_gamedvr", "game_dvr_ok", "game_dvr_fail")
 
     def enable_game_mode(self):
-        results = [
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1),
-            WindowsOps.reg_add(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1),
-        ]
-        self.log(self.tr("game_mode_ok") if all(results) else self.tr("game_mode_fail"))
+        self.apply_registry_task_values("enable_game_mode", "game_mode_ok", "game_mode_fail")
+
+    def disable_mouse_acceleration(self):
+        self.apply_registry_task_values("disable_mouse_acceleration", "mouse_acceleration_ok", "mouse_acceleration_fail")
 
     def disable_hags(self):
         if not WindowsOps.supports_hags():
             self.log(self.tr("hags_off_fail"))
             return
-        ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1)
-        self.log(self.tr("hags_off_ok") if ok else self.tr("hags_off_fail"))
+        self.apply_registry_task_values("disable_hags", "hags_off_ok", "hags_off_fail")
 
     def disable_power_throttling(self):
         if not WindowsOps.supports_power_throttling():
             self.log(self.tr("power_throttling_fail"))
             return
-        ok = WindowsOps.reg_add(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 1)
-        self.log(self.tr("power_throttling_ok") if ok else self.tr("power_throttling_fail"))
+        self.apply_registry_task_values("disable_power_throttling", "power_throttling_ok", "power_throttling_fail")
 
     def disable_network_throttling(self):
-        ok = WindowsOps.reg_add(
-            r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-            "NetworkThrottlingIndex",
-            "0xffffffff",
-        )
-        self.log(self.tr("network_throttling_ok") if ok else self.tr("network_throttling_fail"))
+        self.apply_registry_task_values("network_throttling_off", "network_throttling_ok", "network_throttling_fail")
 
     def apply_mmcss_gaming_profile(self):
-        results = [
-            WindowsOps.reg_add(
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-                "SystemResponsiveness",
-                0,
-            ),
-            WindowsOps.reg_add(
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-                "GPU Priority",
-                8,
-            ),
-            WindowsOps.reg_add(
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-                "Priority",
-                6,
-            ),
-            WindowsOps.reg_add(
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-                "Scheduling Category",
-                "High",
-                reg_type="REG_SZ",
-            ),
-            WindowsOps.reg_add(
-                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-                "SFIO Priority",
-                "High",
-                reg_type="REG_SZ",
-            ),
-        ]
-        self.log(self.tr("mmcss_profile_ok") if all(results) else self.tr("mmcss_profile_fail"))
+        self.apply_registry_task_values("mmcss_gaming_profile", "mmcss_profile_ok", "mmcss_profile_fail")
 
     def enable_ultimate_performance(self):
         if not WindowsOps.supports_ultimate_performance():

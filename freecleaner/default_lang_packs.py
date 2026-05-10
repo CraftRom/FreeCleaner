@@ -35,7 +35,8 @@ DEFAULT_LANG_PACKS = {'en': {'app_title': '{brand} {version}',
         'sec_gamer_title': 'Game cleanup',
         'sec_gamer_sub': 'Shader caches, launcher leftovers and light gaming-related cleanup.',
         'sec_optimizer_title': 'Windows gaming optimizer',
-        'sec_optimizer_sub': 'Core gaming tweaks: Game Mode, Xbox overlay, power plans and fewer interruptions.',
+        'sec_optimizer_sub': 'Core gaming tweaks: Game Mode, Xbox capture, mouse acceleration and power plans without '
+                             'the usual snake oil.',
         'sec_ult_title': 'Extreme maintenance',
         'sec_ult_sub': 'Only if you really know what you are doing.',
         'freed_zero': 'Freed: 0.00 MB',
@@ -201,8 +202,9 @@ DEFAULT_LANG_PACKS = {'en': {'app_title': '{brand} {version}',
         'task.enable_game_mode.title': 'Enable Windows Game Mode',
         'task.enable_game_mode.desc': 'Enables Windows Game Mode to reduce background interference while gaming.',
         'task.disable_gamedvr.title': 'Disable Xbox Game Bar & DVR',
-        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay and Game DVR background capture to reduce '
-                                     'overhead while playing.',
+        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and '
+                                     'related fullscreen compatibility flags to reduce recording overhead while '
+                                     'playing.',
         'task.high_perf_plan.title': 'High Performance Power Plan',
         'task.high_perf_plan.desc': 'Switches to High Performance. Best for plugged-in PCs.',
         'task.ultimate_perf_plan.title': 'Ultimate Performance',
@@ -304,4 +306,24 @@ DEFAULT_LANG_PACKS = {'en': {'app_title': '{brand} {version}',
         'task.steam_shadercache.title': 'Steam Shader Cache',
         'task.steam_shadercache.desc': 'Steam shader cache. Games may rebuild shaders after cleanup.',
         'task.launcher_cache.title': '{app} Launcher Cache',
-        'task.launcher_cache.desc': 'Game launcher cache for {app}. It can be rebuilt automatically.'}}
+        'task.launcher_cache.desc': 'Game launcher cache for {app}. It can be rebuilt automatically.',
+        'registry_status_header': 'Registry status:',
+        'registry_status_line_fmt': '{marker} {label}: current {current} → target {desired} — {status}',
+        'registry_status_done': 'already applied',
+        'registry_status_change_needed': 'will change',
+        'registry_status_missing': 'missing',
+        'registry_status_access_denied': 'access denied',
+        'registry_status_unavailable': 'not available on this OS',
+        'registry_status_admin_only': 'admin rights needed',
+        'registry_status_error': 'read error',
+        'registry_status_refresh_ok': 'Registry statuses refreshed.',
+        'task.refresh_registry_statuses.title': 'Refresh registry statuses',
+        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target '
+                                               'status lines without applying changes.',
+        'task.disable_mouse_acceleration.title': 'Disable mouse acceleration',
+        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable '
+                                                'mouse input in games. A sign-out or app restart may be needed.',
+        'mouse_acceleration_ok': 'Mouse acceleration disabled.',
+        'mouse_acceleration_fail': 'Failed to disable mouse acceleration.',
+        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row now shows current value → target '
+                                      'value, and FreeCleaner creates a backup before applying changes.'}}

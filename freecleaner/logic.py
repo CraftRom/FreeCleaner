@@ -1058,6 +1058,16 @@ def language_display_name(code: str) -> str:
 
 
 @dataclass
+class RegistryValueSpec:
+    key_path: str
+    name: str
+    desired: Union[int, str]
+    reg_type: str = "REG_DWORD"
+    label: str = ""
+    requires_admin: bool = False
+
+
+@dataclass
 class CleanerTask:
     key: str
     title_key: str
@@ -1074,6 +1084,7 @@ class CleanerTask:
     paths: Optional[List[str]] = None
     instant_action: bool = False
     registry_keys: Optional[List[str]] = None
+    registry_values: Optional[List[RegistryValueSpec]] = None
     reboot_required: bool = False
 
 
@@ -1452,6 +1463,123 @@ class WindowsOps:
             return bool(ctypes.windll.kernel32.MoveFileExW(str(normalized), None, MOVEFILE_DELAY_UNTIL_REBOOT))
         except Exception:
             return False
+
+    @staticmethod
+    def _split_registry_path(path: str) -> Optional[Tuple[Any, str, str]]:
+        if not IS_WINDOWS or winreg is None:
+            return None
+        clean = (path or "").strip().replace("/", "\\")
+        if not clean or "\\" not in clean:
+            return None
+        hive_name, subkey = clean.split("\\", 1)
+        hive_name = hive_name.upper()
+        hives = {
+            "HKCU": winreg.HKEY_CURRENT_USER,
+            "HKEY_CURRENT_USER": winreg.HKEY_CURRENT_USER,
+            "HKLM": winreg.HKEY_LOCAL_MACHINE,
+            "HKEY_LOCAL_MACHINE": winreg.HKEY_LOCAL_MACHINE,
+        }
+        hive = hives.get(hive_name)
+        if hive is None:
+            return None
+        short = "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
+        return hive, subkey, short
+
+    @staticmethod
+    def _registry_access_flags(access: int, key_path: str) -> int:
+        flags = access
+        # Most optimizer keys live in the native 64-bit registry view.  A 32-bit
+        # frozen build on 64-bit Windows would otherwise read/write WOW6432Node
+        # for HKLM\SOFTWARE values and report misleading statuses.
+        try:
+            if IS_64BIT_WINDOWS and key_path.upper().startswith("HKLM\\SOFTWARE\\"):
+                flags |= winreg.KEY_WOW64_64KEY  # type: ignore[union-attr]
+        except Exception:
+            pass
+        return flags
+
+    @staticmethod
+    def _normalize_registry_value(value: Any, reg_type: str) -> Any:
+        value_type = (reg_type or "REG_DWORD").upper()
+        if value_type == "REG_DWORD":
+            if isinstance(value, int):
+                return int(value) & 0xFFFFFFFF
+            text = str(value).strip()
+            if not text:
+                return None
+            try:
+                return int(text, 16) & 0xFFFFFFFF if text.lower().startswith("0x") else int(text) & 0xFFFFFFFF
+            except Exception:
+                return text.lower()
+        if value_type == "REG_SZ":
+            return str(value).strip().lower()
+        return str(value).strip().lower()
+
+    @staticmethod
+    def format_registry_value(value: Any, reg_type: str) -> str:
+        value_type = (reg_type or "REG_DWORD").upper()
+        if value is None:
+            return "missing"
+        if value_type == "REG_DWORD":
+            normalized = WindowsOps._normalize_registry_value(value, reg_type)
+            if isinstance(normalized, int):
+                return f"0x{normalized:08x} ({normalized})" if normalized > 9 else str(normalized)
+        return str(value)
+
+    @staticmethod
+    def registry_value_status(spec: RegistryValueSpec) -> Dict[str, Any]:
+        desired_display = WindowsOps.format_registry_value(spec.desired, spec.reg_type)
+        result: Dict[str, Any] = {
+            "label": spec.label or f"{spec.key_path}\\{spec.name}",
+            "path": spec.key_path,
+            "name": spec.name,
+            "reg_type": spec.reg_type,
+            "desired": spec.desired,
+            "desired_display": desired_display,
+            "current": None,
+            "current_display": "missing",
+            "matches": False,
+            "status": "unavailable",
+            "requires_admin": bool(spec.requires_admin),
+        }
+        parsed = WindowsOps._split_registry_path(spec.key_path)
+        if not parsed:
+            return result
+        hive, subkey, _short = parsed
+        try:
+            flags = WindowsOps._registry_access_flags(winreg.KEY_READ, spec.key_path)  # type: ignore[union-attr]
+            with winreg.OpenKey(hive, subkey, 0, flags) as key:  # type: ignore[union-attr]
+                value, _actual_type = winreg.QueryValueEx(key, spec.name)  # type: ignore[union-attr]
+            current_norm = WindowsOps._normalize_registry_value(value, spec.reg_type)
+            desired_norm = WindowsOps._normalize_registry_value(spec.desired, spec.reg_type)
+            result.update({
+                "current": value,
+                "current_display": WindowsOps.format_registry_value(value, spec.reg_type),
+                "matches": current_norm == desired_norm,
+                "status": "ok" if current_norm == desired_norm else "different",
+            })
+        except FileNotFoundError:
+            result["status"] = "missing"
+        except PermissionError:
+            result["status"] = "access_denied"
+        except OSError:
+            result["status"] = "missing"
+        except Exception:
+            result["status"] = "error"
+        return result
+
+    @staticmethod
+    def registry_statuses(specs: List[RegistryValueSpec]) -> List[Dict[str, Any]]:
+        return [WindowsOps.registry_value_status(spec) for spec in specs or []]
+
+    @staticmethod
+    def apply_registry_values(specs: List[RegistryValueSpec]) -> List[bool]:
+        results: List[bool] = []
+        for spec in specs or []:
+            if spec.requires_admin and not WindowsOps.is_admin():
+                continue
+            results.append(WindowsOps.reg_add(spec.key_path, spec.name, spec.desired, spec.reg_type))
+        return results
 
     @staticmethod
     def reg_add(path: str, name: str, value: Union[int, str], reg_type: str = "REG_DWORD") -> bool:
