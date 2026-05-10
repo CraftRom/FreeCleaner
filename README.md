@@ -28,6 +28,8 @@ The main goal of the project is not to become a bloated "all-in-one miracle opti
 ## Features
 
 - Clean temporary and non-essential files
+- Expanded Windows, browser, app, launcher, and shader cache cleanup
+- Quick profiles: Safe, Gaming cleanup, and Deep cleanup
 - Simple desktop interface
 - Local-first workflow
 - Privacy-friendly design
@@ -74,7 +76,7 @@ FreeCleaner/
 │  ├─ logic.py
 │  ├─ version_info.py
 │  └─ ...
-├─ languages/
+├─ lang/
 │  └─ *.json
 ├─ assets/
 │  ├─ icons/
@@ -208,9 +210,10 @@ For more details, see:
 Current development priorities include:
 
 - improving UI clarity
+- expanding safe cleanup targets without touching personal data
+- refining quick profiles so they do not duplicate each other
 - improving rendering performance
-- refining cleanup flows
-- making language support easier to maintain
+- keeping language packs complete and easy to maintain
 - keeping the project lightweight and understandable
 
 ---

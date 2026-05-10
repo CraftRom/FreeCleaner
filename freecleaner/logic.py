@@ -1181,25 +1181,36 @@ class PathFinder:
     def get_windows_junk_targets() -> List[Tuple[str, str, str, str, bool]]:
         """Return real Windows cleanup targets as (key, title_key, desc_key, path, requires_admin).
 
-        Targets are intentionally scoped to caches/logs/download caches.  It never returns
-        dangerous system roots such as System32, WinSxS or Program Files.
+        Targets are intentionally scoped to caches, logs, dumps and update download
+        leftovers. It never returns dangerous system roots such as System32, WinSxS
+        or Program Files.
         """
         local = os.environ.get("LOCALAPPDATA", "")
         appdata = os.environ.get("APPDATA", "")
         windir = os.environ.get("WINDIR", r"C:\Windows")
         programdata = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
+        system_drive = os.environ.get("SystemDrive", "C:")
         candidates: List[Tuple[str, str, str, str, bool]] = [
             ("recent_docs", "task.recent_docs.title", "task.recent_docs.desc", PathFinder._safe_join(appdata, r"Microsoft\Windows\Recent"), False),
+            ("jump_lists_auto", "task.jump_lists.title", "task.jump_lists.desc", PathFinder._safe_join(appdata, r"Microsoft\Windows\Recent\AutomaticDestinations"), False),
+            ("jump_lists_custom", "task.jump_lists.title", "task.jump_lists.desc", PathFinder._safe_join(appdata, r"Microsoft\Windows\Recent\CustomDestinations"), False),
             ("thumb_cache", "task.thumb_cache.title", "task.thumb_cache.desc", PathFinder._safe_join(local, r"Microsoft\Windows\Explorer"), False),
+            ("inet_cache", "task.inet_cache.title", "task.inet_cache.desc", PathFinder._safe_join(local, r"Microsoft\Windows\INetCache"), False),
+            ("web_cache", "task.web_cache.title", "task.web_cache.desc", PathFinder._safe_join(local, r"Microsoft\Windows\WebCache"), False),
+            ("crash_dumps_user", "task.crash_dumps.title", "task.crash_dumps.desc", PathFinder._safe_join(local, "CrashDumps"), False),
             ("wer_user", "task.error_logs.title", "task.error_logs.desc", PathFinder._safe_join(local, r"Microsoft\Windows\WER"), False),
             ("wer_system", "task.error_logs.title", "task.error_logs.desc", PathFinder._safe_join(programdata, r"Microsoft\Windows\WER"), True),
-            ("windows_logs_cbs", "task.error_logs.title", "task.error_logs.desc", PathFinder._safe_join(windir, r"Logs\CBS"), True),
-            ("windows_logs_dism", "task.error_logs.title", "task.error_logs.desc", PathFinder._safe_join(windir, r"Logs\DISM"), True),
+            ("windows_logs_cbs", "task.windows_component_logs.title", "task.windows_component_logs.desc", PathFinder._safe_join(windir, r"Logs\CBS"), True),
+            ("windows_logs_dism", "task.windows_component_logs.title", "task.windows_component_logs.desc", PathFinder._safe_join(windir, r"Logs\DISM"), True),
+            ("windows_minidump", "task.memory_dumps.title", "task.memory_dumps.desc", PathFinder._safe_join(windir, "Minidump"), True),
+            ("windows_memory_dump", "task.memory_dumps.title", "task.memory_dumps.desc", PathFinder._safe_join(windir, "MEMORY.DMP"), True),
+            ("windows_old", "task.windows_old.title", "task.windows_old.desc", PathFinder._safe_join(system_drive + os.sep, "Windows.old"), True),
             ("update_cache_files", "task.update_cache_files.title", "task.update_cache_files.desc", PathFinder._safe_join(windir, r"SoftwareDistribution\Download"), True),
             ("delivery_opt", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(local, r"Microsoft\Windows\DeliveryOptimization\Cache"), False),
+            ("font_cache_user", "task.font_cache.title", "task.font_cache.desc", PathFinder._safe_join(local, "FontCache"), False),
             ("prefetch", "task.prefetch.title", "task.prefetch.desc", PathFinder._safe_join(windir, "Prefetch"), True),
         ]
-        return [(k,t,d,p,a) for k,t,d,p,a in candidates if p and os.path.exists(p)]
+        return [(k, t, d, p, a) for k, t, d, p, a in candidates if p and os.path.exists(p)]
 
     @staticmethod
     def get_chromium_cache_targets() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
@@ -1217,24 +1228,30 @@ class PathFinder:
             ("edge", "Microsoft Edge", PathFinder._safe_join(local, r"Microsoft\Edge\User Data")),
             ("brave", "Brave", PathFinder._safe_join(local, r"BraveSoftware\Brave-Browser\User Data")),
             ("vivaldi", "Vivaldi", PathFinder._safe_join(local, r"Vivaldi\User Data")),
+            ("yandex", "Yandex Browser", PathFinder._safe_join(local, r"Yandex\YandexBrowser\User Data")),
             ("opera", "Opera", PathFinder._safe_join(roaming, r"Opera Software\Opera Stable")),
             ("opera_gx", "Opera GX", PathFinder._safe_join(roaming, r"Opera Software\Opera GX Stable")),
         ]
         subdirs = [
             r"Cache", r"Cache\Cache_Data", r"Code Cache", r"GPUCache",
             r"Service Worker\CacheStorage", r"Service Worker\ScriptCache",
-            r"Media Cache", r"ShaderCache", r"GrShaderCache",
+            r"Media Cache", r"ShaderCache", r"GrShaderCache", r"DawnCache",
+            r"GraphiteDawnCache", r"Crashpad\reports", r"BrowserMetrics",
+            r"optimization_guide_prediction_model_downloads",
         ]
         result: List[Tuple[str, str, str, str, Dict[str, str]]] = []
         seen: Set[str] = set()
         for slug, name, root in browsers:
             if not root or not os.path.isdir(root):
                 continue
-            profiles: List[str] = [""]
+            # Opera keeps its profile directly in the root. Chromium-family
+            # browsers usually use Default/Profile N. Avoid Guest/System Profile
+            # because they add clutter and are not useful quick-clean choices.
+            profiles: List[str] = [""] if slug in {"opera", "opera_gx"} else []
             try:
                 for entry in os.listdir(root):
                     full = os.path.join(root, entry)
-                    if os.path.isdir(full) and (entry == "Default" or entry.startswith("Profile") or entry in ("Guest Profile", "System Profile")):
+                    if os.path.isdir(full) and (entry == "Default" or re.fullmatch(r"Profile \d+", entry)):
                         profiles.append(entry)
             except OSError:
                 pass
@@ -1288,12 +1305,27 @@ class PathFinder:
             ("discord_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discord\Cache"), {"app": "Discord"}),
             ("discord_gpu_cache", "task.discord_gpu_cache.title", "task.discord_gpu_cache.desc", PathFinder._safe_join(appdata, r"discord\GPUCache"), {"app": "Discord"}),
             ("discord_code_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discord\Code Cache"), {"app": "Discord"}),
+            ("discord_canary_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discordcanary\Cache"), {"app": "Discord Canary"}),
+            ("discord_canary_code_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discordcanary\Code Cache"), {"app": "Discord Canary"}),
+            ("discord_ptb_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discordptb\Cache"), {"app": "Discord PTB"}),
+            ("discord_ptb_code_cache", "task.discord_cache.title", "task.discord_cache.desc", PathFinder._safe_join(appdata, r"discordptb\Code Cache"), {"app": "Discord PTB"}),
             ("telegram_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Telegram Desktop\tdata\user_data"), {"app": "Telegram"}),
             ("teams_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Microsoft\Teams\Cache"), {"app": "Microsoft Teams"}),
+            ("teams_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Microsoft\Teams\Code Cache"), {"app": "Microsoft Teams"}),
+            ("teams_gpu_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Microsoft\Teams\GPUCache"), {"app": "Microsoft Teams"}),
+            ("new_teams_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Cache"), {"app": "Microsoft Teams"}),
             ("slack_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Slack\Cache"), {"app": "Slack"}),
+            ("slack_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Slack\Code Cache"), {"app": "Slack"}),
+            ("slack_gpu_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Slack\GPUCache"), {"app": "Slack"}),
             ("spotify_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Spotify\Storage"), {"app": "Spotify"}),
+            ("zoom_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Zoom\data\WebviewCache"), {"app": "Zoom"}),
+            ("vscode_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Code\Cache"), {"app": "Visual Studio Code"}),
+            ("vscode_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Code\Code Cache"), {"app": "Visual Studio Code"}),
+            ("vscode_gpu_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Code\GPUCache"), {"app": "Visual Studio Code"}),
+            ("cursor_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Cursor\Cache"), {"app": "Cursor"}),
+            ("cursor_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Cursor\Code Cache"), {"app": "Cursor"}),
         ]
-        return [(k,t,d,p,fmt) for k,t,d,p,fmt in candidates if p and os.path.exists(p)]
+        return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
 
     @staticmethod
     def get_gaming_cache_targets() -> List[Tuple[str, str, str, str, bool]]:
@@ -1304,17 +1336,40 @@ class PathFinder:
             ("dx_shader_cache", "task.dx_shader_cache.title", "task.dx_shader_cache.desc", PathFinder._safe_join(local, "D3DSCache"), False),
             ("nvidia_dx", "task.nvidia_dx.title", "task.nvidia_dx.desc", PathFinder._safe_join(local, r"NVIDIA\DXCache"), False),
             ("nvidia_gl", "task.nvidia_gl.title", "task.nvidia_gl.desc", PathFinder._safe_join(local, r"NVIDIA\GLCache"), False),
+            ("nvidia_compute_cache", "task.nvidia_compute_cache.title", "task.nvidia_compute_cache.desc", PathFinder._safe_join(local, r"NVIDIA\ComputeCache"), False),
             ("nvidia_nv_cache", "task.nvidia_nv_cache.title", "task.nvidia_nv_cache.desc", PathFinder._safe_join(programdata, r"NVIDIA Corporation\NV_Cache"), True),
             ("amd_dx", "task.amd_dx.title", "task.amd_dx.desc", PathFinder._safe_join(local, r"AMD\DxCache"), False),
             ("amd_gl", "task.amd_gl.title", "task.amd_gl.desc", PathFinder._safe_join(local, r"AMD\GLCache"), False),
+            ("intel_shader_cache", "task.intel_shader_cache.title", "task.intel_shader_cache.desc", PathFinder._safe_join(local, r"Intel\ShaderCache"), False),
             ("steam_htmlcache", "task.steam_htmlcache.title", "task.steam_htmlcache.desc", PathFinder._safe_join(local, r"Steam\htmlcache"), False),
+            ("steam_appcache", "task.steam_appcache.title", "task.steam_appcache.desc", PathFinder._safe_join(os.environ.get("ProgramFiles(x86)", ""), r"Steam\appcache\httpcache"), False),
+            ("steam_shadercache", "task.steam_shadercache.title", "task.steam_shadercache.desc", PathFinder._safe_join(os.environ.get("ProgramFiles(x86)", ""), r"Steam\steamapps\shadercache"), False),
             ("battle_net_cache", "task.battle_net_cache.title", "task.battle_net_cache.desc", PathFinder._safe_join(programdata, r"Battle.net\Agent\data\cache"), True),
             ("battle_net_agent_logs", "task.battle_net_cache.title", "task.battle_net_cache.desc", PathFinder._safe_join(programdata, r"Battle.net\Agent\Logs"), True),
+            ("blizzard_browser_cache", "task.battle_net_cache.title", "task.battle_net_cache.desc", PathFinder._safe_join(local, r"Battle.net\BrowserCache"), False),
             ("epic_webcache", "task.epic_webcache.title", "task.epic_webcache.desc", PathFinder._safe_join(local, r"EpicGamesLauncher\Saved\webcache"), False),
             ("epic_webcache_4147", "task.epic_webcache.title", "task.epic_webcache.desc", PathFinder._safe_join(local, r"EpicGamesLauncher\Saved\webcache_4147"), False),
+            ("ea_desktop_cache", "task.launcher_cache.title", "task.launcher_cache.desc", PathFinder._safe_join(local, r"Electronic Arts\EA Desktop\Cache"), False),
+            ("ubisoft_cache", "task.launcher_cache.title", "task.launcher_cache.desc", PathFinder._safe_join(local, r"Ubisoft Game Launcher\cache"), False),
+            ("gog_cache", "task.launcher_cache.title", "task.launcher_cache.desc", PathFinder._safe_join(programdata, r"GOG.com\Galaxy\webcache"), True),
+            ("riot_cache", "task.launcher_cache.title", "task.launcher_cache.desc", PathFinder._safe_join(local, r"Riot Games\Riot Client\Cache"), False),
             ("obs_browser_cache", "task.temp_capture_cache.title", "task.temp_capture_cache.desc", PathFinder._safe_join(appdata, r"obs-studio\plugin_config\obs-browser\Cache"), False),
         ]
-        return [(k,t,d,p,a) for k,t,d,p,a in candidates if p and os.path.exists(p)]
+        epic_saved = PathFinder._safe_join(local, r"EpicGamesLauncher\Saved")
+        try:
+            if epic_saved and os.path.isdir(epic_saved):
+                for entry in os.listdir(epic_saved):
+                    if entry.lower().startswith("webcache"):
+                        candidates.append((
+                            f"epic_{entry.lower()}",
+                            "task.epic_webcache.title",
+                            "task.epic_webcache.desc",
+                            os.path.join(epic_saved, entry),
+                            False,
+                        ))
+        except OSError:
+            pass
+        return [(k, t, d, p, a) for k, t, d, p, a in candidates if p and os.path.exists(p)]
 
 
 class WindowsOps:

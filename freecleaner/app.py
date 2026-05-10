@@ -19,7 +19,7 @@ import queue
 import json
 import locale
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional, Sequence, Any
+from typing import Callable, Dict, List, Tuple, Optional, Sequence, Any
 
 try:
     import winreg  # type: ignore
@@ -686,8 +686,8 @@ class Cleaner(ctk.CTk):
         self.lbl_language.configure(text=self.tr("language"))
         self.quick_profiles_label.configure(text=self.tr("quick_profiles"))
         self.btn_safe.configure(text=self.tr("safe"))
-        self.btn_streamer.configure(text=self.tr("streamer"))
-        self.btn_low_end.configure(text=self.tr("low_end"))
+        self.btn_gaming.configure(text=self.tr("gaming_profile"))
+        self.btn_deep_profile.configure(text=self.tr("deep_profile"))
         self.btn_reset_selection.configure(text=self.tr("reset_selection"))
         if hasattr(self, "btn_restore_registry"):
             self.btn_restore_registry.configure(text=self.tr("restore_registry_backup"))
@@ -792,10 +792,10 @@ class Cleaner(ctk.CTk):
         self.quick_profiles_label.pack(anchor="w", padx=14, pady=(12, 8))
         self.btn_safe = ctk.CTkButton(quick, text=self.tr("safe"), height=34, command=self.apply_safe_preset, fg_color="#1E293B", hover_color="#334155")
         self.btn_safe.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_streamer = ctk.CTkButton(quick, text=self.tr("streamer"), height=34, command=self.apply_streamer_mode, fg_color="#0F766E", hover_color="#115E59")
-        self.btn_streamer.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_low_end = ctk.CTkButton(quick, text=self.tr("low_end"), height=34, command=self.apply_low_end_mode, fg_color="#166534", hover_color="#14532D")
-        self.btn_low_end.pack(fill="x", padx=14, pady=(0, 8))
+        self.btn_gaming = ctk.CTkButton(quick, text=self.tr("gaming_profile"), height=34, command=self.apply_gaming_mode, fg_color="#0F766E", hover_color="#115E59")
+        self.btn_gaming.pack(fill="x", padx=14, pady=(0, 8))
+        self.btn_deep_profile = ctk.CTkButton(quick, text=self.tr("deep_profile"), height=34, command=self.apply_deep_clean_mode, fg_color="#166534", hover_color="#14532D")
+        self.btn_deep_profile.pack(fill="x", padx=14, pady=(0, 8))
         self.btn_reset_selection = ctk.CTkButton(quick, text=self.tr("reset_selection"), height=34, command=self.clear_selection, fg_color="#374151", hover_color="#4B5563")
         self.btn_reset_selection.pack(fill="x", padx=14, pady=(0, 8))
         self.btn_restore_registry = ctk.CTkButton(
@@ -1240,8 +1240,13 @@ class Cleaner(ctk.CTk):
             ))
 
         for key, tkey, dkey, path, requires_admin in PathFinder.get_windows_junk_targets():
-            # Deep/admin-only targets are registered in the Deep section below.
-            if key in {"prefetch", "update_cache_files", "delivery_opt", "wer_system"}:
+            # Deep/admin-only or potentially disruptive targets are registered
+            # in the Deep section below, not mixed into the quick System card.
+            if key in {
+                "prefetch", "update_cache_files", "delivery_opt", "wer_system",
+                "windows_logs_cbs", "windows_logs_dism", "windows_minidump",
+                "windows_memory_dump", "windows_old",
+            }:
                 continue
             state = sys_state if requires_admin else "normal"
             self.add_task(self.card_sys, CleanerTask(
@@ -1339,7 +1344,11 @@ class Cleaner(ctk.CTk):
     def register_deep_tasks(self):
         state = "normal" if self.is_admin else "disabled"
         for key, tkey, dkey, path, requires_admin in PathFinder.get_windows_junk_targets():
-            if key not in {"prefetch", "update_cache_files", "delivery_opt", "wer_system"}:
+            if key not in {
+                "prefetch", "update_cache_files", "delivery_opt", "wer_system",
+                "windows_logs_cbs", "windows_logs_dism", "windows_minidump",
+                "windows_memory_dump", "windows_old",
+            }:
                 continue
             self.add_task(self.card_deep, CleanerTask(
                 key=key, title_key=tkey, desc_key=dkey, path=path, category="deep", default=False,
@@ -1576,72 +1585,75 @@ class Cleaner(ctk.CTk):
         except Exception:
             self.log(self.trf("action_error_fmt", title=self.task_title(task)))
 
-    def apply_safe_preset(self):
-        self.clear_selection()
-        safe_keywords = ("temp", "cache", "dns")
+    def _select_tasks_by_rule(self, rule: Callable[[CleanerTask], bool]) -> None:
         self._selection_refresh_suspended = True
         try:
             for key, var in self.vars.items():
                 task = self.tasks.get(key)
                 if not task or task.state == "disabled":
                     continue
-                if any(word in key for word in safe_keywords):
-                    if task.kind == "directory" and not task.requires_admin:
-                        self._set_task_selected(key, True)
-                if task.key == "dns_flush":
-                    self._set_task_selected(key, True)
+                self._set_task_selected(key, bool(rule(task)))
         finally:
             self._selection_refresh_suspended = False
+
+    def _is_safe_cache_task(self, task: CleanerTask) -> bool:
+        if task.kind != "directory" or task.requires_admin:
+            return False
+        if task.category in {"system", "browsers"}:
+            return True
+        return task.category == "gamer" and any(token in task.key for token in ("cache", "webcache", "htmlcache", "obs"))
+
+    def _is_gaming_cleanup_task(self, task: CleanerTask) -> bool:
+        if task.kind == "command":
+            return task.key in {"dns_flush", "enable_game_mode", "disable_gamedvr", "disable_notifications"}
+        if task.kind != "directory":
+            return False
+        if task.category in {"browsers", "gamer"}:
+            return True
+        return task.category == "system" and task.key in {
+            "thumb_cache", "inet_cache", "web_cache", "crash_dumps_user", "wer_user",
+            "jump_lists_auto", "jump_lists_custom", "recent_docs",
+        }
+
+    def _is_deep_clean_task(self, task: CleanerTask) -> bool:
+        if task.kind == "command":
+            return task.key in {"dns_flush", "recycle"}
+        if task.kind != "directory":
+            return False
+        if task.key == "windows_old":
+            # Windows.old removes rollback files after a Windows upgrade, so keep
+            # it manual even in the deep profile.
+            return False
+        if task.category in {"system", "browsers", "gamer", "deep"}:
+            return True
+        return False
+
+    def apply_safe_preset(self):
+        self.clear_selection()
+        self._select_tasks_by_rule(self._is_safe_cache_task)
+        if "dns_flush" in self.tasks:
+            self._set_task_selected("dns_flush", True)
         self.set_profile_name(self.tr("safe"), COLORS["system"])
         self.refresh_selection_stats()
         self.log(self.tr("safe_profile_on"))
 
-    def apply_streamer_mode(self):
+    def apply_gaming_mode(self):
         self.clear_selection()
-        preferred = {
-            "dns_flush", "browser_chrome", "browser_edge", "browser_brave", "browser_opera",
-            "discord_cache", "discord_gpu_cache", "steam_htmlcache", "epic_webcache",
-            "battle_net_cache", "temp_capture_cache", "disable_gamedvr", "enable_game_mode", "disable_notifications"
-        }
-        self._selection_refresh_suspended = True
-        try:
-            for key, var in self.vars.items():
-                task = self.tasks.get(key)
-                if not task or task.state == "disabled":
-                    continue
-                if key in preferred:
-                    self._set_task_selected(key, True)
-                elif task.category == "gamer" and "shader" not in key and "perf_plan" not in key and task.kind == "directory":
-                    self._set_task_selected(key, True)
-        finally:
-            self._selection_refresh_suspended = False
-        self.set_profile_name(self.tr("profile_streamer"), COLORS["gamer"])
-        self.refresh_selection_stats()
-        self.log(self.tr("streamer_profile_on"))
-
-    def apply_low_end_mode(self):
-        self.clear_selection()
-        preferred = {
-            "dns_flush", "dx_shader_cache", "nvidia_dx", "nvidia_gl", "nvidia_nv_cache",
-            "amd_dx", "amd_gl", "steam_htmlcache", "epic_webcache", "battle_net_cache",
-            "discord_cache", "discord_gpu_cache", "thumb_cache", "recent_docs",
-            "disable_gamedvr", "enable_game_mode", "high_perf_plan", "disable_notifications"
-        }
+        self._select_tasks_by_rule(self._is_gaming_cleanup_task)
         if self.is_admin:
-            preferred.add("ultimate_perf_plan")
-        self._selection_refresh_suspended = True
-        try:
-            for key, var in self.vars.items():
-                task = self.tasks.get(key)
-                if not task or task.state == "disabled":
-                    continue
-                if key in preferred:
+            for key in ("battle_net_cache", "battle_net_agent_logs", "nvidia_nv_cache", "gog_cache"):
+                if key in self.tasks:
                     self._set_task_selected(key, True)
-        finally:
-            self._selection_refresh_suspended = False
-        self.set_profile_name(self.tr("profile_low_end"), COLORS["success"])
+        self.set_profile_name(self.tr("profile_gaming"), COLORS["gamer"])
         self.refresh_selection_stats()
-        self.log(self.tr("low_end_profile_on"))
+        self.log(self.tr("gaming_profile_on"))
+
+    def apply_deep_clean_mode(self):
+        self.clear_selection()
+        self._select_tasks_by_rule(self._is_deep_clean_task)
+        self.set_profile_name(self.tr("profile_deep"), COLORS["success"])
+        self.refresh_selection_stats()
+        self.log(self.tr("deep_profile_on"))
 
     def run_as_admin(self):
         self.log(self.tr("relaunching_admin"))

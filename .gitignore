@@ -86,6 +86,8 @@ __pycache__/
 
 # =========================
 # Local app/runtime artifacts
+registry_backups/
+updates/
 # =========================
 *.db-shm
 *.db-wal
