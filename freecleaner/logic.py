@@ -2104,12 +2104,13 @@ public static class FreeCleanerRecycleBinQueryOnly
 
     @staticmethod
     def try_enable_ultimate_performance() -> bool:
-        duplicated = WindowsOps.run_command(
-            "powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61",
+        ultimate_guid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+        duplicated = WindowsOps.run_command_args(
+            ["powercfg.exe", "-duplicatescheme", ultimate_guid],
             timeout=60,
         )
-        switched = WindowsOps.run_command(
-            "powercfg /S e9a42b02-d5df-448d-aa00-03f14749eb61",
+        switched = WindowsOps.run_command_args(
+            ["powercfg.exe", "/S", ultimate_guid],
             timeout=60,
         )
         return duplicated or switched
@@ -2159,6 +2160,17 @@ class SafeFS:
             return False
 
     @staticmethod
+    def _is_reparse_point(path: str) -> bool:
+        """Return True for symlinks/junctions that must not be traversed."""
+        try:
+            if os.path.islink(path):
+                return True
+            isjunction = getattr(os.path, "isjunction", None)
+            return bool(isjunction(path)) if isjunction else False
+        except Exception:
+            return False
+
+    @staticmethod
     def is_safe_clean_target(path: str) -> bool:
         """Reject dangerous roots and protected Windows trees.
 
@@ -2173,6 +2185,9 @@ class SafeFS:
             abs_path = os.path.abspath(path)
             real_path = os.path.realpath(abs_path)
         except Exception:
+            return False
+
+        if SafeFS._is_reparse_point(abs_path):
             return False
 
         if SafeFS._is_drive_root(abs_path) or SafeFS._is_drive_root(real_path):
@@ -2253,15 +2268,13 @@ class SafeFS:
 
     @staticmethod
     def _prepare_tree(path: str) -> None:
-        if not IS_WINDOWS or not path or not os.path.isdir(path):
-            return
+        # Do not run recursive attrib over the whole tree: on Windows it can walk
+        # into junctions/reparse points.  Attributes are cleared per file/folder
+        # right before removal, which is slower only on locked trees and much safer.
         try:
-            target = os.path.join(os.path.abspath(path), "*")
+            SafeFS._clear_attributes(path, is_dir=os.path.isdir(path))
         except Exception:
-            return
-        # Avoid shell=True here: cache paths can contain spaces, quotes,
-        # ampersands, and localized characters.  attrib handles the wildcard.
-        WindowsOps.run_command_args(["attrib.exe", "-r", "-s", "-h", target, "/s", "/d"], timeout=180)
+            pass
 
     @staticmethod
     def _file_size(path: str) -> int:
@@ -2330,6 +2343,8 @@ class SafeFS:
             return False
         if not os.path.exists(path):
             return True
+        if SafeFS._is_reparse_point(path):
+            return SafeFS._remove_dir_native(path)
 
         commands = [
             ["cmd.exe", "/c", "rd", "/s", "/q", os.path.abspath(path)],
@@ -2363,7 +2378,9 @@ class SafeFS:
     def _count_remaining_entries(path: str) -> Tuple[int, int]:
         if not path or not os.path.exists(path):
             return 0, 0
-        if os.path.isfile(path) or os.path.islink(path):
+        if SafeFS._is_reparse_point(path):
+            return (0, 1) if os.path.isdir(path) else (1, 0)
+        if os.path.isfile(path):
             return (1, 0)
 
         files = 0
@@ -2380,8 +2397,11 @@ class SafeFS:
                 with os.scandir(current) as it:
                     for entry in it:
                         try:
-                            if entry.is_symlink():
-                                files += 1
+                            if SafeFS._is_reparse_point(entry.path):
+                                if entry.is_dir(follow_symlinks=False):
+                                    dirs += 1
+                                else:
+                                    files += 1
                             elif entry.is_file(follow_symlinks=False):
                                 files += 1
                             elif entry.is_dir(follow_symlinks=False):
@@ -2409,14 +2429,14 @@ class SafeFS:
                 continue
             seen.add(norm)
             try:
-                if os.path.islink(current):
+                if SafeFS._is_reparse_point(current):
                     continue
                 with os.scandir(current) as it:
                     for entry in it:
                         if cancel_event is not None and cancel_event.is_set():
                             break
                         try:
-                            if entry.is_symlink():
+                            if SafeFS._is_reparse_point(entry.path):
                                 continue
                             if entry.is_file(follow_symlinks=False):
                                 total += entry.stat(follow_symlinks=False).st_size
@@ -2426,7 +2446,7 @@ class SafeFS:
                             continue
             except (PermissionError, FileNotFoundError, NotADirectoryError, OSError):
                 try:
-                    if not os.path.islink(current):
+                    if not SafeFS._is_reparse_point(current):
                         total += os.path.getsize(current)
                 except OSError:
                     pass
@@ -2450,6 +2470,7 @@ class SafeFS:
             "scheduled_reboot": 0,
             "remaining_files": 0,
             "remaining_dirs": 0,
+            "skipped_links": 0,
             "errors": 0,
         }
         for path in PathFinder.unique_existing(paths):
@@ -2469,6 +2490,7 @@ class SafeFS:
             "scheduled_reboot": 0,
             "remaining_files": 0,
             "remaining_dirs": 0,
+            "skipped_links": 0,
             "errors": 0,
         }
         if not path or not os.path.exists(path):
@@ -2525,6 +2547,9 @@ class SafeFS:
                 return False
 
         try:
+            if SafeFS._is_reparse_point(path):
+                result["errors"] = 1
+                return result
             if os.path.isfile(path) or os.path.islink(path):
                 if not remove_single_file(path):
                     result["remaining_files"] = 1 if os.path.exists(path) else 0
@@ -2539,59 +2564,65 @@ class SafeFS:
             def on_walk_error(_error: OSError) -> None:
                 result["errors"] += 1
 
-            # Stream the tree instead of building all_files/all_dirs first.
-            # This is much faster and uses constant memory on huge cache folders.
-            for root, dirs, files in os.walk(path, topdown=False, onerror=on_walk_error, followlinks=False):
+            # Walk top-down so reparse points can be filtered before Python
+            # descends into them. This protects against junction/symlink cache
+            # entries that point outside the selected target. Directories are
+            # removed afterwards in reverse order to keep the target root intact.
+            dirs_to_remove: List[str] = []
+            for root, dirs, files in os.walk(path, topdown=True, onerror=on_walk_error, followlinks=False):
                 if cancel_event.is_set():
                     flush_progress(True)
                     return result
+
+                if root != path and SafeFS._is_reparse_point(root):
+                    dirs[:] = []
+                    continue
+
+                safe_dirs: List[str] = []
+                for name in list(dirs):
+                    dir_path = os.path.join(root, name)
+                    if SafeFS._is_reparse_point(dir_path):
+                        # Leave links/junctions in place rather than risk cleaning
+                        # a target outside the selected cache folder.
+                        result["skipped_links"] += 1
+                        continue
+                    safe_dirs.append(name)
+                    dirs_to_remove.append(dir_path)
+                dirs[:] = safe_dirs
 
                 for name in files:
                     if cancel_event.is_set():
                         flush_progress(True)
                         return result
                     file_path = os.path.join(root, name)
+                    if SafeFS._is_reparse_point(file_path):
+                        result["skipped_links"] += 1
+                        continue
                     remove_single_file(file_path)
 
-                for name in dirs:
-                    if cancel_event.is_set():
-                        flush_progress(True)
-                        return result
-                    dir_path = os.path.join(root, name)
-                    if not os.path.exists(dir_path):
-                        continue
+            for dir_path in reversed(dirs_to_remove):
+                if cancel_event.is_set():
+                    flush_progress(True)
+                    return result
+                if not os.path.exists(dir_path):
+                    continue
+                if SafeFS._is_reparse_point(dir_path):
+                    continue
 
-                    # Do not recurse through symlink targets.  Remove the link
-                    # itself only if Windows/native rmdir handles it.
-                    SafeFS._clear_attributes(dir_path, is_dir=True)
-                    removed = SafeFS._remove_dir_native(dir_path)
-                    if not removed:
-                        removed = SafeFS._remove_dir_shell(dir_path)
+                SafeFS._clear_attributes(dir_path, is_dir=True)
+                removed = SafeFS._remove_dir_native(dir_path)
+                if not removed:
+                    removed = SafeFS._remove_dir_shell(dir_path)
 
-                    if removed:
-                        result["dirs_removed"] += 1
-                        continue
+                if removed:
+                    result["dirs_removed"] += 1
+                    continue
 
-                    if SafeFS._schedule_for_delete(dir_path):
-                        result["scheduled_reboot"] += 1
-                        continue
+                if SafeFS._schedule_for_delete(dir_path):
+                    result["scheduled_reboot"] += 1
+                    continue
 
-                    result["errors"] += 1
-
-            # One light second pass: catches folders that became empty after
-            # locked files were skipped/scheduled without doing expensive loops.
-            if not cancel_event.is_set():
-                try:
-                    for root, dirs, _files in os.walk(path, topdown=False, followlinks=False):
-                        for name in dirs:
-                            dir_path = os.path.join(root, name)
-                            if not os.path.isdir(dir_path):
-                                continue
-                            SafeFS._clear_attributes(dir_path, is_dir=True)
-                            if SafeFS._remove_dir_native(dir_path):
-                                result["dirs_removed"] += 1
-                except OSError:
-                    result["errors"] += 1
+                result["errors"] += 1
 
             remaining_files, remaining_dirs = SafeFS._count_remaining_entries(path)
             result["remaining_files"] = remaining_files
@@ -2600,7 +2631,8 @@ class SafeFS:
             # Keep scheduled-on-reboot items visible in the separate counter but
             # do not double-count every remaining child as a new failure.
             if remaining_files or remaining_dirs:
-                result["errors"] += max(0, (remaining_files + remaining_dirs) - result["scheduled_reboot"])
+                expected_remaining = result["scheduled_reboot"] + result.get("skipped_links", 0)
+                result["errors"] += max(0, (remaining_files + remaining_dirs) - expected_remaining)
 
             flush_progress(True)
             return result

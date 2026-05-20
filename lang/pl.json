@@ -222,6 +222,7 @@
   "admin_required_for_this": "Ta akcja wymaga uprawnień administratora.",
   "cleanup_reboot_scheduled_fmt": "Zaplanowano usunięcie po restarcie: {title} -> {count}",
   "cleanup_remaining_fmt": "Po czyszczeniu nadal pozostało: {title} -> plików: {files}, folderów: {dirs}",
+  "cleanup_skipped_links_fmt": "Pominięto chronione linki/junctions: {title} -> {count}",
   "task.browser_generic.title": "Pamięć podręczna {browser} ({profile})",
   "task.browser_generic.desc": "Rzeczywiste foldery pamięci podręcznej tego profilu przeglądarki.",
   "task.app_cache.title": "Pamięć podręczna {app}",

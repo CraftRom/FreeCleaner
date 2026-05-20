@@ -268,6 +268,7 @@
   "cleanup_target_failed_fmt": "Cleanup error: {title}",
   "cleanup_reboot_scheduled_fmt": "Scheduled for deletion after reboot: {title} -> {count}",
   "cleanup_remaining_fmt": "Still left after cleanup: {title} -> files: {files}, folders: {dirs}",
+  "cleanup_skipped_links_fmt": "Skipped protected links/junctions: {title} -> {count}",
   "check_updates": "Check for updates",
   "checking_updates": "Checking for updates...",
   "update_check_running": "Update check is already running.",

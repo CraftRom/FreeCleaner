@@ -347,6 +347,7 @@ DEFAULT_LANG_PACKS = {'en': {'app_title': '{brand} {version}',
         'task.disable_hags.title': 'Disable HAGS (stutter fallback)',
         'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if '
                                   'HAGS causes stutter, hitching or driver issues. Restart required.',
+        'cleanup_skipped_links_fmt': 'Skipped protected links/junctions: {title} -> {count}',
         'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose '
                                  'only one after testing.',
         'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power '

@@ -31,8 +31,10 @@ The gaming optimizer is intentionally conservative. It can adjust Windows-level 
 
 - Clean temporary and non-essential files
 - Expanded Windows, browser, app, launcher, and shader cache cleanup
+- Safer cleanup traversal that skips symlinks/junctions instead of following them
 - Quick profiles: Safe, Gaming cleanup, and Deep cleanup
 - Safe gaming optimizer actions for Windows Game Mode, power policy, GPU scheduling settings and standby RAM cleanup
+- UI filtering that hides empty sections and keeps large task lists easier to scan
 - Simple desktop interface
 - Local-first workflow
 - Privacy-friendly design
@@ -215,6 +217,7 @@ Current development priorities include:
 - improving UI clarity
 - expanding safe cleanup targets without touching personal data
 - refining quick profiles so they do not duplicate each other
+- improving cleanup safety around protected links, junctions, and system paths
 - improving rendering performance
 - keeping language packs complete and easy to maintain
 - keeping the project lightweight and understandable

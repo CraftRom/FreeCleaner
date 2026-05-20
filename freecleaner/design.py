@@ -197,19 +197,26 @@ class SectionCard(ctk.CTkFrame):
             desc_lbl.grid_remove()
         self.rows[index] = (widget, desc_lbl, task, row_wrap, visible)
 
-    def refresh_rows_language(self):
-        query = self.owner.search_var.get().strip().lower() if hasattr(self.owner, "search_var") else ""
+    def refresh_rows_language(self) -> int:
+        normalizer = getattr(self.owner, "_normalize_search_text", lambda value: str(value or "").casefold().strip())
+        query = normalizer(self.owner.search_var.get()) if hasattr(self.owner, "search_var") else ""
+        visible_count = 0
         for index, (widget, desc_lbl, task, row_wrap, _visible) in enumerate(self.rows):
             title = self.owner.task_title(task)
             desc = self.owner.task_desc(task)
-            widget.configure(text=title)
+            if hasattr(widget, "configure"):
+                widget.configure(text=title)
             desc_lbl.configure(text=desc)
             if task.state == "disabled":
                 for child in row_wrap.winfo_children():
                     if isinstance(child, ctk.CTkLabel):
                         child.configure(text=self.owner.tr("badge_admin_needed"))
-            haystack = (title + " " + desc).lower()
-            self._set_row_visible(index, not query or query in haystack)
+            haystack = normalizer(title + " " + desc)
+            visible = not query or query in haystack
+            if visible:
+                visible_count += 1
+            self._set_row_visible(index, visible)
+        return visible_count
 
     def update_layout(self, wraplength: int):
         wraplength = max(260, wraplength)
@@ -225,11 +232,17 @@ class SectionCard(ctk.CTkFrame):
         if self.header_subtitle.cget("text") != subtitle:
             self.header_subtitle.configure(text=subtitle)
 
-    def filter_rows(self, query: str):
-        query = query.strip().lower()
+    def filter_rows(self, query: str) -> int:
+        normalizer = getattr(self.owner, "_normalize_search_text", lambda value: str(value or "").casefold().strip())
+        query = normalizer(query)
+        visible_count = 0
         for index, (widget, desc_lbl, task, _row_wrap, _visible) in enumerate(self.rows):
-            haystack = (self.owner.task_title(task) + " " + self.owner.task_desc(task)).lower()
-            self._set_row_visible(index, not query or query in haystack)
+            haystack = normalizer(self.owner.task_title(task) + " " + self.owner.task_desc(task))
+            visible = not query or query in haystack
+            if visible:
+                visible_count += 1
+            self._set_row_visible(index, visible)
+        return visible_count
 
     def set_compact(self, compact: bool) -> None:
         compact = bool(compact)

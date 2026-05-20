@@ -222,6 +222,7 @@
   "admin_required_for_this": "Se requieren derechos de administrador para esta acción.",
   "cleanup_reboot_scheduled_fmt": "Programado para eliminarse después del reinicio: {title} -> {count}",
   "cleanup_remaining_fmt": "Aún quedan elementos tras la limpieza: {title} -> archivos: {files}, carpetas: {dirs}",
+  "cleanup_skipped_links_fmt": "Enlaces/junctions protegidos omitidos: {title} -> {count}",
   "task.browser_generic.title": "Caché de {browser} ({profile})",
   "task.browser_generic.desc": "Carpetas reales de caché de este perfil del navegador.",
   "task.app_cache.title": "Caché de {app}",

@@ -150,8 +150,14 @@ class Cleaner(ctk.CTk):
         try:
             data = dict(getattr(self, "config", {}) or {})
             data["language"] = getattr(self, "lang_preference", "auto")
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            folder = os.path.dirname(CONFIG_PATH)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            tmp_path = f"{CONFIG_PATH}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            os.replace(tmp_path, CONFIG_PATH)
             self.config = data
         except Exception:
             pass
@@ -162,6 +168,11 @@ class Cleaner(ctk.CTk):
         if code == "auto":
             return "auto"
         return code if code in LANG_PACKS else "auto"
+
+    def _normalize_search_text(self, value: str) -> str:
+        """Normalize text once for cheaper, language-friendly UI filtering."""
+        text = self._normalize_ui_text(value or "")
+        return re.sub(r"\s+", " ", text.casefold()).strip()
 
 
     def __init__(self):
@@ -787,6 +798,7 @@ class Cleaner(ctk.CTk):
         self.card_ult.set_header(self.tr("sec_ult_title"), self.tr("sec_ult_sub"))
         for card in self.section_cards:
             card.refresh_rows_language()
+        self.apply_search_filter(force=True)
         if self.cleaned_bytes == 0:
             self.lbl_stats.configure(text=self.tr("freed_zero"))
         else:
@@ -1408,7 +1420,7 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_net, CleanerTask(
             key="dns_flush", title_key="task.dns_flush.title", desc_key="task.dns_flush.desc",
             kind="command", category="browsers", default=True,
-            command=lambda: self.run_logged_command("ipconfig /flushdns", "dns_ok", "dns_fail"),
+            command=lambda: self.run_logged_command_args(["ipconfig.exe", "/flushdns"], "dns_ok", "dns_fail"),
         ))
 
     def register_deep_tasks(self):
@@ -1434,7 +1446,7 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_deep, CleanerTask(
             key="reset_winsock", title_key="task.reset_winsock.title", desc_key="task.reset_winsock.desc",
             kind="command", category="deep", default=False, state=state, requires_admin=True,
-            command=lambda: self.run_logged_command("netsh winsock reset", "winsock_ok", "winsock_fail", timeout=120),
+            command=lambda: self.run_logged_command_args(["netsh.exe", "winsock", "reset"], "winsock_ok", "winsock_fail", timeout=120),
         ))
 
     def register_gaming_cleanup_tasks(self):
@@ -1493,7 +1505,7 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_opt, CleanerTask(
             key="high_perf_plan", title_key="task.high_perf_plan.title", desc_key="task.high_perf_plan.desc",
             kind="command", category="optimizer", default=False, state=state, requires_admin=True,
-            command=lambda: self.run_logged_command("powercfg /S SCHEME_MIN", "high_perf_ok", "high_perf_fail", timeout=90),
+            command=lambda: self.run_logged_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], "high_perf_ok", "high_perf_fail", timeout=90),
         ))
         self.add_task(self.card_opt, CleanerTask(
             key="safe_gaming_power_profile", title_key="task.safe_gaming_power_profile.title", desc_key="task.safe_gaming_power_profile.desc",
@@ -1621,15 +1633,22 @@ class Cleaner(ctk.CTk):
                 pass
         self._search_after_id = self.after(100, self.apply_search_filter)
 
-    def apply_search_filter(self):
+    def apply_search_filter(self, force: bool = False):
         self._search_after_id = None
         query = self.search_var.get()
-        normalized_query = query.strip().lower()
-        if normalized_query == self._last_search_query:
+        normalized_query = self._normalize_search_text(query)
+        if not force and normalized_query == self._last_search_query:
             return
         self._last_search_query = normalized_query
         for card in self.section_cards:
-            card.filter_rows(normalized_query)
+            visible_rows = card.filter_rows(normalized_query)
+            try:
+                if visible_rows > 0:
+                    card.grid()
+                else:
+                    card.grid_remove()
+            except Exception:
+                pass
 
     def refresh_selection_stats(self):
         if getattr(self, "_selection_refresh_suspended", False):
@@ -1861,6 +1880,10 @@ class Cleaner(ctk.CTk):
         ok = WindowsOps.run_command(cmd, timeout=timeout)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
 
+    def run_logged_command_args(self, args: List[str], success_key: str, fail_key: str, timeout: int = 180, noisy: bool = False):
+        ok = WindowsOps.run_command_args(args, timeout=timeout, noisy=noisy)
+        self.log(self.tr(success_key) if ok else self.tr(fail_key))
+
     def apply_registry_task_values(self, task_key: str, success_key: str, fail_key: str) -> bool:
         task = self.tasks.get(task_key)
         specs = list(task.registry_values or []) if task else []
@@ -1878,15 +1901,15 @@ class Cleaner(ctk.CTk):
                 os.startfile(uri)  # type: ignore[attr-defined]
                 ok = True
             except Exception:
-                ok = WindowsOps.run_command(f'start "" "{uri}"', timeout=20)
+                ok = WindowsOps.run_command_args(["explorer.exe", uri], timeout=20)
         if not ok:
             # Windows 7/8 do not support ms-settings: URIs. Fall back to Control Panel
             # instead of logging a false hard error.
-            ok = WindowsOps.run_command("control.exe", timeout=20)
+            ok = WindowsOps.run_command_args(["control.exe"], timeout=20)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
 
     def open_visual_effects_settings(self):
-        ok = WindowsOps.run_command("SystemPropertiesPerformance.exe", timeout=20)
+        ok = WindowsOps.run_command_args(["SystemPropertiesPerformance.exe"], timeout=20)
         self.log(self.tr("visual_effects_ok") if ok else self.tr("visual_effects_fail"))
 
 
@@ -1945,8 +1968,7 @@ class Cleaner(ctk.CTk):
             # Keep DISM cleanup reversible.  /ResetBase saves a bit more space
             # but prevents uninstalling already installed component updates, so
             # it should not be silently bundled into a general cleanup action.
-            command = "dism.exe /Online /Cleanup-Image /StartComponentCleanup"
-            ok = WindowsOps.run_command(command, timeout=3600, noisy=True)
+            ok = WindowsOps.run_command_args(["dism.exe", "/Online", "/Cleanup-Image", "/StartComponentCleanup"], timeout=3600, noisy=True)
             self.log(self.tr("dism_ok") if ok else self.tr("dism_fail"))
         finally:
             self.dism_running = False
@@ -2145,6 +2167,7 @@ class Cleaner(ctk.CTk):
                     scheduled_reboot = int(result.get("scheduled_reboot", 0))
                     remaining_files = int(result.get("remaining_files", 0))
                     remaining_dirs = int(result.get("remaining_dirs", 0))
+                    skipped_links = int(result.get("skipped_links", 0))
                     errors = int(result.get("errors", 0))
 
                     if errors > 0:
@@ -2167,7 +2190,9 @@ class Cleaner(ctk.CTk):
 
                     if scheduled_reboot > 0:
                         self.log(self.trf("cleanup_reboot_scheduled_fmt", title=self.task_title(task), count=scheduled_reboot))
-                    if remaining_files > 0 or remaining_dirs > 0:
+                    if skipped_links > 0:
+                        self.log(self.trf("cleanup_skipped_links_fmt", title=self.task_title(task), count=skipped_links))
+                    if (remaining_files + remaining_dirs) > skipped_links:
                         self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
 
     def perform_pre_analysis(self, chosen: List[CleanerTask]) -> Tuple[List[CleanerTask], List[CleanerTask]]:
@@ -2193,19 +2218,19 @@ class Cleaner(ctk.CTk):
         if start:
             self.log(self.tr("stop_update_services"))
             if needs_update:
-                WindowsOps.run_command("net stop wuauserv", timeout=60)
-                WindowsOps.run_command("net stop bits", timeout=60)
-                WindowsOps.run_command("net stop cryptsvc", timeout=60)
+                WindowsOps.run_command_args(["net.exe", "stop", "wuauserv"], timeout=60)
+                WindowsOps.run_command_args(["net.exe", "stop", "bits"], timeout=60)
+                WindowsOps.run_command_args(["net.exe", "stop", "cryptsvc"], timeout=60)
             if needs_delivery:
-                WindowsOps.run_command("net stop dosvc", timeout=60)
+                WindowsOps.run_command_args(["net.exe", "stop", "dosvc"], timeout=60)
         else:
             self.log(self.tr("start_update_services"))
             if needs_update:
-                WindowsOps.run_command("net start cryptsvc", timeout=60)
-                WindowsOps.run_command("net start wuauserv", timeout=60)
-                WindowsOps.run_command("net start bits", timeout=60)
+                WindowsOps.run_command_args(["net.exe", "start", "cryptsvc"], timeout=60)
+                WindowsOps.run_command_args(["net.exe", "start", "wuauserv"], timeout=60)
+                WindowsOps.run_command_args(["net.exe", "start", "bits"], timeout=60)
             if needs_delivery:
-                WindowsOps.run_command("net start dosvc", timeout=60)
+                WindowsOps.run_command_args(["net.exe", "start", "dosvc"], timeout=60)
 
     def analysis_only_engine(self):
         try:
