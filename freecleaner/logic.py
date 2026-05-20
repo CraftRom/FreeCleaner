@@ -1899,6 +1899,71 @@ class WindowsOps:
     def supports_ultimate_performance() -> bool:
         return is_windows_at_least(10, 0, 17134)
 
+
+    @staticmethod
+    def apply_safe_gaming_power_profile() -> bool:
+        """Apply conservative Windows power settings for gaming.
+
+        This intentionally stays at the Windows power-policy layer.  It does not
+        touch CPU/GPU voltage, clocks, firmware, fan curves, thermal limits or
+        vendor-specific driver overclocking APIs.
+        """
+        if not IS_WINDOWS:
+            return False
+
+        # Switch to the built-in High Performance plan, then tune only AC values
+        # that reduce power-saving latency while the machine is plugged in.
+        switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
+        optional_commands = [
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PCIEXPRESS", "ASPM", "0"],
+            ["powercfg.exe", "/setactive", "SCHEME_CURRENT"],
+        ]
+        optional_ok = 0
+        for args in optional_commands:
+            if WindowsOps.run_command_args(args, timeout=90):
+                optional_ok += 1
+
+        # Some Windows editions or OEM power plans do not expose every alias.
+        # The profile is still useful when the plan switch succeeded.
+        return switched or optional_ok >= 2
+
+    @staticmethod
+    def purge_standby_memory() -> bool:
+        """Purge low-priority standby RAM cache through the Windows memory manager.
+
+        This does not terminate processes and does not modify RAM timings.  It is
+        meant as a one-shot action before launching a heavy game, not as a looped
+        background cleaner.
+        """
+        if not IS_WINDOWS:
+            return False
+        try:
+            ntdll = ctypes.WinDLL("ntdll")
+            nt_set_system_information = ntdll.NtSetSystemInformation
+            nt_set_system_information.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+            nt_set_system_information.restype = ctypes.c_long
+
+            SystemMemoryListInformation = 80
+            MemoryPurgeLowPriorityStandbyList = 5
+            MemoryPurgeStandbyList = 4
+
+            # Prefer the less aggressive low-priority standby purge.  Fall back
+            # to the broader standby list only on older systems where mode 5 is
+            # unavailable.
+            for mode in (MemoryPurgeLowPriorityStandbyList, MemoryPurgeStandbyList):
+                command = ctypes.c_int(mode)
+                status = int(nt_set_system_information(
+                    SystemMemoryListInformation,
+                    ctypes.byref(command),
+                    ctypes.sizeof(command),
+                ))
+                if status >= 0:
+                    return True
+        except Exception:
+            pass
+        return False
+
     @staticmethod
     def clear_recycle_bin() -> bool:
         if not IS_WINDOWS:

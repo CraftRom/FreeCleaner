@@ -23,6 +23,8 @@ The main goal of the project is not to become a bloated "all-in-one miracle opti
 - user-controlled
 - practical for everyday use
 
+The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings, Hardware-Accelerated GPU Scheduling registry flags, and standby RAM cache cleanup. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, or call vendor-specific GPU tuning APIs.
+
 ---
 
 ## Features
@@ -30,6 +32,7 @@ The main goal of the project is not to become a bloated "all-in-one miracle opti
 - Clean temporary and non-essential files
 - Expanded Windows, browser, app, launcher, and shader cache cleanup
 - Quick profiles: Safe, Gaming cleanup, and Deep cleanup
+- Safe gaming optimizer actions for Windows Game Mode, power policy, GPU scheduling settings and standby RAM cleanup
 - Simple desktop interface
 - Local-first workflow
 - Privacy-friendly design

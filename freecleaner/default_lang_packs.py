@@ -35,8 +35,8 @@ DEFAULT_LANG_PACKS = {'en': {'app_title': '{brand} {version}',
         'sec_gamer_title': 'Game cleanup',
         'sec_gamer_sub': 'Shader caches, launcher leftovers and light gaming-related cleanup.',
         'sec_optimizer_title': 'Windows gaming optimizer',
-        'sec_optimizer_sub': 'Core gaming tweaks: Game Mode, Xbox capture, mouse acceleration and power plans without '
-                             'the usual snake oil.',
+        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, '
+                             'standby RAM and graphics settings without overclocking.',
         'sec_ult_title': 'Extreme maintenance',
         'sec_ult_sub': 'Only if you really know what you are doing.',
         'freed_zero': 'Freed: 0.00 MB',
@@ -325,5 +325,29 @@ DEFAULT_LANG_PACKS = {'en': {'app_title': '{brand} {version}',
                                                 'mouse input in games. A sign-out or app restart may be needed.',
         'mouse_acceleration_ok': 'Mouse acceleration disabled.',
         'mouse_acceleration_fail': 'Failed to disable mouse acceleration.',
-        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row now shows current value → target '
-                                      'value, and FreeCleaner creates a backup before applying changes.'}}
+        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target '
+                                      'value, and FreeCleaner creates a backup before applying changes.',
+        'task.safe_gaming_power_profile.title': 'Safe CPU/GPU gaming power profile',
+        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only '
+                                               'CPU/PCIe latency settings. It does not change voltage, clocks, fan '
+                                               'curves or thermal protection.',
+        'safe_gaming_power_ok': 'Safe gaming power profile applied. Thermal protections remain enabled.',
+        'safe_gaming_power_fail': 'Failed to apply the safe gaming power profile.',
+        'task.purge_standby_ram.title': 'Purge standby RAM cache',
+        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does '
+                                       'not close apps or change RAM timings.',
+        'standby_ram_ok': 'Standby RAM cache purge completed.',
+        'standby_ram_fail': 'Failed to purge standby RAM cache. Administrator rights or OS support may be missing.',
+        'task.enable_hags.title': 'Enable HAGS (optional GPU scheduling)',
+        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver '
+                                 'combinations. This is optional: test games after reboot and restore if stutters '
+                                 'appear.',
+        'hags_on_ok': 'HAGS enabled. Restart Windows and test your games for stability and stutter.',
+        'hags_on_fail': 'Failed to enable HAGS through the registry.',
+        'task.disable_hags.title': 'Disable HAGS (stutter fallback)',
+        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if '
+                                  'HAGS causes stutter, hitching or driver issues. Restart required.',
+        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose '
+                                 'only one after testing.',
+        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power '
+                                       'profile already includes it.'}}

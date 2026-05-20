@@ -1495,6 +1495,16 @@ class Cleaner(ctk.CTk):
             kind="command", category="optimizer", default=False, state=state, requires_admin=True,
             command=lambda: self.run_logged_command("powercfg /S SCHEME_MIN", "high_perf_ok", "high_perf_fail", timeout=90),
         ))
+        self.add_task(self.card_opt, CleanerTask(
+            key="safe_gaming_power_profile", title_key="task.safe_gaming_power_profile.title", desc_key="task.safe_gaming_power_profile.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.apply_safe_gaming_power_profile,
+        ))
+        self.add_task(self.card_opt, CleanerTask(
+            key="purge_standby_ram", title_key="task.purge_standby_ram.title", desc_key="task.purge_standby_ram.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.purge_standby_ram,
+        ))
         ultimate_state = state if WindowsOps.supports_ultimate_performance() else "disabled"
         self.add_task(self.card_opt, CleanerTask(
             key="ultimate_perf_plan", title_key="task.ultimate_perf_plan.title", desc_key="task.ultimate_perf_plan.desc",
@@ -1503,6 +1513,17 @@ class Cleaner(ctk.CTk):
 
     def register_optimizer_registry_tasks(self):
         state = "normal" if self.is_admin else "disabled"
+        hags_on_values = [
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 2, label="HKLM GraphicsDrivers\\HwSchMode", requires_admin=True),
+        ]
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="enable_hags", title_key="task.enable_hags.title", desc_key="task.enable_hags.desc",
+            kind="command", category="optimizer", default=False, state=state if WindowsOps.supports_hags() else "disabled", requires_admin=True,
+            command=self.enable_hags,
+            registry_keys=self.registry_keys_for_specs(hags_on_values),
+            registry_values=hags_on_values,
+            reboot_required=True,
+        ))
         hags_values = [
             RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1, label="HKLM GraphicsDrivers\\HwSchMode", requires_admin=True),
         ]
@@ -1723,7 +1744,11 @@ class Cleaner(ctk.CTk):
 
     def _is_gaming_cleanup_task(self, task: CleanerTask) -> bool:
         if task.kind == "command":
-            return task.key in {"dns_flush", "enable_game_mode", "disable_gamedvr", "disable_mouse_acceleration", "disable_notifications"}
+            return task.key in {
+                "dns_flush", "enable_game_mode", "disable_gamedvr", "disable_mouse_acceleration",
+                "disable_notifications", "safe_gaming_power_profile", "purge_standby_ram",
+                "disable_power_throttling", "mmcss_gaming_profile",
+            }
         if task.kind != "directory":
             return False
         if task.category in {"browsers", "gamer"}:
@@ -1871,8 +1896,22 @@ class Cleaner(ctk.CTk):
     def enable_game_mode(self):
         self.apply_registry_task_values("enable_game_mode", "game_mode_ok", "game_mode_fail")
 
+    def apply_safe_gaming_power_profile(self):
+        ok = WindowsOps.apply_safe_gaming_power_profile()
+        self.log(self.tr("safe_gaming_power_ok") if ok else self.tr("safe_gaming_power_fail"))
+
+    def purge_standby_ram(self):
+        ok = WindowsOps.purge_standby_memory()
+        self.log(self.tr("standby_ram_ok") if ok else self.tr("standby_ram_fail"))
+
     def disable_mouse_acceleration(self):
         self.apply_registry_task_values("disable_mouse_acceleration", "mouse_acceleration_ok", "mouse_acceleration_fail")
+
+    def enable_hags(self):
+        if not WindowsOps.supports_hags():
+            self.log(self.tr("hags_on_fail"))
+            return
+        self.apply_registry_task_values("enable_hags", "hags_on_ok", "hags_on_fail")
 
     def disable_hags(self):
         if not WindowsOps.supports_hags():
@@ -1945,7 +1984,24 @@ class Cleaner(ctk.CTk):
             if task.requires_admin and not self.is_admin:
                 continue
             chosen.append(task)
-        return chosen
+        return self.resolve_selected_task_conflicts(chosen)
+
+    def resolve_selected_task_conflicts(self, chosen: List[CleanerTask]) -> List[CleanerTask]:
+        keys = {task.key for task in chosen}
+        skip: set[str] = set()
+        if "enable_hags" in keys and "disable_hags" in keys:
+            # These are exact opposites.  Do not silently let whichever task runs
+            # last win, because that makes registry state unpredictable.
+            skip.update({"enable_hags", "disable_hags"})
+            self.log(self.tr("hags_conflict_skipped"))
+        if "safe_gaming_power_profile" in keys and "high_perf_plan" in keys:
+            # The safe profile already switches to High Performance, so running
+            # the basic task too only duplicates work and log noise.
+            skip.add("high_perf_plan")
+            self.log(self.tr("high_perf_redundant_skipped"))
+        if not skip:
+            return chosen
+        return [task for task in chosen if task.key not in skip]
 
     def update_progress(self, removed_bytes: int, force: bool = False):
         """Update cleanup counters without flooding Tk with per-file redraws."""
