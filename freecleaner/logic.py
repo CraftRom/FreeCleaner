@@ -1144,8 +1144,15 @@ class PathFinder:
 
     @staticmethod
     def unique_existing(paths: List[str]) -> List[str]:
-        """Return existing paths without duplicates, normalized case-insensitively on Windows."""
-        result: List[str] = []
+        """Return existing paths without duplicates or nested double-counts.
+
+        Browser/app caches often expose both a parent cache directory and one of
+        its children, for example ``Cache`` and ``Cache\\Cache_Data``.  Scanning
+        both inflates the estimate, and cleaning both wastes work.  Keeping the
+        shortest parent path is enough because FreeCleaner removes the contents
+        of that target recursively while preserving the target root itself.
+        """
+        normalized: List[Tuple[str, str]] = []
         seen: Set[str] = set()
         for path in paths:
             if not path:
@@ -1155,10 +1162,32 @@ class PathFinder:
                 abs_path = os.path.abspath(expanded)
             except Exception:
                 abs_path = expanded
-            key = os.path.normcase(abs_path)
-            if key in seen or not os.path.exists(abs_path):
+            try:
+                if not os.path.exists(abs_path):
+                    continue
+            except Exception:
+                continue
+            key = os.path.normcase(os.path.normpath(abs_path))
+            if key in seen:
                 continue
             seen.add(key)
+            normalized.append((abs_path, key))
+
+        normalized.sort(key=lambda item: (len(item[1]), item[1]))
+        result: List[str] = []
+        kept_keys: List[str] = []
+        for abs_path, key in normalized:
+            nested = False
+            for parent_key in kept_keys:
+                try:
+                    if os.path.commonpath([parent_key, key]) == parent_key:
+                        nested = True
+                        break
+                except Exception:
+                    continue
+            if nested:
+                continue
+            kept_keys.append(key)
             result.append(abs_path)
         return result
 
@@ -1398,7 +1427,15 @@ class WindowsOps:
         if not IS_WINDOWS:
             return
         try:
-            args = subprocess.list2cmdline(sys.argv)
+            # Frozen apps should not pass their own .exe path as the first
+            # argument again. Source runs still need the script path after
+            # python.exe. This prevents broken elevation relaunches such as
+            # FreeCleaner.exe FreeCleaner.exe.
+            if getattr(sys, "frozen", False):
+                argv = sys.argv[1:]
+            else:
+                argv = sys.argv
+            args = subprocess.list2cmdline(argv)
             ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, args, None, 1)
         except Exception:
             pass
@@ -1583,13 +1620,39 @@ class WindowsOps:
 
     @staticmethod
     def reg_add(path: str, name: str, value: Union[int, str], reg_type: str = "REG_DWORD") -> bool:
-        safe_value = str(value).replace('"', '\"')
+        """Set a registry value safely.
+
+        Prefer winreg over `reg add` shell strings.  This avoids quoting bugs and
+        command parsing problems with localized values while still falling back
+        to reg.exe when winreg is unavailable.
+        """
         value_type = (reg_type or "REG_DWORD").upper()
-        if isinstance(value, str) and value_type == "REG_DWORD" and value.lower().startswith("0x"):
-            cmd = f'reg add "{path}" /v "{name}" /t {value_type} /d {safe_value} /f'
-        else:
-            cmd = f'reg add "{path}" /v "{name}" /t {value_type} /d "{safe_value}" /f'
-        return WindowsOps.run_command(cmd, timeout=45)
+        parsed = WindowsOps._split_registry_path(path)
+        if parsed and winreg is not None:
+            hive, subkey, _short = parsed
+            try:
+                flags = WindowsOps._registry_access_flags(winreg.KEY_SET_VALUE | winreg.KEY_CREATE_SUB_KEY, path)  # type: ignore[union-attr]
+                with winreg.CreateKeyEx(hive, subkey, 0, flags) as key:  # type: ignore[union-attr]
+                    if value_type == "REG_DWORD":
+                        normalized = WindowsOps._normalize_registry_value(value, value_type)
+                        if not isinstance(normalized, int):
+                            return False
+                        winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, normalized)  # type: ignore[union-attr]
+                    elif value_type == "REG_EXPAND_SZ":
+                        winreg.SetValueEx(key, name, 0, winreg.REG_EXPAND_SZ, str(value))  # type: ignore[union-attr]
+                    else:
+                        winreg.SetValueEx(key, name, 0, winreg.REG_SZ, str(value))  # type: ignore[union-attr]
+                return True
+            except Exception:
+                # Fall through to reg.exe. Some locked-down systems allow the
+                # command-line tool when direct API calls are restricted.
+                pass
+
+        safe_value = str(value)
+        return WindowsOps.run_command_args(
+            ["reg.exe", "add", path, "/v", name, "/t", value_type, "/d", safe_value, "/f"],
+            timeout=45,
+        )
 
     @staticmethod
     def open_in_file_manager(path: str) -> bool:
@@ -1645,19 +1708,24 @@ class WindowsOps:
         os.makedirs(folder, exist_ok=True)
 
         manifest_lines = []
-        exported = 0
         for index, key in enumerate(unique_keys, start=1):
             safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', key).strip('_')[:90] or f'key_{index}'
             target = os.path.join(folder, f'{index:02d}_{safe_name}.reg')
-            ok = WindowsOps.run_command(f'reg export "{key}" "{target}" /y', timeout=45)
-            manifest_lines.append(f'{key}={"ok" if ok else "missing"}')
-            if ok and os.path.isfile(target):
-                exported += 1
+            ok = WindowsOps.run_command_args(["reg.exe", "export", key, target, "/y"], timeout=45)
+            status = "ok" if ok and os.path.isfile(target) else "missing"
+            manifest_lines.append(f'{key}={status}')
 
-        with open(os.path.join(folder, 'manifest.txt'), 'w', encoding='utf-8') as fh:
-            fh.write('\n'.join(manifest_lines))
+        try:
+            with open(os.path.join(folder, 'manifest.txt'), 'w', encoding='utf-8') as fh:
+                fh.write('\n'.join(manifest_lines))
+        except Exception:
+            shutil.rmtree(folder, ignore_errors=True)
+            return None
 
-        return folder if exported else None
+        # A backup where every key was missing is still useful: restore can
+        # delete keys created by an optimizer action and return to the original
+        # "not configured" state.
+        return folder if manifest_lines else None
 
     @staticmethod
     def latest_registry_backup_dir() -> Optional[str]:
@@ -1674,12 +1742,17 @@ class WindowsOps:
             path = os.path.join(root, name)
             if not os.path.isdir(path):
                 continue
+            try:
+                entries = os.listdir(path)
+            except OSError:
+                continue
             reg_files = sorted(
                 os.path.join(path, entry)
-                for entry in os.listdir(path)
+                for entry in entries
                 if entry.lower().endswith('.reg')
             )
-            if not reg_files:
+            manifest = os.path.join(path, 'manifest.txt')
+            if not reg_files and not os.path.isfile(manifest):
                 continue
             created = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M:%S')
             kind = 'pre_restore' if name.lower().startswith('pre_restore_') else 'backup'
@@ -1698,23 +1771,29 @@ class WindowsOps:
         return bool(WindowsOps.list_registry_backups())
 
     @staticmethod
-    def _read_registry_manifest(folder: str) -> List[str]:
+    def _read_registry_manifest_entries(folder: str) -> List[Tuple[str, str]]:
         manifest = os.path.join(folder, 'manifest.txt')
-        keys: List[str] = []
+        entries: List[Tuple[str, str]] = []
         if not os.path.isfile(manifest):
-            return keys
+            return entries
         try:
             with open(manifest, 'r', encoding='utf-8') as fh:
                 for raw in fh:
                     line = raw.strip()
                     if not line or '=' not in line:
                         continue
-                    key = line.split('=', 1)[0].strip()
+                    key, status = line.split('=', 1)
+                    key = key.strip()
+                    status = status.strip().lower() or 'unknown'
                     if key:
-                        keys.append(key)
+                        entries.append((key, status))
         except Exception:
             return []
-        return keys
+        return entries
+
+    @staticmethod
+    def _read_registry_manifest(folder: str) -> List[str]:
+        return [key for key, _status in WindowsOps._read_registry_manifest_entries(folder)]
 
     @staticmethod
     def describe_registry_backup(folder: str) -> Dict[str, Any]:
@@ -1752,37 +1831,50 @@ class WindowsOps:
             return False
         reg_files = [os.path.join(folder, name) for name in os.listdir(folder) if name.lower().endswith('.reg')]
         reg_files.sort()
-        if not reg_files:
+        manifest_entries = WindowsOps._read_registry_manifest_entries(folder)
+        if not reg_files and not manifest_entries:
             return False
 
-        keys = WindowsOps._read_registry_manifest(folder)
+        keys = [key for key, _status in manifest_entries]
         if keys:
             root = WindowsOps.registry_backup_root()
             stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             snapshot = os.path.join(root, f'pre_restore_{stamp}')
             os.makedirs(snapshot, exist_ok=True)
-            exported = 0
             manifest_lines = []
             for index, key in enumerate(keys, start=1):
                 safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', key).strip('_')[:90] or f'key_{index}'
                 target = os.path.join(snapshot, f'{index:02d}_{safe_name}.reg')
-                ok = WindowsOps.run_command(f'reg export "{key}" "{target}" /y', timeout=45)
-                manifest_lines.append(f'{key}={"ok" if ok else "missing"}')
-                if ok and os.path.isfile(target):
-                    exported += 1
+                ok = WindowsOps.run_command_args(["reg.exe", "export", key, target, "/y"], timeout=45)
+                manifest_lines.append(f'{key}={"ok" if ok and os.path.isfile(target) else "missing"}')
             try:
                 with open(os.path.join(snapshot, 'manifest.txt'), 'w', encoding='utf-8') as fh:
                     fh.write('\n'.join(manifest_lines))
             except Exception:
                 pass
-            if exported == 0:
+            if not any(os.path.isfile(os.path.join(snapshot, name)) and name.lower().endswith('.reg') for name in os.listdir(snapshot)) and not manifest_lines:
                 try:
                     shutil.rmtree(snapshot, ignore_errors=True)
                 except Exception:
                     pass
 
-        results = [WindowsOps.run_command(f'reg import "{path}"', timeout=60) for path in reg_files]
-        return all(results)
+        import_results = [WindowsOps.run_command_args(["reg.exe", "import", path], timeout=60) for path in reg_files]
+
+        # Restore keys that did not exist before the backup by deleting them.
+        # This makes first-run optimizer changes reversible even when the key was
+        # created from scratch.
+        missing_keys = [key for key, status in manifest_entries if status == 'missing']
+        delete_results: List[bool] = []
+        for key in missing_keys:
+            deleted = WindowsOps.run_command_args(["reg.exe", "delete", key, "/f"], timeout=45)
+            if not deleted:
+                # `reg delete` returns an error when the key is already absent.
+                # That is still a successful restore of the previous missing
+                # state, so verify with `reg query` before reporting failure.
+                deleted = not WindowsOps.run_command_args(["reg.exe", "query", key], timeout=30)
+            delete_results.append(deleted)
+
+        return all(import_results or [True]) and all(delete_results or [True])
 
     @staticmethod
     def restore_latest_registry_backup() -> bool:
@@ -2003,19 +2095,28 @@ class SafeFS:
 
     @staticmethod
     def is_safe_clean_target(path: str) -> bool:
-        """Reject dangerous roots even if a bad task/path is registered later."""
+        """Reject dangerous roots and protected Windows trees.
+
+        This is the last line of defence for cleanup tasks.  It intentionally
+        allows known cache folders under Program Files/ProgramData, but rejects
+        drive roots, user/profile roots, Windows roots, and critical Windows
+        subtrees even if a bad path is accidentally registered later.
+        """
         if not path:
             return False
         try:
             abs_path = os.path.abspath(path)
+            real_path = os.path.realpath(abs_path)
         except Exception:
             return False
 
-        if SafeFS._is_drive_root(abs_path):
+        if SafeFS._is_drive_root(abs_path) or SafeFS._is_drive_root(real_path):
             return False
 
         norm = SafeFS._norm_abs(abs_path)
-        blocked: Set[str] = set()
+        real_norm = SafeFS._norm_abs(real_path)
+        blocked_exact: Set[str] = set()
+        blocked_trees: Set[str] = set()
 
         for env_name in (
             "WINDIR",
@@ -2033,19 +2134,36 @@ class SafeFS:
             if value:
                 if env_name == "HOMEDRIVE":
                     value = value + os.sep
-                blocked.add(SafeFS._norm_abs(value))
+                blocked_exact.add(SafeFS._norm_abs(value))
+                blocked_exact.add(SafeFS._norm_abs(os.path.realpath(value)))
 
         windir = os.environ.get("WINDIR") or os.environ.get("SYSTEMROOT")
         if windir:
-            blocked.add(SafeFS._norm_abs(os.path.join(windir, "System32")))
-            blocked.add(SafeFS._norm_abs(os.path.join(windir, "SysWOW64")))
-            blocked.add(SafeFS._norm_abs(os.path.join(windir, "WinSxS")))
+            # These are never valid cleanup targets, neither directly nor via
+            # symlink/reparse-point resolution.
+            for child in ("System32", "SysWOW64", "WinSxS", "servicing"):
+                critical = os.path.join(windir, child)
+                blocked_trees.add(SafeFS._norm_abs(critical))
+                blocked_trees.add(SafeFS._norm_abs(os.path.realpath(critical)))
 
         users_root = os.path.dirname(os.path.expanduser("~"))
         if users_root:
-            blocked.add(SafeFS._norm_abs(users_root))
+            blocked_exact.add(SafeFS._norm_abs(users_root))
+            blocked_exact.add(SafeFS._norm_abs(os.path.realpath(users_root)))
 
-        return norm not in blocked
+        if norm in blocked_exact or real_norm in blocked_exact:
+            return False
+
+        for blocked in blocked_trees:
+            try:
+                if os.path.commonpath([blocked, norm]) == blocked:
+                    return False
+                if os.path.commonpath([blocked, real_norm]) == blocked:
+                    return False
+            except Exception:
+                continue
+
+        return True
 
     @staticmethod
     def _clear_attributes(path: str, is_dir: bool = False) -> None:
@@ -2072,8 +2190,13 @@ class SafeFS:
     def _prepare_tree(path: str) -> None:
         if not IS_WINDOWS or not path or not os.path.isdir(path):
             return
-        escaped = os.path.abspath(path).replace('"', '')
-        WindowsOps.run_command(f'attrib -r -s -h "{escaped}\\*" /s /d', timeout=180)
+        try:
+            target = os.path.join(os.path.abspath(path), "*")
+        except Exception:
+            return
+        # Avoid shell=True here: cache paths can contain spaces, quotes,
+        # ampersands, and localized characters.  attrib handles the wildcard.
+        WindowsOps.run_command_args(["attrib.exe", "-r", "-s", "-h", target, "/s", "/d"], timeout=180)
 
     @staticmethod
     def _file_size(path: str) -> int:

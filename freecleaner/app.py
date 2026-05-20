@@ -911,7 +911,12 @@ class Cleaner(ctk.CTk):
     def backup_registry_for_tasks(self, tasks: List[CleanerTask]) -> bool:
         registry_keys: List[str] = []
         for task in tasks:
-            for key in (task.registry_keys or []):
+            specs = list(task.registry_values or [])
+            if specs:
+                keys = self.registry_keys_for_specs([spec for spec in specs if not spec.requires_admin or self.is_admin])
+            else:
+                keys = list(task.registry_keys or [])
+            for key in keys:
                 if key not in registry_keys:
                     registry_keys.append(key)
         if not registry_keys:
@@ -1898,9 +1903,10 @@ class Cleaner(ctk.CTk):
         self.dism_running = True
         try:
             self.log(self.tr("dism_started"))
+            # Keep DISM cleanup reversible.  /ResetBase saves a bit more space
+            # but prevents uninstalling already installed component updates, so
+            # it should not be silently bundled into a general cleanup action.
             command = "dism.exe /Online /Cleanup-Image /StartComponentCleanup"
-            if WindowsOps.supports_ultimate_performance():
-                command += " /ResetBase"
             ok = WindowsOps.run_command(command, timeout=3600, noisy=True)
             self.log(self.tr("dism_ok") if ok else self.tr("dism_fail"))
         finally:
