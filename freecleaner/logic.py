@@ -1267,6 +1267,44 @@ class PathFinder:
         return paths
 
     @staticmethod
+    def get_local_low_dir() -> str:
+        """Return the per-user LocalLow folder used by CryptnetUrlCache and WebView2 apps."""
+        userprofile = os.environ.get("USERPROFILE", "")
+        return PathFinder._safe_join(userprofile, r"AppData\LocalLow") if userprofile else ""
+
+    @staticmethod
+    def get_uwp_temp_cache_targets() -> List[str]:
+        """Return conservative Microsoft Store / packaged-app temp cache folders.
+
+        We only target TempState/AC\\Temp/LocalCache\\Temp-like folders, not
+        broad LocalState or LocalCache roots where apps can keep real data.
+        """
+        local = os.environ.get("LOCALAPPDATA", "")
+        packages_root = PathFinder._safe_join(local, "Packages")
+        if not packages_root or not os.path.isdir(packages_root):
+            return []
+        rels = (
+            "TempState",
+            r"AC\Temp",
+            r"LocalCache\Temp",
+            r"LocalCache\Microsoft\Windows\Caches",
+        )
+        targets: List[str] = []
+        try:
+            package_names = os.listdir(packages_root)
+        except OSError:
+            return []
+        for package_name in package_names:
+            package_root = os.path.join(packages_root, package_name)
+            if not os.path.isdir(package_root):
+                continue
+            for rel in rels:
+                target = os.path.join(package_root, rel)
+                if os.path.exists(target):
+                    targets.append(target)
+        return PathFinder.unique_existing(targets)
+
+    @staticmethod
     def get_windows_junk_targets() -> List[Tuple[str, str, str, str, bool]]:
         """Return real Windows cleanup targets as (key, title_key, desc_key, path, requires_admin).
 
@@ -1276,26 +1314,39 @@ class PathFinder:
         """
         local = os.environ.get("LOCALAPPDATA", "")
         appdata = os.environ.get("APPDATA", "")
+        locallow = PathFinder.get_local_low_dir()
         windir = os.environ.get("WINDIR", r"C:\Windows")
         programdata = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
         system_drive = os.environ.get("SystemDrive", "C:")
+        network_service_local = PathFinder._safe_join(windir, r"ServiceProfiles\NetworkService\AppData\Local")
         candidates: List[Tuple[str, str, str, str, bool]] = [
             ("recent_docs", "task.recent_docs.title", "task.recent_docs.desc", PathFinder._safe_join(appdata, r"Microsoft\Windows\Recent"), False),
             ("jump_lists_auto", "task.jump_lists.title", "task.jump_lists.desc", PathFinder._safe_join(appdata, r"Microsoft\Windows\Recent\AutomaticDestinations"), False),
             ("jump_lists_custom", "task.jump_lists.title", "task.jump_lists.desc", PathFinder._safe_join(appdata, r"Microsoft\Windows\Recent\CustomDestinations"), False),
             ("thumb_cache", "task.thumb_cache.title", "task.thumb_cache.desc", PathFinder._safe_join(local, r"Microsoft\Windows\Explorer"), False),
+            ("icon_cache_db", "task.icon_cache_db.title", "task.icon_cache_db.desc", PathFinder._safe_join(local, "IconCache.db"), False),
             ("inet_cache", "task.inet_cache.title", "task.inet_cache.desc", PathFinder._safe_join(local, r"Microsoft\Windows\INetCache"), False),
+            ("windows_caches_user", "task.windows_caches_user.title", "task.windows_caches_user.desc", PathFinder._safe_join(local, r"Microsoft\Windows\Caches"), False),
             ("web_cache", "task.web_cache.title", "task.web_cache.desc", PathFinder._safe_join(local, r"Microsoft\Windows\WebCache"), False),
+            ("cryptnet_content", "task.cryptnet_cache.title", "task.cryptnet_cache.desc", PathFinder._safe_join(locallow, r"Microsoft\CryptnetUrlCache\Content"), False),
+            ("cryptnet_metadata", "task.cryptnet_cache.title", "task.cryptnet_cache.desc", PathFinder._safe_join(locallow, r"Microsoft\CryptnetUrlCache\MetaData"), False),
             ("crash_dumps_user", "task.crash_dumps.title", "task.crash_dumps.desc", PathFinder._safe_join(local, "CrashDumps"), False),
             ("wer_user", "task.error_logs.title", "task.error_logs.desc", PathFinder._safe_join(local, r"Microsoft\Windows\WER"), False),
             ("wer_system", "task.error_logs.title", "task.error_logs.desc", PathFinder._safe_join(programdata, r"Microsoft\Windows\WER"), True),
             ("windows_logs_cbs", "task.windows_component_logs.title", "task.windows_component_logs.desc", PathFinder._safe_join(windir, r"Logs\CBS"), True),
             ("windows_logs_dism", "task.windows_component_logs.title", "task.windows_component_logs.desc", PathFinder._safe_join(windir, r"Logs\DISM"), True),
+            ("windows_logs_mosetup", "task.windows_setup_logs.title", "task.windows_setup_logs.desc", PathFinder._safe_join(windir, r"Logs\MoSetup"), True),
+            ("windows_logs_waasmedic", "task.windows_update_etl_logs.title", "task.windows_update_etl_logs.desc", PathFinder._safe_join(windir, r"Logs\waasmedic"), True),
+            ("windows_setupcln_logs", "task.windows_setup_logs.title", "task.windows_setup_logs.desc", PathFinder._safe_join(windir, r"System32\LogFiles\setupcln"), True),
+            ("windows_wmi_diagtrack_logs", "task.windows_wmi_etl_logs.title", "task.windows_wmi_etl_logs.desc", PathFinder._safe_join(windir, r"System32\LogFiles\WMI"), True),
+            ("windows_panther_logs", "task.windows_setup_logs.title", "task.windows_setup_logs.desc", PathFinder._safe_join(windir, "Panther"), True),
             ("windows_minidump", "task.memory_dumps.title", "task.memory_dumps.desc", PathFinder._safe_join(windir, "Minidump"), True),
             ("windows_memory_dump", "task.memory_dumps.title", "task.memory_dumps.desc", PathFinder._safe_join(windir, "MEMORY.DMP"), True),
             ("windows_old", "task.windows_old.title", "task.windows_old.desc", PathFinder._safe_join(system_drive + os.sep, "Windows.old"), True),
             ("update_cache_files", "task.update_cache_files.title", "task.update_cache_files.desc", PathFinder._safe_join(windir, r"SoftwareDistribution\Download"), True),
-            ("delivery_opt", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(local, r"Microsoft\Windows\DeliveryOptimization\Cache"), False),
+            ("delivery_opt_user", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(local, r"Microsoft\Windows\DeliveryOptimization\Cache"), False),
+            ("delivery_opt_programdata", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(programdata, r"Microsoft\Windows\DeliveryOptimization\Cache"), True),
+            ("delivery_opt_networkservice", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(network_service_local, r"Microsoft\Windows\DeliveryOptimization\Cache"), True),
             ("font_cache_user", "task.font_cache.title", "task.font_cache.desc", PathFinder._safe_join(local, "FontCache"), False),
             ("prefetch", "task.prefetch.title", "task.prefetch.desc", PathFinder._safe_join(windir, "Prefetch"), True),
         ]
@@ -1413,6 +1464,13 @@ class PathFinder:
             ("vscode_gpu_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Code\GPUCache"), {"app": "Visual Studio Code"}),
             ("cursor_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Cursor\Cache"), {"app": "Cursor"}),
             ("cursor_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Cursor\Code Cache"), {"app": "Cursor"}),
+            ("cursor_gpu_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Cursor\GPUCache"), {"app": "Cursor"}),
+            ("postman_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Postman\Cache"), {"app": "Postman"}),
+            ("postman_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Postman\Code Cache"), {"app": "Postman"}),
+            ("obs_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"obs-studio\cache"), {"app": "OBS Studio"}),
+            ("minecraft_launcher_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r".minecraft\webcache2"), {"app": "Minecraft Launcher"}),
+            ("curseforge_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"CurseForge\Cache"), {"app": "CurseForge"}),
+            ("overwolf_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Overwolf\BrowserCache"), {"app": "Overwolf"}),
         ]
         return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
 
@@ -1733,6 +1791,315 @@ class WindowsOps:
             ["reg.exe", "add", path, "/v", name, "/t", value_type, "/d", safe_value, "/f"],
             timeout=45,
         )
+
+    @staticmethod
+    def _query_registry_value(key_path: str, value_name: str = "") -> Optional[Any]:
+        parsed = WindowsOps._split_registry_path(key_path)
+        if not parsed or winreg is None:
+            return None
+        hive, subkey, _short = parsed
+        try:
+            flags = WindowsOps._registry_access_flags(winreg.KEY_READ, key_path)  # type: ignore[union-attr]
+            with winreg.OpenKey(hive, subkey, 0, flags) as key:  # type: ignore[union-attr]
+                value, _kind = winreg.QueryValueEx(key, value_name or "")  # type: ignore[union-attr]
+                return value
+        except Exception:
+            return None
+
+    @staticmethod
+    def _enum_registry_subkeys(key_path: str, limit: int = 10000) -> List[str]:
+        parsed = WindowsOps._split_registry_path(key_path)
+        if not parsed or winreg is None:
+            return []
+        hive, subkey, _short = parsed
+        result: List[str] = []
+        try:
+            flags = WindowsOps._registry_access_flags(winreg.KEY_READ, key_path)  # type: ignore[union-attr]
+            with winreg.OpenKey(hive, subkey, 0, flags) as key:  # type: ignore[union-attr]
+                index = 0
+                while index < limit:
+                    try:
+                        result.append(str(winreg.EnumKey(key, index)))  # type: ignore[union-attr]
+                        index += 1
+                    except OSError:
+                        break
+        except Exception:
+            return []
+        return result
+
+    @staticmethod
+    def _enum_registry_values(key_path: str, limit: int = 1000) -> List[Tuple[str, Any]]:
+        parsed = WindowsOps._split_registry_path(key_path)
+        if not parsed or winreg is None:
+            return []
+        hive, subkey, _short = parsed
+        values: List[Tuple[str, Any]] = []
+        try:
+            flags = WindowsOps._registry_access_flags(winreg.KEY_READ, key_path)  # type: ignore[union-attr]
+            with winreg.OpenKey(hive, subkey, 0, flags) as key:  # type: ignore[union-attr]
+                index = 0
+                while index < limit:
+                    try:
+                        name, value, _kind = winreg.EnumValue(key, index)  # type: ignore[union-attr]
+                        values.append((str(name), value))
+                        index += 1
+                    except OSError:
+                        break
+        except Exception:
+            return []
+        return values
+
+    @staticmethod
+    def _delete_registry_value(key_path: str, value_name: str) -> bool:
+        parsed = WindowsOps._split_registry_path(key_path)
+        if not parsed or winreg is None:
+            return False
+        hive, subkey, _short = parsed
+        try:
+            flags = WindowsOps._registry_access_flags(winreg.KEY_SET_VALUE, key_path)  # type: ignore[union-attr]
+            with winreg.OpenKey(hive, subkey, 0, flags) as key:  # type: ignore[union-attr]
+                winreg.DeleteValue(key, value_name)  # type: ignore[union-attr]
+            return True
+        except FileNotFoundError:
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _delete_registry_tree(key_path: str) -> bool:
+        parsed = WindowsOps._split_registry_path(key_path)
+        if not parsed or winreg is None:
+            return False
+        hive, subkey, _short = parsed
+
+        def delete_subtree(relative_subkey: str) -> bool:
+            full = key_path.split("\\", 1)[0] + "\\" + relative_subkey
+            try:
+                flags = WindowsOps._registry_access_flags(winreg.KEY_READ | winreg.KEY_WRITE, full)  # type: ignore[union-attr]
+                with winreg.OpenKey(hive, relative_subkey, 0, flags) as key:  # type: ignore[union-attr]
+                    children: List[str] = []
+                    index = 0
+                    while True:
+                        try:
+                            children.append(str(winreg.EnumKey(key, index)))  # type: ignore[union-attr]
+                            index += 1
+                        except OSError:
+                            break
+                ok = True
+                for child in children:
+                    ok = delete_subtree(relative_subkey + "\\" + child) and ok
+                try:
+                    try:
+                        winreg.DeleteKeyEx(hive, relative_subkey, WindowsOps._registry_access_flags(0, full), 0)  # type: ignore[attr-defined, union-attr]
+                    except AttributeError:
+                        winreg.DeleteKey(hive, relative_subkey)  # type: ignore[union-attr]
+                    return ok
+                except FileNotFoundError:
+                    return ok
+                except Exception:
+                    return False
+            except FileNotFoundError:
+                return True
+            except Exception:
+                return False
+
+        return delete_subtree(subkey)
+
+    @staticmethod
+    def _extract_executable_from_command(command: Any) -> Optional[str]:
+        text = str(command or "").strip()
+        if not text:
+            return None
+        text = os.path.expandvars(text).strip()
+        if text.startswith("@"):
+            text = text[1:].strip()
+        # Registry command strings often contain icon suffixes or arguments.
+        if text.startswith('"'):
+            end = text.find('"', 1)
+            candidate = text[1:end] if end > 1 else text.strip('"')
+        else:
+            match = re.search(r"(?i)([a-z]:\\[^\"<>|]+?\.(?:exe|com|bat|cmd|msi))", text)
+            if match:
+                candidate = match.group(1)
+            else:
+                token = text.split()[0] if text.split() else ""
+                candidate = token.strip('"')
+        candidate = candidate.strip().strip('"').strip()
+        if not candidate:
+            return None
+        # Icon strings can look like C:\app\app.exe,0
+        candidate = re.sub(r"(?i)(\.(?:exe|com|bat|cmd|msi)),.*$", r"\1", candidate)
+        return candidate or None
+
+    @staticmethod
+    def _registry_command_is_dynamic_or_system(command: Any) -> bool:
+        text = str(command or "").strip().lower()
+        if not text:
+            return False
+        dynamic_tokens = ("rundll32", "regsvr32", "msiexec", "explorer.exe", "cmd.exe", "powershell", "pwsh.exe", "wscript", "cscript")
+        if any(token in text for token in dynamic_tokens):
+            return True
+        if text.startswith(("ms-settings:", "shell:", "windowsdefender:", "http:", "https:")):
+            return True
+        return False
+
+    @staticmethod
+    def _executable_exists_for_registry(candidate: Optional[str]) -> bool:
+        if not candidate:
+            return False
+        expanded = os.path.expandvars(str(candidate).strip().strip('"'))
+        if not expanded:
+            return False
+        try:
+            if os.path.isabs(expanded):
+                return os.path.exists(expanded)
+        except Exception:
+            pass
+        try:
+            if shutil.which(expanded):
+                return True
+        except Exception:
+            pass
+        name = os.path.basename(expanded)
+        if not name:
+            return False
+        roots = [
+            os.environ.get("WINDIR", r"C:\Windows"),
+            os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "System32"),
+            os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "SysWOW64"),
+        ] + PathFinder.get_program_files_paths()
+        for root in roots:
+            if not root:
+                continue
+            try:
+                if os.path.exists(os.path.join(root, name)):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    @staticmethod
+    def find_registry_leftover_candidates(include_machine: bool = False, limit: int = 8000) -> Dict[str, List[Dict[str, str]]]:
+        """Find conservative registry leftovers without touching COM/driver/service keys.
+
+        Scope is intentionally narrow:
+        - stale Open With app registrations under Software\\Classes\\Applications;
+        - stale App Paths entries;
+        - broken Run/RunOnce startup values.
+        """
+        delete_keys: List[Dict[str, str]] = []
+        delete_values: List[Dict[str, str]] = []
+        scanned = 0
+
+        def add_key(path: str, reason: str) -> None:
+            nonlocal scanned
+            if scanned >= limit:
+                return
+            scanned += 1
+            delete_keys.append({"path": path, "reason": reason})
+
+        def add_value(path: str, name: str, reason: str) -> None:
+            nonlocal scanned
+            if scanned >= limit:
+                return
+            scanned += 1
+            delete_values.append({"path": path, "name": name, "reason": reason})
+
+        scopes = ["HKCU"]
+        if include_machine:
+            scopes.append("HKLM")
+
+        for hive in scopes:
+            apps_base = hive + r"\Software\Classes\Applications"
+            for app_name in WindowsOps._enum_registry_subkeys(apps_base, limit=limit):
+                if scanned >= limit:
+                    break
+                if not app_name.lower().endswith((".exe", ".com", ".bat", ".cmd")):
+                    continue
+                app_key = apps_base + "\\" + app_name
+                command = WindowsOps._query_registry_value(app_key + r"\shell\open\command", "")
+                if command and WindowsOps._registry_command_is_dynamic_or_system(command):
+                    continue
+                exe = WindowsOps._extract_executable_from_command(command) if command else app_name
+                if exe and not WindowsOps._executable_exists_for_registry(exe):
+                    add_key(app_key, "missing application executable")
+
+            app_paths_base = hive + r"\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+            for app_name in WindowsOps._enum_registry_subkeys(app_paths_base, limit=limit):
+                if scanned >= limit:
+                    break
+                app_key = app_paths_base + "\\" + app_name
+                default_path = WindowsOps._query_registry_value(app_key, "")
+                exe = WindowsOps._extract_executable_from_command(default_path) if default_path else app_name
+                if exe and not WindowsOps._executable_exists_for_registry(exe):
+                    add_key(app_key, "missing App Paths executable")
+
+            for run_subkey in (
+                r"\Software\Microsoft\Windows\CurrentVersion\Run",
+                r"\Software\Microsoft\Windows\CurrentVersion\RunOnce",
+            ):
+                run_key = hive + run_subkey
+                for name, command in WindowsOps._enum_registry_values(run_key, limit=1000):
+                    if scanned >= limit:
+                        break
+                    if not name or WindowsOps._registry_command_is_dynamic_or_system(command):
+                        continue
+                    exe = WindowsOps._extract_executable_from_command(command)
+                    if exe and not WindowsOps._executable_exists_for_registry(exe):
+                        add_value(run_key, name, "missing startup executable")
+
+        return {"delete_keys": delete_keys, "delete_values": delete_values}
+
+    @staticmethod
+    def cleanup_registry_leftovers(include_machine: bool = False) -> Dict[str, Any]:
+        candidates = WindowsOps.find_registry_leftover_candidates(include_machine=include_machine)
+        key_items = list(candidates.get("delete_keys") or [])
+        value_items = list(candidates.get("delete_values") or [])
+        backup_keys: List[str] = []
+        for item in key_items:
+            path = item.get("path") or ""
+            if path and path not in backup_keys:
+                backup_keys.append(path)
+        for item in value_items:
+            path = item.get("path") or ""
+            if path and path not in backup_keys:
+                backup_keys.append(path)
+
+        backup_dir = ""
+        if backup_keys:
+            backup_dir = WindowsOps.backup_registry_keys(backup_keys) or ""
+            if not backup_dir:
+                return {
+                    "found": len(key_items) + len(value_items),
+                    "removed": 0,
+                    "failed": len(key_items) + len(value_items),
+                    "backup": "",
+                    "keys_removed": 0,
+                    "values_removed": 0,
+                }
+
+        keys_removed = 0
+        values_removed = 0
+        failed = 0
+        # Values first, then whole orphan keys.
+        for item in value_items:
+            if WindowsOps._delete_registry_value(item.get("path", ""), item.get("name", "")):
+                values_removed += 1
+            else:
+                failed += 1
+        for item in key_items:
+            if WindowsOps._delete_registry_tree(item.get("path", "")):
+                keys_removed += 1
+            else:
+                failed += 1
+        return {
+            "found": len(key_items) + len(value_items),
+            "removed": keys_removed + values_removed,
+            "failed": failed,
+            "backup": backup_dir,
+            "keys_removed": keys_removed,
+            "values_removed": values_removed,
+        }
 
     @staticmethod
     def open_in_file_manager(path: str) -> bool:

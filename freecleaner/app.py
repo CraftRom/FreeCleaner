@@ -664,7 +664,9 @@ class Cleaner(ctk.CTk):
         if not specs:
             return ""
         lines = [self.tr("registry_status_header")]
-        for item in WindowsOps.registry_statuses(specs):
+        statuses = WindowsOps.registry_statuses(specs)
+        max_rows = 5
+        for item in statuses[:max_rows]:
             status = str(item.get("status") or "error")
             matches = bool(item.get("matches"))
             requires_admin = bool(item.get("requires_admin"))
@@ -697,6 +699,8 @@ class Cleaner(ctk.CTk):
                 desired=str(item.get("desired_display") or ""),
                 status=self.tr(label_key),
             ))
+        if len(statuses) > max_rows:
+            lines.append(self.trf("registry_status_more_fmt", count=len(statuses) - max_rows))
         return "\n".join(lines)
 
     def refresh_registry_status_descriptions(self) -> None:
@@ -1344,15 +1348,24 @@ class Cleaner(ctk.CTk):
             # Deep/admin-only or potentially disruptive targets are registered
             # in the Deep section below, not mixed into the quick System card.
             if key in {
-                "prefetch", "update_cache_files", "delivery_opt", "wer_system",
-                "windows_logs_cbs", "windows_logs_dism", "windows_minidump",
-                "windows_memory_dump", "windows_old",
+                "prefetch", "update_cache_files", "delivery_opt_programdata", "delivery_opt_networkservice", "wer_system",
+                "windows_logs_cbs", "windows_logs_dism", "windows_logs_mosetup", "windows_logs_waasmedic",
+                "windows_setupcln_logs", "windows_wmi_diagtrack_logs", "windows_panther_logs",
+                "windows_minidump", "windows_memory_dump", "windows_old",
             }:
                 continue
             state = sys_state if requires_admin else "normal"
             self.add_task(self.card_sys, CleanerTask(
                 key=key, title_key=tkey, desc_key=dkey, path=path, category="system",
                 default=False, state=state, requires_admin=requires_admin, fmt={"path": path},
+            ))
+
+        uwp_paths = PathFinder.get_uwp_temp_cache_targets()
+        if uwp_paths:
+            self.add_task(self.card_sys, CleanerTask(
+                key="uwp_temp_caches", title_key="task.uwp_temp_caches.title", desc_key="task.uwp_temp_caches.desc",
+                path=uwp_paths[0], paths=uwp_paths, category="system", default=False,
+                fmt={"count": str(len(uwp_paths)), "path": uwp_paths[0]},
             ))
 
     def register_browser_tasks(self):
@@ -1446,9 +1459,10 @@ class Cleaner(ctk.CTk):
         state = "normal" if self.is_admin else "disabled"
         for key, tkey, dkey, path, requires_admin in PathFinder.get_windows_junk_targets():
             if key not in {
-                "prefetch", "update_cache_files", "delivery_opt", "wer_system",
-                "windows_logs_cbs", "windows_logs_dism", "windows_minidump",
-                "windows_memory_dump", "windows_old",
+                "prefetch", "update_cache_files", "delivery_opt_programdata", "delivery_opt_networkservice", "wer_system",
+                "windows_logs_cbs", "windows_logs_dism", "windows_logs_mosetup", "windows_logs_waasmedic",
+                "windows_setupcln_logs", "windows_wmi_diagtrack_logs", "windows_panther_logs",
+                "windows_minidump", "windows_memory_dump", "windows_old",
             }:
                 continue
             self.add_task(self.card_deep, CleanerTask(
@@ -1460,6 +1474,12 @@ class Cleaner(ctk.CTk):
             key="recycle", title_key="task.recycle.title", desc_key="task.recycle.desc",
             kind="command", category="deep", default=False,
             command=lambda: self.log(self.tr("recycle_ok") if WindowsOps.clear_recycle_bin() else self.tr("recycle_fail")),
+        ))
+
+        self.add_task(self.card_deep, CleanerTask(
+            key="registry_leftovers_conservative", title_key="task.registry_leftovers.title", desc_key="task.registry_leftovers.desc",
+            kind="command", category="deep", default=False,
+            command=self.cleanup_registry_leftovers,
         ))
 
         self.add_task(self.card_deep, CleanerTask(
@@ -1979,6 +1999,33 @@ class Cleaner(ctk.CTk):
                         break
         self.log(self.tr("core_isolation_page_ok") if ok else self.tr("core_isolation_page_fail"))
 
+
+    def cleanup_registry_leftovers(self):
+        include_machine = bool(self.is_admin)
+        result = WindowsOps.cleanup_registry_leftovers(include_machine=include_machine)
+        found = int(result.get("found", 0) or 0)
+        removed = int(result.get("removed", 0) or 0)
+        failed = int(result.get("failed", 0) or 0)
+        keys_removed = int(result.get("keys_removed", 0) or 0)
+        values_removed = int(result.get("values_removed", 0) or 0)
+        backup = str(result.get("backup") or "")
+        if found <= 0:
+            self.log(self.tr("registry_leftovers_none"))
+            if not include_machine:
+                self.log(self.tr("registry_leftovers_limited_mode"))
+            return
+        if backup:
+            self.log(self.trf("registry_backup_created", path=backup))
+        self.log(self.trf(
+            "registry_leftovers_done_fmt",
+            found=found,
+            removed=removed,
+            keys=keys_removed,
+            values=values_removed,
+            failed=failed,
+        ))
+        if not include_machine:
+            self.log(self.tr("registry_leftovers_limited_mode"))
 
     def disable_game_dvr(self):
         self.apply_registry_task_values("disable_gamedvr", "game_dvr_ok", "game_dvr_fail")

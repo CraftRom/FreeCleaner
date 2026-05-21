@@ -23,17 +23,18 @@ The main goal of the project is not to become a bloated "all-in-one miracle opti
 - user-controlled
 - practical for everyday use
 
-The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings, an optional maximum CPU latency/performance profile, Hardware-Accelerated GPU Scheduling registry flags, MMCSS gaming scheduling, Power Throttling policy, standby RAM cache cleanup, shader cache cleanup, and an optional dynamic-tick latency test. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, patch the kernel, or call vendor-specific GPU tuning APIs.
+The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings without forcing CPU min/max state, an optional maximum CPU latency/performance profile, Hardware-Accelerated GPU Scheduling registry flags, MMCSS gaming scheduling, Power Throttling policy, standby RAM cache cleanup, shader cache cleanup, and an optional dynamic-tick latency test. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, patch the kernel, or call vendor-specific GPU tuning APIs.
 
 ---
 
 ## Features
 
 - Clean temporary and non-essential files
-- Expanded Windows, browser, app, launcher, and shader cache cleanup
+- Expanded Windows, browser, app, launcher, shader cache, Windows log and packaged-app temp cleanup
 - Safer cleanup traversal that skips symlinks/junctions instead of following them
 - Quick profiles: Safe, Gaming cleanup, and Deep cleanup
 - Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing and standby RAM cleanup
+- Conservative registry leftovers cleanup for clearly broken Open With/Application, App Paths and startup entries, with registry backup before deletion
 - UI filtering that hides empty sections and keeps large task lists easier to scan
 - Simple desktop interface
 - Local-first workflow
@@ -69,11 +70,18 @@ Add your screenshots here after publishing visuals for the project.
 ---
 
 
+
+## Cleanup scope notes
+
+FreeCleaner targets rebuildable caches, temporary folders, logs and dumps. Newer cleanup coverage includes CryptnetUrlCache, IconCache.db, Windows user caches, Windows Update / WaaSMedic logs, setup/upgrade logs, WMI diagnostic ETL logs, additional Delivery Optimization cache locations and conservative Microsoft Store packaged-app temp folders.
+
+Registry cleanup is deliberately narrow. It does not touch COM, services, drivers, uninstall entries, shell extensions or broad file associations. It only removes clearly broken application/open-with/startup records that point to missing executable files and creates a registry backup first.
+
 ## Windows 10/11 gaming optimizer notes
 
 FreeCleaner does not assume that Windows secretly throttles older CPUs on purpose. The practical, user-controllable performance limiters are regular Windows policies and security features:
 
-- **Power policy**: High Performance, AC-only CPU maximum state, EPP=0, boost policy and PCIe ASPM can reduce power-saving latency when the PC is plugged in.
+- **Power policy**: High Performance, EPP=0, boost policy, faster frequency ramp-up, core parking policy and PCIe ASPM can reduce power-saving latency when the PC is plugged in. FreeCleaner does not force CPU min/max state to 100%.
 - **Maximum CPU latency/performance profile**: optional, not selected by default. It uses official `powercfg` aliases for AC-only EPP=0, aggressive boost, faster frequency ramp-up, unparked cores and PCIe ASPM off. This can help frametime consistency on some old and modern CPUs, but it can also increase heat and fan noise. Use it one change at a time and monitor temperatures.
 - **Balanced rollback**: a separate action switches Windows back to the built-in Balanced power plan without deleting custom OEM plans.
 - **Power Throttling / Efficiency behavior**: the advanced optimizer can disable the system-wide PowerThrottling registry policy, but this requires testing and a reboot.
