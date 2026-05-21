@@ -287,7 +287,7 @@
   "update_opened_download": "The update for {version} is downloading to the local updates folder.",
   "update_download_failed": "Could not download the update.",
   "update_download_section": "Update download",
-  "update_download_idle": "The installer will be saved to the updates folder in the FreeCleaner installation directory and started automatically after download.",
+  "update_download_idle": "The installer will be saved to the local FreeCleaner user folder and started automatically after download. If FreeCleaner is installed under Program Files, Windows may request administrator permission only when the installer runs.",
   "update_save_dialog_title": "Choose where to save the update",
   "update_download_progress": "Downloading: {progress}",
   "update_downloading": "Downloading...",

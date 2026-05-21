@@ -287,7 +287,7 @@
   "update_opened_download": "Оновлення для {version} завантажується в локальну папку updates.",
   "update_download_failed": "Не вдалося завантажити оновлення.",
   "update_download_section": "Завантаження оновлення",
-  "update_download_idle": "Інсталятор буде збережено в папку updates у корені встановлення FreeCleaner і автоматично запущено після завантаження.",
+  "update_download_idle": "Інсталятор буде збережено в локальну папку користувача FreeCleaner і автоматично запущено після завантаження. Якщо інсталяція йде в Program Files, Windows може попросити права адміністратора лише на етапі встановлення.",
   "update_save_dialog_title": "Куди зберегти оновлення",
   "update_download_progress": "Завантаження: {progress}",
   "update_downloading": "Завантаження...",

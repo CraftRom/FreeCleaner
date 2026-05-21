@@ -35,6 +35,7 @@ from .logic import (
     APP_VERSION,
     APP_VERSION_RAW,
     CONFIG_PATH,
+    LEGACY_CONFIG_PATH,
     CleanerTask,
     RegistryValueSpec,
     PathFinder,
@@ -138,12 +139,30 @@ class Cleaner(ctk.CTk):
             pass
 
     def load_config(self) -> Dict[str, str]:
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
+        for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
+            try:
+                if not path or not os.path.isfile(path):
+                    continue
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    # Migrate legacy install-dir config to the per-user writable path.
+                    if os.path.abspath(path) != os.path.abspath(CONFIG_PATH):
+                        try:
+                            folder = os.path.dirname(CONFIG_PATH)
+                            if folder:
+                                os.makedirs(folder, exist_ok=True)
+                            tmp_path = f"{CONFIG_PATH}.tmp"
+                            with open(tmp_path, "w", encoding="utf-8") as fh:
+                                json.dump(data, fh, ensure_ascii=False, indent=2)
+                                fh.write("\n")
+                            os.replace(tmp_path, CONFIG_PATH)
+                        except Exception:
+                            pass
+                    return data
+            except Exception:
+                continue
+        return {}
 
 
     def save_config(self):

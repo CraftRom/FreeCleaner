@@ -335,6 +335,18 @@ Manual installer build after PyInstaller:
   -OutputDir "dist"
 ```
 
+
+## User-writable runtime data
+
+Installed copies can live under `C:\Program Files`, which is read-only for normal users.
+FreeCleaner therefore stores mutable runtime data in the current user's local data folder instead of the installation directory:
+
+- config: `%LOCALAPPDATA%\FreeCleaner\config.json`;
+- update downloads: `%LOCALAPPDATA%\FreeCleaner\updates`;
+- registry backups: `%LOCALAPPDATA%\FreeCleaner\registry_backups`.
+
+This lets update downloads complete without administrator rights. Windows may still show a UAC prompt when the downloaded installer starts, because replacing files under `Program Files` requires elevation.
+
 ## Update asset selection
 
 The in-app updater selects the installer by the current Windows architecture:

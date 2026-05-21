@@ -14,6 +14,7 @@ import subprocess
 import shutil
 import stat
 import time
+import tempfile
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -360,10 +361,11 @@ def get_adaptive_thread_status(mode: str) -> str:
 # -------------------------
 
 def get_runtime_base_dir() -> str:
-    """Base directory for runtime files.
+    """Base directory for application files.
 
-    - For .exe (PyInstaller frozen): directory next to the executable
-    - For source runs (.py): directory of the *entry script* (e.g. app.py)
+    This is the install/source directory. It can be read-only when FreeCleaner
+    is installed under Program Files, so mutable runtime data must not be
+    written here. Use get_user_data_dir() for config, backups and updates.
     """
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -380,6 +382,41 @@ def get_runtime_base_dir() -> str:
     return os.getcwd()
 
 
+def get_user_data_dir(create: bool = True) -> str:
+    """Return a per-user writable directory for mutable FreeCleaner data.
+
+    Windows blocks normal users from writing to Program Files. Update downloads,
+    config files and registry backups therefore live in %LOCALAPPDATA%\\FreeCleaner
+    instead of the installation directory. If that path is unavailable, fall
+    back to the system temp directory rather than failing the action.
+    """
+    candidates: List[str] = []
+
+    if IS_WINDOWS:
+        local = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if local:
+            candidates.append(os.path.join(local, APP_NAME))
+    else:
+        xdg = os.environ.get("XDG_DATA_HOME")
+        if xdg:
+            candidates.append(os.path.join(xdg, APP_NAME))
+        home = os.path.expanduser("~")
+        if home and home != "~":
+            candidates.append(os.path.join(home, f".{APP_NAME.lower()}"))
+
+    candidates.append(os.path.join(tempfile.gettempdir(), APP_NAME))
+
+    for path in candidates:
+        try:
+            path = os.path.abspath(path)
+            if create:
+                os.makedirs(path, exist_ok=True)
+            return path
+        except Exception:
+            continue
+
+    return os.path.abspath(tempfile.gettempdir())
+
 
 def get_bundle_base_dir() -> str:
     """Base directory for bundled resources.
@@ -393,7 +430,8 @@ def get_bundle_base_dir() -> str:
 
 
 
-CONFIG_PATH = os.path.join(get_runtime_base_dir(), "config.json")
+LEGACY_CONFIG_PATH = os.path.join(get_runtime_base_dir(), "config.json")
+CONFIG_PATH = os.path.join(get_user_data_dir(create=True), "config.json")
 
 # -------------------------
 # Version info (single source of truth)
@@ -569,19 +607,29 @@ def get_default_download_dir() -> str:
 
 
 def get_updates_dir(create: bool = True) -> str:
-    """Return the update cache directory in the installation/runtime root."""
-    base_dir = os.path.abspath(get_runtime_base_dir())
-    updates_dir = os.path.abspath(os.path.join(base_dir, UPDATES_DIRNAME))
+    """Return a per-user writable update cache directory.
 
-    try:
-        if os.path.commonpath([base_dir, updates_dir]) != base_dir:
-            updates_dir = os.path.abspath(os.path.join(base_dir, "updates"))
-    except Exception:
-        updates_dir = os.path.abspath(os.path.join(base_dir, "updates"))
+    Do not write update installers next to the executable. Installed copies often
+    live in Program Files, where non-admin users cannot create .part downloads.
+    """
+    candidates = [
+        os.path.join(get_user_data_dir(create=create), UPDATES_DIRNAME),
+        os.path.join(tempfile.gettempdir(), APP_NAME, UPDATES_DIRNAME),
+    ]
 
+    for path in candidates:
+        try:
+            updates_dir = os.path.abspath(path)
+            if create:
+                os.makedirs(updates_dir, exist_ok=True)
+            return updates_dir
+        except Exception:
+            continue
+
+    fallback = os.path.abspath(os.path.join(tempfile.gettempdir(), APP_NAME, UPDATES_DIRNAME))
     if create:
-        os.makedirs(updates_dir, exist_ok=True)
-    return updates_dir
+        os.makedirs(fallback, exist_ok=True)
+    return fallback
 
 
 def _safe_update_filename(filename: str, fallback: str = "FreeCleaner-update.exe") -> str:
@@ -594,16 +642,16 @@ def _safe_update_filename(filename: str, fallback: str = "FreeCleaner-update.exe
 
 
 def get_update_download_path(filename: str, fallback: str = "FreeCleaner-update.exe") -> str:
-    """Build a safe update destination path inside ./updates."""
+    """Build a safe update destination path inside the per-user updates dir."""
     name = _safe_update_filename(filename, fallback=fallback)
     return os.path.join(get_updates_dir(create=True), name)
 
 
 def cleanup_old_update_files(keep_paths: Optional[Set[str]] = None) -> int:
-    """Delete stale files from ./updates and return the number of removed entries.
+    """Delete stale files from the per-user updates dir and return a count.
 
-    The function is intentionally limited to the runtime ./updates directory.
-    It never follows symlinks and never touches parent directories.
+    The function is intentionally limited to the FreeCleaner user-data updates
+    directory. It never follows symlinks and never touches parent directories.
     """
     updates_dir = get_updates_dir(create=True)
     root = os.path.abspath(updates_dir)
@@ -736,7 +784,7 @@ def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[in
 
 
 def schedule_update_cleanup_after_install(installer_pid: Optional[int], updates_dir: Optional[str] = None) -> bool:
-    """Start a detached PowerShell cleanup task that removes ./updates after installer exit."""
+    """Start a detached cleanup task for the per-user updates directory."""
     if not IS_WINDOWS:
         return False
 
@@ -758,8 +806,9 @@ def schedule_update_cleanup_after_install(installer_pid: Optional[int], updates_
         + "if (Test-Path -LiteralPath $dir) {"
         + "Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue | ForEach-Object {"
         + "$p=$_.FullName;"
+        + "$isLink=($_.Attributes -band [IO.FileAttributes]::ReparsePoint);"
         + "for ($i=0; $i -lt 20; $i++) {"
-        + "try { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop; break }"
+        + "try { if ($isLink) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop } else { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop }; break }"
         + "catch { Start-Sleep -Seconds 3 }"
         + "}"
         + "}"
@@ -1715,7 +1764,7 @@ class WindowsOps:
 
     @staticmethod
     def registry_backup_root() -> str:
-        root = os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
+        root = os.path.join(get_user_data_dir(create=True), REGISTRY_BACKUP_DIRNAME)
         os.makedirs(root, exist_ok=True)
         return root
 
@@ -1765,7 +1814,7 @@ class WindowsOps:
 
     @staticmethod
     def list_registry_backups() -> List[Dict[str, Any]]:
-        root = os.path.join(get_runtime_base_dir(), REGISTRY_BACKUP_DIRNAME)
+        root = os.path.join(get_user_data_dir(create=True), REGISTRY_BACKUP_DIRNAME)
         if not os.path.isdir(root):
             return []
         items: List[Dict[str, Any]] = []

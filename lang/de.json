@@ -230,7 +230,7 @@
   "adaptive_threads_fmt": "Adaptive Laststeuerung: {status}",
   "update_download": "Herunterladen und installieren",
   "update_opened_download": "Das Update für {version} wird in den lokalen updates-Ordner geladen.",
-  "update_download_idle": "Der Installer wird im updates-Ordner im FreeCleaner-Installationsverzeichnis gespeichert und danach automatisch gestartet.",
+  "update_download_idle": "Der Installer wird im lokalen FreeCleaner-Benutzerordner gespeichert und nach dem Download automatisch gestartet. Wenn FreeCleaner unter Program Files installiert ist, kann Windows erst beim Start des Installers Administratorrechte anfordern.",
   "update_download_complete": "Update heruntergeladen:\n{path}",
   "update_download_saved": "Update gespeichert unter: {path}",
   "update_download_location": "Update-Ordner: {path}",
