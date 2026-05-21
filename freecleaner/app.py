@@ -1570,7 +1570,7 @@ class Cleaner(ctk.CTk):
             reboot_required=True,
         ))
         mmcss_values = [
-            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", 0, label="HKLM SystemProfile\\SystemResponsiveness", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", 10, label="HKLM SystemProfile\\SystemResponsiveness", requires_admin=True),
             RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "GPU Priority", 8, label="HKLM Tasks\\Games\\GPU Priority", requires_admin=True),
             RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Priority", 6, label="HKLM Tasks\\Games\\Priority", requires_admin=True),
             RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Scheduling Category", "High", "REG_SZ", label="HKLM Tasks\\Games\\Scheduling Category", requires_admin=True),
@@ -1582,6 +1582,19 @@ class Cleaner(ctk.CTk):
             command=self.apply_mmcss_gaming_profile,
             registry_keys=self.registry_keys_for_specs(mmcss_values),
             registry_values=mmcss_values,
+            reboot_required=True,
+        ))
+        dyn_tick_state = state if WindowsOps.supports_dynamic_tick_toggle() else "disabled"
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="disable_dynamic_tick_latency", title_key="task.disable_dynamic_tick_latency.title", desc_key="task.disable_dynamic_tick_latency.desc",
+            kind="command", category="optimizer", default=False, state=dyn_tick_state, requires_admin=True,
+            command=self.disable_dynamic_tick_latency,
+            reboot_required=True,
+        ))
+        self.add_task(self.card_opt_adv, CleanerTask(
+            key="restore_dynamic_tick_default", title_key="task.restore_dynamic_tick_default.title", desc_key="task.restore_dynamic_tick_default.desc",
+            kind="command", category="optimizer", default=False, state=dyn_tick_state, requires_admin=True,
+            command=self.restore_dynamic_tick_default,
             reboot_required=True,
         ))
 
@@ -1613,6 +1626,14 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_opt_tools, CleanerTask(
             key="open_graphics_apps", title_key="task.open_graphics_apps.title", desc_key="task.open_graphics_apps.desc",
             kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:display-advancedgraphics", "graphics_apps_ok", "graphics_apps_fail"),
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_power_mode_settings", title_key="task.open_power_mode_settings.title", desc_key="task.open_power_mode_settings.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=lambda: self.open_settings_uri("ms-settings:powersleep", "power_mode_page_ok", "power_mode_page_fail"),
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="open_core_isolation", title_key="task.open_core_isolation.title", desc_key="task.open_core_isolation.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.open_core_isolation_settings,
         ))
 
     def register_ultimate_tasks(self):
@@ -1912,6 +1933,20 @@ class Cleaner(ctk.CTk):
         ok = WindowsOps.run_command_args(["SystemPropertiesPerformance.exe"], timeout=20)
         self.log(self.tr("visual_effects_ok") if ok else self.tr("visual_effects_fail"))
 
+    def open_core_isolation_settings(self):
+        ok = False
+        for uri in ("windowsdefender://coreisolation", "windowsdefender://DeviceSecurity", "ms-settings:windowsdefender"):
+            if IS_WINDOWS:
+                try:
+                    os.startfile(uri)  # type: ignore[attr-defined]
+                    ok = True
+                    break
+                except Exception:
+                    ok = WindowsOps.run_command_args(["explorer.exe", uri], timeout=20)
+                    if ok:
+                        break
+        self.log(self.tr("core_isolation_page_ok") if ok else self.tr("core_isolation_page_fail"))
+
 
     def disable_game_dvr(self):
         self.apply_registry_task_values("disable_gamedvr", "game_dvr_ok", "game_dvr_fail")
@@ -1953,6 +1988,14 @@ class Cleaner(ctk.CTk):
 
     def apply_mmcss_gaming_profile(self):
         self.apply_registry_task_values("mmcss_gaming_profile", "mmcss_profile_ok", "mmcss_profile_fail")
+
+    def disable_dynamic_tick_latency(self):
+        ok = WindowsOps.set_dynamic_tick_disabled(True)
+        self.log(self.tr("dynamic_tick_off_ok") if ok else self.tr("dynamic_tick_off_fail"))
+
+    def restore_dynamic_tick_default(self):
+        ok = WindowsOps.restore_dynamic_tick_default()
+        self.log(self.tr("dynamic_tick_restore_ok") if ok else self.tr("dynamic_tick_restore_fail"))
 
     def enable_ultimate_performance(self):
         if not WindowsOps.supports_ultimate_performance():
@@ -2016,6 +2059,9 @@ class Cleaner(ctk.CTk):
             # last win, because that makes registry state unpredictable.
             skip.update({"enable_hags", "disable_hags"})
             self.log(self.tr("hags_conflict_skipped"))
+        if "disable_dynamic_tick_latency" in keys and "restore_dynamic_tick_default" in keys:
+            skip.update({"disable_dynamic_tick_latency", "restore_dynamic_tick_default"})
+            self.log(self.tr("dynamic_tick_conflict_skipped"))
         if "safe_gaming_power_profile" in keys and "high_perf_plan" in keys:
             # The safe profile already switches to High Performance, so running
             # the basic task too only duplicates work and log noise.

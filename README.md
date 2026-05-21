@@ -23,7 +23,7 @@ The main goal of the project is not to become a bloated "all-in-one miracle opti
 - user-controlled
 - practical for everyday use
 
-The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings, Hardware-Accelerated GPU Scheduling registry flags, and standby RAM cache cleanup. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, or call vendor-specific GPU tuning APIs.
+The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings, Hardware-Accelerated GPU Scheduling registry flags, MMCSS gaming scheduling, Power Throttling policy, standby RAM cache cleanup, and an optional dynamic-tick latency test. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, patch the kernel, or call vendor-specific GPU tuning APIs.
 
 ---
 
@@ -33,7 +33,7 @@ The gaming optimizer is intentionally conservative. It can adjust Windows-level 
 - Expanded Windows, browser, app, launcher, and shader cache cleanup
 - Safer cleanup traversal that skips symlinks/junctions instead of following them
 - Quick profiles: Safe, Gaming cleanup, and Deep cleanup
-- Safe gaming optimizer actions for Windows Game Mode, power policy, GPU scheduling settings and standby RAM cleanup
+- Safe gaming optimizer actions for Windows Game Mode, power policy, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing and standby RAM cleanup
 - UI filtering that hides empty sections and keeps large task lists easier to scan
 - Simple desktop interface
 - Local-first workflow
@@ -68,6 +68,20 @@ Add your screenshots here after publishing visuals for the project.
 
 ---
 
+
+## Windows 10/11 gaming optimizer notes
+
+FreeCleaner does not assume that Windows secretly throttles older CPUs on purpose. The practical, user-controllable performance limiters are regular Windows policies and security features:
+
+- **Power policy**: High Performance, AC-only CPU maximum state, and PCIe ASPM can reduce power-saving latency when the PC is plugged in.
+- **Power Throttling / Efficiency behavior**: the advanced optimizer can disable the system-wide PowerThrottling registry policy, but this requires testing and a reboot.
+- **MMCSS Games profile**: the app uses the documented lowest useful `SystemResponsiveness` value instead of the old `0` tweak, because Windows clamps invalid values.
+- **HAGS**: Hardware-Accelerated GPU Scheduling is optional. Some systems benefit, others get stutter, so both enable and disable actions are available and protected from running together.
+- **Dynamic tick**: the advanced `disabledynamictick=yes` task is only a latency experiment for problematic frametime jitter. Microsoft documents this BCDEdit option mainly as a debugging switch, so it is not selected by default and a restore-default action is included.
+- **VBS / Memory integrity**: FreeCleaner only opens the official Windows Security page. It does not disable this automatically because it is a security trade-off, not a harmless cleanup tweak.
+
+Recommended flow for gaming: apply the normal gaming profile first, reboot, test a real game session, then try advanced options one at a time. Do not stack every tweak blindly.
+
 ## Project Structure
 
 A typical structure may look like this:
@@ -97,6 +111,7 @@ FreeCleaner/
 
 - Windows 10 or Windows 11
 - Python 3.x
+- Administrator rights for registry, power policy, DISM, BCDEdit and system cleanup actions
 - Project dependencies required by the application
 
 ---
@@ -283,10 +298,10 @@ See the `LICENSE` file for details.
 
 ## Windows 32-bit / 64-bit builds
 
-FreeCleaner supports both Windows x86 and x64 targets:
+FreeCleaner supports both Windows x86 and x64 targets for Windows 10/11 compatibility:
 
-- `*-win32.exe` is built with 32-bit Python and is intended for 32-bit Windows and older Windows 7 installations.
-- `*-win64.exe` is built with 64-bit Python and is intended for 64-bit Windows 7/8/8.1/10/11.
+- `*-win32.exe` is built with 32-bit Python and is intended for 32-bit Windows 10/11 or compatibility fallback on 64-bit Windows.
+- `*-win64.exe` is built with 64-bit Python and is intended for 64-bit Windows 10/11.
 
 The application also detects whether it is running as a 32-bit process on 64-bit Windows (WOW64), so path discovery can correctly distinguish native x64, native x86, and WOW64 environments.
 
@@ -335,4 +350,4 @@ FreeCleaner now chooses worker counts dynamically instead of using fixed limits:
 - Scan starts around half of logical CPU threads because scanning is mostly disk-bound.
 - Cleaning starts at logical CPU threads minus two to keep Windows responsive.
 - During work, each batch re-checks CPU and RAM pressure through Windows APIs and reduces workers on loaded systems.
-- No extra runtime dependency is required; the logic remains compatible with Python 3.8 and Windows 7-11.
+- No extra runtime dependency is required; the logic remains compatible with Python 3.8+ and Windows 10/11.

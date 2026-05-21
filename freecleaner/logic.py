@@ -1491,6 +1491,33 @@ class WindowsOps:
             return False
 
     @staticmethod
+    def run_command_capture(args: List[str], timeout: int = 180) -> Tuple[int, str]:
+        """Run a command and return (returncode, combined_output) without shell parsing."""
+        if not args:
+            return (1, "")
+        try:
+            creationflags = 0x08000000 if IS_WINDOWS else 0
+            startupinfo = None
+            if IS_WINDOWS:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            completed = subprocess.run(
+                args,
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                creationflags=creationflags,
+                startupinfo=startupinfo,
+            )
+            return (int(completed.returncode), completed.stdout or "")
+        except Exception as exc:
+            return (1, str(exc))
+
+    @staticmethod
     def schedule_delete_on_reboot(path: str) -> bool:
         if not IS_WINDOWS or not path:
             return False
@@ -1898,6 +1925,55 @@ class WindowsOps:
     @staticmethod
     def supports_ultimate_performance() -> bool:
         return is_windows_at_least(10, 0, 17134)
+
+    @staticmethod
+    def supports_windows_10_or_11() -> bool:
+        return is_windows_at_least(10, 0, 10240)
+
+    @staticmethod
+    def supports_windows_11_features() -> bool:
+        return is_windows_at_least(10, 0, 22000)
+
+    @staticmethod
+    def supports_dynamic_tick_toggle() -> bool:
+        # FreeCleaner targets Windows 10/11.  BCDEdit supports the flag on older
+        # systems too, but keeping the gate to the supported OS family avoids
+        # offering low-level boot tweaks on unsupported setups.
+        return WindowsOps.supports_windows_10_or_11()
+
+    @staticmethod
+    def set_dynamic_tick_disabled(disabled: bool) -> bool:
+        """Toggle the dynamic tick boot option for latency experiments.
+
+        This is intentionally an advanced manual action.  Microsoft documents
+        disabledynamictick as a BCDEdit boot option and notes that it is mainly
+        intended for debugging, so it is not part of the default gaming profile.
+        """
+        if not IS_WINDOWS or not WindowsOps.supports_dynamic_tick_toggle():
+            return False
+        value = "yes" if disabled else "no"
+        return WindowsOps.run_command_args(["bcdedit.exe", "/set", "disabledynamictick", value], timeout=90, noisy=True)
+
+    @staticmethod
+    def restore_dynamic_tick_default() -> bool:
+        """Remove the custom dynamic tick boot option and return to Windows default."""
+        if not IS_WINDOWS or not WindowsOps.supports_dynamic_tick_toggle():
+            return False
+        rc, output = WindowsOps.run_command_capture(["bcdedit.exe", "/deletevalue", "disabledynamictick"], timeout=90)
+        if rc == 0:
+            return True
+        lowered = (output or "").casefold()
+        # When the value is not present, deleting it fails, but the system is
+        # already on the default timer policy.  Do not mask access-denied or BCD
+        # corruption errors as success.
+        absent_markers = (
+            "element not found",
+            "could not find",
+            "cannot find",
+            "не найден",
+            "не знайден",
+        )
+        return any(marker in lowered for marker in absent_markers)
 
 
     @staticmethod
