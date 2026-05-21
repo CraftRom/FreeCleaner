@@ -23,7 +23,7 @@ The main goal of the project is not to become a bloated "all-in-one miracle opti
 - user-controlled
 - practical for everyday use
 
-The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings, Hardware-Accelerated GPU Scheduling registry flags, MMCSS gaming scheduling, Power Throttling policy, standby RAM cache cleanup, and an optional dynamic-tick latency test. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, patch the kernel, or call vendor-specific GPU tuning APIs.
+The gaming optimizer is intentionally conservative. It can adjust Windows-level policies such as Game Mode, High Performance power profile, AC-only CPU/PCIe latency settings, an optional maximum CPU latency/performance profile, Hardware-Accelerated GPU Scheduling registry flags, MMCSS gaming scheduling, Power Throttling policy, standby RAM cache cleanup, shader cache cleanup, and an optional dynamic-tick latency test. It does not overclock hardware, change voltages, disable thermal protection, edit fan curves, patch the kernel, or call vendor-specific GPU tuning APIs.
 
 ---
 
@@ -33,7 +33,7 @@ The gaming optimizer is intentionally conservative. It can adjust Windows-level 
 - Expanded Windows, browser, app, launcher, and shader cache cleanup
 - Safer cleanup traversal that skips symlinks/junctions instead of following them
 - Quick profiles: Safe, Gaming cleanup, and Deep cleanup
-- Safe gaming optimizer actions for Windows Game Mode, power policy, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing and standby RAM cleanup
+- Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing and standby RAM cleanup
 - UI filtering that hides empty sections and keeps large task lists easier to scan
 - Simple desktop interface
 - Local-first workflow
@@ -73,14 +73,16 @@ Add your screenshots here after publishing visuals for the project.
 
 FreeCleaner does not assume that Windows secretly throttles older CPUs on purpose. The practical, user-controllable performance limiters are regular Windows policies and security features:
 
-- **Power policy**: High Performance, AC-only CPU maximum state, and PCIe ASPM can reduce power-saving latency when the PC is plugged in.
+- **Power policy**: High Performance, AC-only CPU maximum state, EPP=0, boost policy and PCIe ASPM can reduce power-saving latency when the PC is plugged in.
+- **Maximum CPU latency/performance profile**: optional, not selected by default. It uses official `powercfg` aliases for AC-only CPU min/max 100%, EPP=0, aggressive boost, faster frequency ramp-up, unparked cores and PCIe ASPM off. This can help frametime consistency on some old and modern CPUs, but it can also increase heat and fan noise. Use it one change at a time and monitor temperatures.
+- **Balanced rollback**: a separate action switches Windows back to the built-in Balanced power plan without deleting custom OEM plans.
 - **Power Throttling / Efficiency behavior**: the advanced optimizer can disable the system-wide PowerThrottling registry policy, but this requires testing and a reboot.
 - **MMCSS Games profile**: the app uses the documented lowest useful `SystemResponsiveness` value instead of the old `0` tweak, because Windows clamps invalid values.
 - **HAGS**: Hardware-Accelerated GPU Scheduling is optional. Some systems benefit, others get stutter, so both enable and disable actions are available and protected from running together.
 - **Dynamic tick**: the advanced `disabledynamictick=yes` task is only a latency experiment for problematic frametime jitter. Microsoft documents this BCDEdit option mainly as a debugging switch, so it is not selected by default and a restore-default action is included.
 - **VBS / Memory integrity**: FreeCleaner only opens the official Windows Security page. It does not disable this automatically because it is a security trade-off, not a harmless cleanup tweak.
 
-Recommended flow for gaming: apply the normal gaming profile first, reboot, test a real game session, then try advanced options one at a time. Do not stack every tweak blindly.
+Recommended flow for gaming: apply the normal gaming profile first, reboot, test a real game session, then try advanced options one at a time. Do not stack every tweak blindly. For laptops, use the maximum CPU profile only when plugged in and temperatures are under control.
 
 ## Project Structure
 

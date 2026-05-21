@@ -389,5 +389,19 @@
   "task.open_power_mode_settings.title": "Open Power mode settings",
   "task.open_power_mode_settings.desc": "Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM power modes override classic power plans.",
   "power_mode_page_ok": "Opened Windows power settings.",
-  "power_mode_page_fail": "Failed to open Windows power settings."
+  "power_mode_page_fail": "Failed to open Windows power settings.",
+  "task.cpu_latency_power_profile.title": "Maximales CPU-Latenz/Leistungsprofil",
+  "task.cpu_latency_power_profile.desc": "Erweitertes AC-only Profil für alte und moderne CPUs: High Performance, CPU min/max 100 %, EPP=0, aggressiverer Boost, schnelleres Hochtakten, entparkte Kerne und PCIe ASPM aus. Kein Overclocking, kann aber Wärme und Stromverbrauch erhöhen; separat testen.",
+  "cpu_latency_power_ok": "CPU-Latenz/Leistungsprofil angewendet. Temperaturen und Spielstabilität prüfen.",
+  "cpu_latency_power_fail": "CPU-Latenz/Leistungsprofil konnte nicht angewendet werden. OEM-Image, Treiber oder Energiesparplan unterstützt eventuell einige powercfg-Aliasse nicht.",
+  "task.restore_balanced_power_profile.title": "Balanced-Energiesparplan wiederherstellen",
+  "task.restore_balanced_power_profile.desc": "Sicherer Rollback nach Gaming-Power-Tweaks: schaltet Windows zurück auf Balanced, ohne benutzerdefinierte OEM-Pläne zu löschen.",
+  "balanced_power_restore_ok": "Balanced-Energiesparplan aktiviert.",
+  "balanced_power_restore_fail": "Balanced-Energiesparplan konnte nicht wiederhergestellt werden.",
+  "power_profile_conflict_skipped": "Power-Profil-Änderungen wurden übersprungen, weil maximales CPU-Profil und Balanced-Restore gleichzeitig gewählt wurden.",
+  "cpu_latency_redundant_skipped": "Sicheres High-Performance/Gaming-Power-Profil wurde übersprungen, weil das maximale CPU-Profil diese Aktionen bereits enthält.",
+  "task.nvidia_ngx_cache.title": "NVIDIA NGX Cache",
+  "task.nvidia_ngx_cache.desc": "NVIDIA NGX/DLSS-Cache. Treiber oder Spiel bauen ihn bei Bedarf neu auf.",
+  "task.amd_vk.title": "AMD Vulkan Cache",
+  "task.amd_vk.desc": "Vulkan-Cache für AMD-GPUs. Spiele können Shader nach der Bereinigung neu erstellen."
 }

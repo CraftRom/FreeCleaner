@@ -1377,10 +1377,14 @@ class PathFinder:
             ("nvidia_dx", "task.nvidia_dx.title", "task.nvidia_dx.desc", PathFinder._safe_join(local, r"NVIDIA\DXCache"), False),
             ("nvidia_gl", "task.nvidia_gl.title", "task.nvidia_gl.desc", PathFinder._safe_join(local, r"NVIDIA\GLCache"), False),
             ("nvidia_compute_cache", "task.nvidia_compute_cache.title", "task.nvidia_compute_cache.desc", PathFinder._safe_join(local, r"NVIDIA\ComputeCache"), False),
+            ("nvidia_ngx_cache", "task.nvidia_ngx_cache.title", "task.nvidia_ngx_cache.desc", PathFinder._safe_join(local, r"NVIDIA\NGXCache"), False),
+            ("nvidia_legacy_nv_cache_user", "task.nvidia_nv_cache.title", "task.nvidia_nv_cache.desc", PathFinder._safe_join(local, r"NVIDIA Corporation\NV_Cache"), False),
             ("nvidia_nv_cache", "task.nvidia_nv_cache.title", "task.nvidia_nv_cache.desc", PathFinder._safe_join(programdata, r"NVIDIA Corporation\NV_Cache"), True),
             ("amd_dx", "task.amd_dx.title", "task.amd_dx.desc", PathFinder._safe_join(local, r"AMD\DxCache"), False),
             ("amd_gl", "task.amd_gl.title", "task.amd_gl.desc", PathFinder._safe_join(local, r"AMD\GLCache"), False),
+            ("amd_vk", "task.amd_vk.title", "task.amd_vk.desc", PathFinder._safe_join(local, r"AMD\VkCache"), False),
             ("intel_shader_cache", "task.intel_shader_cache.title", "task.intel_shader_cache.desc", PathFinder._safe_join(local, r"Intel\ShaderCache"), False),
+            ("microsoft_dx_shader_cache", "task.dx_shader_cache.title", "task.dx_shader_cache.desc", PathFinder._safe_join(local, r"Microsoft\DirectX Shader Cache"), False),
             ("steam_htmlcache", "task.steam_htmlcache.title", "task.steam_htmlcache.desc", PathFinder._safe_join(local, r"Steam\htmlcache"), False),
             ("steam_appcache", "task.steam_appcache.title", "task.steam_appcache.desc", PathFinder._safe_join(os.environ.get("ProgramFiles(x86)", ""), r"Steam\appcache\httpcache"), False),
             ("steam_shadercache", "task.steam_shadercache.title", "task.steam_shadercache.desc", PathFinder._safe_join(os.environ.get("ProgramFiles(x86)", ""), r"Steam\steamapps\shadercache"), False),
@@ -1977,6 +1981,20 @@ class WindowsOps:
 
 
     @staticmethod
+    def _run_powercfg_commands(commands: List[List[str]], timeout: int = 90) -> int:
+        """Run powercfg commands and return how many completed successfully.
+
+        Power aliases are not guaranteed to exist on every Windows 10/11 build,
+        OEM image, CPU generation, or power plan.  Treat unsupported aliases as a
+        soft failure so one missing setting does not break the whole optimizer.
+        """
+        ok_count = 0
+        for args in commands:
+            if WindowsOps.run_command_args(args, timeout=timeout):
+                ok_count += 1
+        return ok_count
+
+    @staticmethod
     def apply_safe_gaming_power_profile() -> bool:
         """Apply conservative Windows power settings for gaming.
 
@@ -1992,17 +2010,57 @@ class WindowsOps:
         switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
         optional_commands = [
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFEPP", "0"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "1"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PCIEXPRESS", "ASPM", "0"],
             ["powercfg.exe", "/setactive", "SCHEME_CURRENT"],
         ]
-        optional_ok = 0
-        for args in optional_commands:
-            if WindowsOps.run_command_args(args, timeout=90):
-                optional_ok += 1
+        optional_ok = WindowsOps._run_powercfg_commands(optional_commands)
 
         # Some Windows editions or OEM power plans do not expose every alias.
         # The profile is still useful when the plan switch succeeded.
         return switched or optional_ok >= 2
+
+    @staticmethod
+    def apply_cpu_latency_performance_profile() -> bool:
+        """Apply an advanced AC-only CPU latency profile for games.
+
+        This profile is for desktops or plugged-in laptops where frametime
+        consistency matters more than heat, battery life, and idle power.  It is
+        still safer than overclocking: it only asks Windows to favor performance
+        through official power-policy aliases, and unsupported aliases are skipped.
+        """
+        if not IS_WINDOWS:
+            return False
+
+        switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
+        commands = [
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMIN", "100"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFEPP", "0"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "2"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFINCPOL", "2"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFDECPOL", "1"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFINCTHRESHOLD", "10"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFDECTHRESHOLD", "8"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "CPMINCORES", "100"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "DISTRIBUTEUTIL", "0"],
+            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PCIEXPRESS", "ASPM", "0"],
+            ["powercfg.exe", "/setactive", "SCHEME_CURRENT"],
+        ]
+        ok_count = WindowsOps._run_powercfg_commands(commands)
+        return switched or ok_count >= 4
+
+    @staticmethod
+    def restore_balanced_power_profile() -> bool:
+        """Return Windows to the built-in Balanced power plan.
+
+        Avoid `powercfg -restoredefaultschemes` here because it removes custom OEM
+        and user-created plans.  Switching back to Balanced is a safer rollback.
+        """
+        if not IS_WINDOWS:
+            return False
+        return WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_BALANCED"], timeout=90)
 
     @staticmethod
     def purge_standby_memory() -> bool:

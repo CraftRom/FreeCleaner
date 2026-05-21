@@ -387,5 +387,21 @@
   "task.open_power_mode_settings.title": "Open Power mode settings",
   "task.open_power_mode_settings.desc": "Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM power modes override classic power plans.",
   "power_mode_page_ok": "Opened Windows power settings.",
-  "power_mode_page_fail": "Failed to open Windows power settings."
+  "power_mode_page_fail": "Failed to open Windows power settings.",
+  "task.cpu_latency_power_profile.title": "Maximum CPU latency/performance profile",
+  "task.cpu_latency_power_profile.desc": "Advanced AC-only profile for old and modern CPUs: High Performance, CPU min/max 100%, EPP=0, more aggressive boost, faster frequency ramp-up, unparked cores, and PCIe ASPM off. Not overclocking, but it can increase heat and power use; test it separately.",
+  "cpu_latency_power_ok": "CPU latency/performance profile applied. Check temperatures and game stability.",
+  "cpu_latency_power_fail": "Failed to apply the CPU latency/performance profile. Your OEM image, driver, or power plan may not support some powercfg aliases.",
+  "task.restore_balanced_power_profile.title": "Restore Balanced power plan",
+  "task.restore_balanced_power_profile.desc": "Safe rollback after gaming power tweaks: switches Windows back to Balanced without deleting custom OEM power plans.",
+  "balanced_power_restore_ok": "Balanced power plan enabled.",
+  "balanced_power_restore_fail": "Failed to restore the Balanced power plan.",
+  "power_profile_conflict_skipped": "Power profile changes were skipped because maximum CPU profile and Balanced restore were selected together.",
+  "cpu_latency_redundant_skipped": "Safe High Performance/gaming power profile was skipped because the maximum CPU profile already includes those actions.",
+  "task.nvidia_ngx_cache.title": "NVIDIA NGX Cache",
+  "task.nvidia_ngx_cache.desc": "NVIDIA NGX/DLSS cache. The driver or game will rebuild it when needed.",
+  "task.amd_vk.title": "AMD Vulkan Cache",
+  "task.amd_vk.desc": "AMD GPU Vulkan cache. Games may rebuild shaders after cleanup.",
+  "NAME": "English",
+  "custom_language_label": "Custom [{name}]"
 }

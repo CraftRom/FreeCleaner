@@ -387,5 +387,21 @@
   "task.open_power_mode_settings.title": "Відкрити Power mode settings",
   "task.open_power_mode_settings.desc": "Відкриває налаштування живлення Windows, щоб вручну вибрати Best performance на Windows 10/11, де OEM power mode може перекривати класичні плани живлення.",
   "power_mode_page_ok": "Відкрито налаштування живлення Windows.",
-  "power_mode_page_fail": "Не вдалося відкрити налаштування живлення Windows."
+  "power_mode_page_fail": "Не вдалося відкрити налаштування живлення Windows.",
+  "task.cpu_latency_power_profile.title": "Максимальний CPU latency/performance профіль",
+  "task.cpu_latency_power_profile.desc": "Просунутий AC-only профіль для старих і сучасних CPU: High Performance, min/max CPU 100%, EPP=0, агресивніший boost, швидше підняття частот, unpark cores і вимкнення PCIe ASPM. Не розгін, але може підняти нагрів і споживання; тестуй окремо.",
+  "cpu_latency_power_ok": "CPU latency/performance профіль застосовано. Перевір температури й стабільність у грі.",
+  "cpu_latency_power_fail": "Не вдалося застосувати CPU latency/performance профіль. Можливо, OEM/драйвер/план живлення не підтримує частину powercfg alias-ів.",
+  "task.restore_balanced_power_profile.title": "Повернути Balanced power plan",
+  "task.restore_balanced_power_profile.desc": "Безпечний відкат після ігрових power-твіків: перемикає Windows назад на Balanced без видалення кастомних OEM-планів.",
+  "balanced_power_restore_ok": "Balanced power plan увімкнено.",
+  "balanced_power_restore_fail": "Не вдалося повернути Balanced power plan.",
+  "power_profile_conflict_skipped": "Power profile-зміни пропущено, бо одночасно вибрано максимальний CPU профіль і повернення Balanced.",
+  "cpu_latency_redundant_skipped": "Безпечний High Performance/ігровий power profile пропущено, бо максимальний CPU профіль уже містить ці дії.",
+  "task.nvidia_ngx_cache.title": "NVIDIA NGX Cache",
+  "task.nvidia_ngx_cache.desc": "Кеш NVIDIA NGX/DLSS. Після очищення драйвер або гра перебудує його за потреби.",
+  "task.amd_vk.title": "AMD Vulkan Cache",
+  "task.amd_vk.desc": "Кеш Vulkan для AMD GPU. Після очищення ігри можуть перебудувати шейдери.",
+  "NAME": "Українська",
+  "custom_language_label": "Користувацька [{name}]"
 }

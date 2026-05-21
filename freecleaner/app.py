@@ -1517,6 +1517,16 @@ class Cleaner(ctk.CTk):
             kind="command", category="optimizer", default=False, state=state, requires_admin=True,
             command=self.purge_standby_ram,
         ))
+        self.add_task(self.card_opt, CleanerTask(
+            key="cpu_latency_power_profile", title_key="task.cpu_latency_power_profile.title", desc_key="task.cpu_latency_power_profile.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.apply_cpu_latency_power_profile,
+        ))
+        self.add_task(self.card_opt, CleanerTask(
+            key="restore_balanced_power_profile", title_key="task.restore_balanced_power_profile.title", desc_key="task.restore_balanced_power_profile.desc",
+            kind="command", category="optimizer", default=False, state=state, requires_admin=True,
+            command=self.restore_balanced_power_profile,
+        ))
         ultimate_state = state if WindowsOps.supports_ultimate_performance() else "disabled"
         self.add_task(self.card_opt, CleanerTask(
             key="ultimate_perf_plan", title_key="task.ultimate_perf_plan.title", desc_key="task.ultimate_perf_plan.desc",
@@ -1958,6 +1968,14 @@ class Cleaner(ctk.CTk):
         ok = WindowsOps.apply_safe_gaming_power_profile()
         self.log(self.tr("safe_gaming_power_ok") if ok else self.tr("safe_gaming_power_fail"))
 
+    def apply_cpu_latency_power_profile(self):
+        ok = WindowsOps.apply_cpu_latency_performance_profile()
+        self.log(self.tr("cpu_latency_power_ok") if ok else self.tr("cpu_latency_power_fail"))
+
+    def restore_balanced_power_profile(self):
+        ok = WindowsOps.restore_balanced_power_profile()
+        self.log(self.tr("balanced_power_restore_ok") if ok else self.tr("balanced_power_restore_fail"))
+
     def purge_standby_ram(self):
         ok = WindowsOps.purge_standby_memory()
         self.log(self.tr("standby_ram_ok") if ok else self.tr("standby_ram_fail"))
@@ -2062,6 +2080,14 @@ class Cleaner(ctk.CTk):
         if "disable_dynamic_tick_latency" in keys and "restore_dynamic_tick_default" in keys:
             skip.update({"disable_dynamic_tick_latency", "restore_dynamic_tick_default"})
             self.log(self.tr("dynamic_tick_conflict_skipped"))
+        if "cpu_latency_power_profile" in keys and "restore_balanced_power_profile" in keys:
+            skip.update({"cpu_latency_power_profile", "restore_balanced_power_profile"})
+            self.log(self.tr("power_profile_conflict_skipped"))
+        if "cpu_latency_power_profile" in keys:
+            redundant = {"safe_gaming_power_profile", "high_perf_plan"} & keys
+            if redundant:
+                skip.update(redundant)
+                self.log(self.tr("cpu_latency_redundant_skipped"))
         if "safe_gaming_power_profile" in keys and "high_perf_plan" in keys:
             # The safe profile already switches to High Performance, so running
             # the basic task too only duplicates work and log noise.

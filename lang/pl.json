@@ -389,5 +389,19 @@
   "task.open_power_mode_settings.title": "Open Power mode settings",
   "task.open_power_mode_settings.desc": "Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM power modes override classic power plans.",
   "power_mode_page_ok": "Opened Windows power settings.",
-  "power_mode_page_fail": "Failed to open Windows power settings."
+  "power_mode_page_fail": "Failed to open Windows power settings.",
+  "task.cpu_latency_power_profile.title": "Maksymalny profil opóźnień/wydajności CPU",
+  "task.cpu_latency_power_profile.desc": "Zaawansowany profil tylko dla zasilania sieciowego dla starych i nowych CPU: High Performance, CPU min/max 100%, EPP=0, agresywniejszy boost, szybsze podbijanie taktowania, odparkowane rdzenie i wyłączone PCIe ASPM. To nie overclocking, ale może zwiększyć temperatury i pobór mocy; testuj osobno.",
+  "cpu_latency_power_ok": "Profil opóźnień/wydajności CPU zastosowany. Sprawdź temperatury i stabilność w grze.",
+  "cpu_latency_power_fail": "Nie udało się zastosować profilu CPU. Obraz OEM, sterownik lub plan zasilania może nie obsługiwać części aliasów powercfg.",
+  "task.restore_balanced_power_profile.title": "Przywróć plan Balanced",
+  "task.restore_balanced_power_profile.desc": "Bezpieczny rollback po gamingowych tweakach zasilania: przełącza Windows z powrotem na Balanced bez usuwania niestandardowych planów OEM.",
+  "balanced_power_restore_ok": "Plan Balanced włączony.",
+  "balanced_power_restore_fail": "Nie udało się przywrócić planu Balanced.",
+  "power_profile_conflict_skipped": "Zmiany profilu zasilania pominięto, bo jednocześnie wybrano maksymalny profil CPU i przywrócenie Balanced.",
+  "cpu_latency_redundant_skipped": "Bezpieczny profil High Performance/gaming został pominięty, bo maksymalny profil CPU już zawiera te działania.",
+  "task.nvidia_ngx_cache.title": "NVIDIA NGX Cache",
+  "task.nvidia_ngx_cache.desc": "Pamięć podręczna NVIDIA NGX/DLSS. Sterownik lub gra odbuduje ją w razie potrzeby.",
+  "task.amd_vk.title": "AMD Vulkan Cache",
+  "task.amd_vk.desc": "Pamięć podręczna Vulkan dla GPU AMD. Gry mogą odbudować shadery po czyszczeniu."
 }
