@@ -1919,9 +1919,12 @@ class Cleaner(ctk.CTk):
         task = self.tasks.get(task_key)
         specs = list(task.registry_values or []) if task else []
         runnable = [spec for spec in specs if not spec.requires_admin or self.is_admin]
+        skipped_admin = [spec for spec in specs if spec.requires_admin and not self.is_admin]
         results = WindowsOps.apply_registry_values(runnable)
         ok = bool(results) and all(results)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
+        if ok and skipped_admin:
+            self.log(self.tr("registry_admin_values_skipped"))
         self.refresh_registry_status_descriptions()
         return ok
 
@@ -1934,8 +1937,8 @@ class Cleaner(ctk.CTk):
             except Exception:
                 ok = WindowsOps.run_command_args(["explorer.exe", uri], timeout=20)
         if not ok:
-            # Windows 7/8 do not support ms-settings: URIs. Fall back to Control Panel
-            # instead of logging a false hard error.
+            # If a specific ms-settings URI is unavailable on a Windows 10/11 build,
+            # fall back to Control Panel instead of logging a false hard error.
             ok = WindowsOps.run_command_args(["control.exe"], timeout=20)
         self.log(self.tr(success_key) if ok else self.tr(fail_key))
 

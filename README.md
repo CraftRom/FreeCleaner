@@ -74,7 +74,7 @@ Add your screenshots here after publishing visuals for the project.
 FreeCleaner does not assume that Windows secretly throttles older CPUs on purpose. The practical, user-controllable performance limiters are regular Windows policies and security features:
 
 - **Power policy**: High Performance, AC-only CPU maximum state, EPP=0, boost policy and PCIe ASPM can reduce power-saving latency when the PC is plugged in.
-- **Maximum CPU latency/performance profile**: optional, not selected by default. It uses official `powercfg` aliases for AC-only CPU min/max 100%, EPP=0, aggressive boost, faster frequency ramp-up, unparked cores and PCIe ASPM off. This can help frametime consistency on some old and modern CPUs, but it can also increase heat and fan noise. Use it one change at a time and monitor temperatures.
+- **Maximum CPU latency/performance profile**: optional, not selected by default. It uses official `powercfg` aliases for AC-only EPP=0, aggressive boost, faster frequency ramp-up, unparked cores and PCIe ASPM off. This can help frametime consistency on some old and modern CPUs, but it can also increase heat and fan noise. Use it one change at a time and monitor temperatures.
 - **Balanced rollback**: a separate action switches Windows back to the built-in Balanced power plan without deleting custom OEM plans.
 - **Power Throttling / Efficiency behavior**: the advanced optimizer can disable the system-wide PowerThrottling registry policy, but this requires testing and a reboot.
 - **MMCSS Games profile**: the app uses the documented lowest useful `SystemResponsiveness` value instead of the old `0` tweak, because Windows clamps invalid values.

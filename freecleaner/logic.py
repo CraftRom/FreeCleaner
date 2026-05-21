@@ -2006,10 +2006,11 @@ class WindowsOps:
             return False
 
         # Switch to the built-in High Performance plan, then tune only AC values
-        # that reduce power-saving latency while the machine is plugged in.
+        # that reduce power-saving latency while the machine is plugged in.  Do
+        # not force CPU min/max state here; OEM Balanced/High Performance values
+        # can be restored safely by switching back to Balanced.
         switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
         optional_commands = [
-            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFEPP", "0"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "1"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PCIEXPRESS", "ASPM", "0"],
@@ -2035,8 +2036,6 @@ class WindowsOps:
 
         switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
         commands = [
-            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMIN", "100"],
-            ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFEPP", "0"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "2"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFINCPOL", "2"],
@@ -2105,7 +2104,7 @@ class WindowsOps:
 
         # Never delete C:\$Recycle.Bin directly. It is a protected system
         # folder and direct removal can leave stale SID folders, broken ACLs, or
-        # false failures. The Shell API is the correct Windows 7-11 path.
+        # false failures. The Shell API is the correct Windows 10/11 path.
         try:
             class _SHQUERYRBINFO(ctypes.Structure):
                 _pack_ = 4
@@ -2295,14 +2294,25 @@ class SafeFS:
 
     @staticmethod
     def _is_reparse_point(path: str) -> bool:
-        """Return True for symlinks/junctions that must not be traversed."""
+        """Return True for symlinks/junctions/reparse points that must not be traversed."""
         try:
             if os.path.islink(path):
                 return True
             isjunction = getattr(os.path, "isjunction", None)
-            return bool(isjunction(path)) if isjunction else False
+            if isjunction and isjunction(path):
+                return True
         except Exception:
-            return False
+            pass
+
+        if IS_WINDOWS:
+            try:
+                FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+                attrs = ctypes.windll.kernel32.GetFileAttributesW(str(SafeFS._extended_path(path)))
+                if attrs != -1 and (int(attrs) & FILE_ATTRIBUTE_REPARSE_POINT):
+                    return True
+            except Exception:
+                pass
+        return False
 
     @staticmethod
     def is_safe_clean_target(path: str) -> bool:
@@ -2473,6 +2483,13 @@ class SafeFS:
 
     @staticmethod
     def _remove_dir_shell(path: str) -> bool:
+        """Last-resort non-recursive directory removal.
+
+        Do not use ``rd /s`` or PowerShell ``Remove-Item -Recurse`` here.  The
+        cleaner already walks the tree manually while filtering reparse points;
+        handing a whole directory back to shell recursion can bypass that guard
+        when a cache folder contains a junction/symlink.
+        """
         if not IS_WINDOWS:
             return False
         if not os.path.exists(path):
@@ -2481,22 +2498,32 @@ class SafeFS:
             return SafeFS._remove_dir_native(path)
 
         commands = [
-            ["cmd.exe", "/c", "rd", "/s", "/q", os.path.abspath(path)],
+            ["cmd.exe", "/c", "rd", os.path.abspath(path)],
             [
                 "powershell.exe",
                 "-NoProfile",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
-                "$ErrorActionPreference='Stop'; if (Test-Path -LiteralPath $args[0]) { Remove-Item -LiteralPath $args[0] -Recurse -Force -ErrorAction Stop }",
+                "$ErrorActionPreference='Stop'; if (Test-Path -LiteralPath $args[0]) { Remove-Item -LiteralPath $args[0] -Force -ErrorAction Stop }",
                 os.path.abspath(path),
             ],
         ]
         for args in commands:
-            if WindowsOps.run_command_args(args, timeout=180):
+            if WindowsOps.run_command_args(args, timeout=60):
                 if not os.path.exists(path):
                     return True
         return not os.path.exists(path)
+
+    @staticmethod
+    def _dir_is_empty(path: str) -> bool:
+        try:
+            with os.scandir(path) as it:
+                return next(it, None) is None
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return False
 
     @staticmethod
     def _schedule_for_delete(path: str) -> bool:
@@ -2745,14 +2772,18 @@ class SafeFS:
 
                 SafeFS._clear_attributes(dir_path, is_dir=True)
                 removed = SafeFS._remove_dir_native(dir_path)
-                if not removed:
+                if not removed and SafeFS._dir_is_empty(dir_path):
                     removed = SafeFS._remove_dir_shell(dir_path)
 
                 if removed:
                     result["dirs_removed"] += 1
                     continue
 
-                if SafeFS._schedule_for_delete(dir_path):
+                # If the folder still contains skipped links/junctions or locked
+                # children, keep it in place. Scheduling a non-empty folder for
+                # reboot deletion is too ambiguous and can make the UI claim a
+                # safer cleanup than what Windows will actually do later.
+                if SafeFS._dir_is_empty(dir_path) and SafeFS._schedule_for_delete(dir_path):
                     result["scheduled_reboot"] += 1
                     continue
 
