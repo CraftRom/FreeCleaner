@@ -785,6 +785,8 @@ class Cleaner(ctk.CTk):
         self.quick_profiles_label.configure(text=self.tr("quick_profiles"))
         self.btn_safe.configure(text=self.tr("safe"))
         self.btn_gaming.configure(text=self.tr("gaming_profile"))
+        if hasattr(self, "btn_streamer"):
+            self.btn_streamer.configure(text=self.tr("streamer"))
         self.btn_deep_profile.configure(text=self.tr("deep_profile"))
         self.btn_reset_selection.configure(text=self.tr("reset_selection"))
         if hasattr(self, "btn_restore_registry"):
@@ -893,6 +895,8 @@ class Cleaner(ctk.CTk):
         self.btn_safe.pack(fill="x", padx=14, pady=(0, 8))
         self.btn_gaming = ctk.CTkButton(quick, text=self.tr("gaming_profile"), height=34, command=self.apply_gaming_mode, fg_color="#0F766E", hover_color="#115E59")
         self.btn_gaming.pack(fill="x", padx=14, pady=(0, 8))
+        self.btn_streamer = ctk.CTkButton(quick, text=self.tr("streamer"), height=34, command=self.apply_streaming_mode, fg_color="#164E63", hover_color="#155E75")
+        self.btn_streamer.pack(fill="x", padx=14, pady=(0, 8))
         self.btn_deep_profile = ctk.CTkButton(quick, text=self.tr("deep_profile"), height=34, command=self.apply_deep_clean_mode, fg_color="#166534", hover_color="#14532D")
         self.btn_deep_profile.pack(fill="x", padx=14, pady=(0, 8))
         self.btn_reset_selection = ctk.CTkButton(quick, text=self.tr("reset_selection"), height=34, command=self.clear_selection, fg_color="#374151", hover_color="#4B5563")
@@ -1496,6 +1500,27 @@ class Cleaner(ctk.CTk):
                 state=state if requires_admin else "normal", requires_admin=requires_admin, fmt={"path": path},
             ))
 
+        streaming_groups: Dict[str, Dict[str, Any]] = {}
+        for key, tkey, dkey, path, fmt in PathFinder.get_streaming_cache_targets():
+            app_name = (fmt or {}).get("app") or "Streaming app"
+            base = re.sub(r"[^a-zA-Z0-9_]+", "_", f"streaming_{app_name}").strip("_").lower()
+            if key.endswith("logs") or "_logs" in key or key.endswith("crashes"):
+                base = f"{base}_logs"
+            else:
+                base = f"{base}_cache"
+            group = streaming_groups.setdefault(base, {"title_key": tkey, "desc_key": dkey, "paths": [], "app": app_name})
+            group["paths"].append(path)
+
+        for base, group in sorted(streaming_groups.items()):
+            paths = PathFinder.unique_existing(group["paths"])
+            if not paths:
+                continue
+            self.add_task(self.card_gamer, CleanerTask(
+                key=f"{base}_group", title_key=group["title_key"], desc_key=group["desc_key"],
+                path=paths[0], paths=paths, category="gamer", default=False,
+                fmt={"app": group["app"], "path": paths[0]},
+            ))
+
     def register_optimizer_tasks(self):
         state = "normal" if self.is_admin else "disabled"
         game_mode_values = [
@@ -1847,6 +1872,27 @@ class Cleaner(ctk.CTk):
             "jump_lists_auto", "jump_lists_custom", "recent_docs",
         }
 
+    def _is_streaming_cleanup_task(self, task: CleanerTask) -> bool:
+        if task.kind == "command":
+            return task.key in {
+                "dns_flush", "enable_game_mode", "disable_gamedvr", "safe_gaming_power_profile",
+                "purge_standby_ram", "network_throttling_off", "mmcss_gaming_profile",
+            }
+        if task.kind != "directory":
+            return False
+        if task.category == "gamer":
+            return True
+        if task.category == "browsers":
+            return any(token in task.key for token in ("discord", "obs", "streamlabs", "twitch", "xsplit"))
+        if task.category != "system":
+            return False
+        if task.key.startswith("user_temp_"):
+            return True
+        return task.key in {
+            "thumb_cache", "inet_cache", "web_cache", "crash_dumps_user", "wer_user",
+            "windows_caches_user", "uwp_temp_caches",
+        }
+
     def _is_deep_clean_task(self, task: CleanerTask) -> bool:
         if task.kind == "command":
             return task.key in {"dns_flush", "recycle"}
@@ -1879,6 +1925,20 @@ class Cleaner(ctk.CTk):
         self.set_profile_name(self.tr("profile_gaming"), COLORS["gamer"])
         self.refresh_selection_stats()
         self.log(self.tr("gaming_profile_on"))
+
+    def apply_streaming_mode(self):
+        self.clear_selection()
+        self._select_tasks_by_rule(self._is_streaming_cleanup_task)
+        if self.is_admin:
+            for key in (
+                "safe_gaming_power_profile", "purge_standby_ram", "network_throttling_off",
+                "mmcss_gaming_profile", "battle_net_cache", "battle_net_agent_logs", "nvidia_nv_cache",
+            ):
+                if key in self.tasks:
+                    self._set_task_selected(key, True)
+        self.set_profile_name(self.tr("profile_streamer"), COLORS["gamer"])
+        self.refresh_selection_stats()
+        self.log(self.tr("streamer_profile_on"))
 
     def apply_deep_clean_mode(self):
         self.clear_selection()
@@ -2279,6 +2339,15 @@ class Cleaner(ctk.CTk):
         if not pending_tasks:
             return
 
+        cleanup_totals = {
+            "removed_bytes": 0,
+            "files_removed": 0,
+            "dirs_removed": 0,
+            "scheduled_reboot": 0,
+            "skipped_links": 0,
+            "errors": 0,
+        }
+
         while pending_tasks and not self.cancel_event.is_set():
             workers = get_adaptive_workers("clean", len(pending_tasks))
             self.log(self.trf("cleaning_targets_fmt", count=len(pending_tasks), workers=workers))
@@ -2311,6 +2380,13 @@ class Cleaner(ctk.CTk):
                     skipped_links = int(result.get("skipped_links", 0))
                     errors = int(result.get("errors", 0))
 
+                    cleanup_totals["removed_bytes"] += int(result.get("removed_bytes", 0) or 0)
+                    cleanup_totals["files_removed"] += files_removed
+                    cleanup_totals["dirs_removed"] += dirs_removed
+                    cleanup_totals["scheduled_reboot"] += scheduled_reboot
+                    cleanup_totals["skipped_links"] += skipped_links
+                    cleanup_totals["errors"] += errors
+
                     if errors > 0:
                         self.log(self.trf(
                             "cleanup_target_partial_fmt",
@@ -2336,6 +2412,17 @@ class Cleaner(ctk.CTk):
                     if (remaining_files + remaining_dirs) > skipped_links:
                         self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
 
+        if any(int(value or 0) for value in cleanup_totals.values()):
+            self.log(self.trf(
+                "cleanup_summary_fmt",
+                mb=float(cleanup_totals["removed_bytes"]) / (1024 ** 2),
+                files=int(cleanup_totals["files_removed"]),
+                dirs=int(cleanup_totals["dirs_removed"]),
+                scheduled=int(cleanup_totals["scheduled_reboot"]),
+                skipped=int(cleanup_totals["skipped_links"]),
+                errors=int(cleanup_totals["errors"]),
+            ))
+
     def perform_pre_analysis(self, chosen: List[CleanerTask]) -> Tuple[List[CleanerTask], List[CleanerTask]]:
         dir_tasks = [task for task in chosen if task.kind == "directory" and self._task_paths(task)]
         cmd_tasks = [task for task in chosen if task.kind == "command" and task.command]
@@ -2352,7 +2439,7 @@ class Cleaner(ctk.CTk):
 
     def prepare_service_deps(self, dir_tasks: List[CleanerTask], start: bool):
         needs_update = any(task.key == "update_cache_files" for task in dir_tasks)
-        needs_delivery = any(task.key == "delivery_opt" for task in dir_tasks)
+        needs_delivery = any(task.key.startswith("delivery_opt") for task in dir_tasks)
         if not needs_update and not needs_delivery:
             return
 

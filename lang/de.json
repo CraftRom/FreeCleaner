@@ -424,5 +424,14 @@
   "registry_leftovers_none": "Keine sicheren Registry-Reste gefunden.",
   "registry_leftovers_done_fmt": "Registry-Reste bereinigt: gefunden {found}, entfernt {removed} ({keys} Schlüssel, {values} Werte), fehlgeschlagen {failed}.",
   "registry_leftovers_limited_mode": "Eingeschränkter Modus: Es wurden nur Einträge des aktuellen Benutzers geprüft. Als Administrator starten, um systemweite HKLM-Einträge einzubeziehen.",
-  "registry_status_more_fmt": "…und {count} weitere Registry-Werte."
+  "registry_status_more_fmt": "…und {count} weitere Registry-Werte.",
+  "task.streaming_obs_cache.title": "OBS Studio Cache ({app})",
+  "task.streaming_obs_cache.desc": "OBS temporary cache only. Scenes, sources and profiles are not removed.",
+  "task.streaming_obs_logs.title": "OBS Studio Logs / Crashes ({app})",
+  "task.streaming_obs_logs.desc": "Old OBS logs and crash reports. Keep them if you are debugging OBS issues right now.",
+  "task.streaming_app_cache.title": "Streaming App Cache ({app})",
+  "task.streaming_app_cache.desc": "Temporary cache for streaming tools. App settings and scenes are preserved.",
+  "task.streaming_app_logs.title": "Streaming App Logs ({app})",
+  "task.streaming_app_logs.desc": "Old streaming-app logs. Safe to remove when you do not need troubleshooting history.",
+  "cleanup_summary_fmt": "Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: {scheduled}, links skipped: {skipped}, errors/skipped: {errors}"
 }

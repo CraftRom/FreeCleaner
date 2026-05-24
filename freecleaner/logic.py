@@ -1475,6 +1475,30 @@ class PathFinder:
         return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
 
     @staticmethod
+    def get_streaming_cache_targets() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
+        """Return conservative streaming/recording app cleanup targets.
+
+        These are limited to caches, logs, crash reports and temporary browser
+        data.  Profile/configuration folders are intentionally not targeted so
+        OBS scenes, sources, plugins and Streamlabs layouts are not removed.
+        """
+        local = os.environ.get("LOCALAPPDATA", "")
+        appdata = os.environ.get("APPDATA", "")
+        candidates = [
+            ("obs_logs", "task.streaming_obs_logs.title", "task.streaming_obs_logs.desc", PathFinder._safe_join(appdata, r"obs-studio\logs"), {"app": "OBS Studio"}),
+            ("obs_crashes", "task.streaming_obs_logs.title", "task.streaming_obs_logs.desc", PathFinder._safe_join(appdata, r"obs-studio\crashes"), {"app": "OBS Studio"}),
+            ("streamlabs_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"slobs-client\Cache"), {"app": "Streamlabs Desktop"}),
+            ("streamlabs_code_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"slobs-client\Code Cache"), {"app": "Streamlabs Desktop"}),
+            ("streamlabs_gpu_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"slobs-client\GPUCache"), {"app": "Streamlabs Desktop"}),
+            ("streamlabs_logs", "task.streaming_app_logs.title", "task.streaming_app_logs.desc", PathFinder._safe_join(appdata, r"slobs-client\logs"), {"app": "Streamlabs Desktop"}),
+            ("twitch_studio_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"Twitch Studio\Cache"), {"app": "Twitch Studio"}),
+            ("twitch_studio_logs", "task.streaming_app_logs.title", "task.streaming_app_logs.desc", PathFinder._safe_join(appdata, r"Twitch Studio\Logs"), {"app": "Twitch Studio"}),
+            ("xsplit_logs", "task.streaming_app_logs.title", "task.streaming_app_logs.desc", PathFinder._safe_join(appdata, r"SplitMediaLabs\XSplit Broadcaster\logs"), {"app": "XSplit Broadcaster"}),
+            ("nvidia_broadcast_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(local, r"NVIDIA Corporation\NVIDIA Broadcast\Cache"), {"app": "NVIDIA Broadcast"}),
+        ]
+        return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
+
+    @staticmethod
     def get_gaming_cache_targets() -> List[Tuple[str, str, str, str, bool]]:
         local = os.environ.get("LOCALAPPDATA", "")
         appdata = os.environ.get("APPDATA", "")
@@ -2757,6 +2781,7 @@ class SafeFS:
         real_norm = SafeFS._norm_abs(real_path)
         blocked_exact: Set[str] = set()
         blocked_trees: Set[str] = set()
+        allowed_protected_trees: Set[str] = set()
 
         for env_name in (
             "WINDIR",
@@ -2779,6 +2804,14 @@ class SafeFS:
 
         windir = os.environ.get("WINDIR") or os.environ.get("SYSTEMROOT")
         if windir:
+            # These protected folders are registered as cleanup targets on
+            # purpose.  Keep the allow-list narrow so a task under System32 can
+            # work without making the whole System32 tree cleanable.
+            for child in (r"System32\LogFiles\setupcln", r"System32\LogFiles\WMI"):
+                allowed = os.path.join(windir, child)
+                allowed_protected_trees.add(SafeFS._norm_abs(allowed))
+                allowed_protected_trees.add(SafeFS._norm_abs(os.path.realpath(allowed)))
+
             # These are never valid cleanup targets, neither directly nor via
             # symlink/reparse-point resolution.
             for child in ("System32", "SysWOW64", "WinSxS", "servicing"):
@@ -2793,6 +2826,13 @@ class SafeFS:
 
         if norm in blocked_exact or real_norm in blocked_exact:
             return False
+
+        for allowed in allowed_protected_trees:
+            try:
+                if os.path.commonpath([allowed, norm]) == allowed and os.path.commonpath([allowed, real_norm]) == allowed:
+                    return True
+            except Exception:
+                continue
 
         for blocked in blocked_trees:
             try:
