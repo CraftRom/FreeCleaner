@@ -28,6 +28,7 @@ import queue
 import json
 import locale
 import re
+import configparser
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Optional, Dict, List, Tuple, Union, Set
@@ -2152,6 +2153,272 @@ class WindowsOps:
                 return bool(webbrowser.open(url))
             except Exception:
                 return False
+
+
+    @staticmethod
+    def _obs_root() -> str:
+        return os.path.join(os.environ.get("APPDATA", ""), "obs-studio") if os.environ.get("APPDATA", "") else ""
+
+    @staticmethod
+    def _read_ini_file(path: str) -> configparser.ConfigParser:
+        parser = configparser.ConfigParser(strict=False, interpolation=None)
+        parser.optionxform = str  # preserve OBS key case for cleaner display/fallbacks
+        for encoding in ("utf-8-sig", "utf-8", "mbcs"):
+            try:
+                with open(path, "r", encoding=encoding, errors="replace") as fh:
+                    parser.read_file(fh)
+                return parser
+            except Exception:
+                continue
+        return parser
+
+    @staticmethod
+    def _cfg_get(parser: configparser.ConfigParser, candidates: List[Tuple[str, str]], default: str = "") -> str:
+        for section, key in candidates:
+            try:
+                if parser.has_option(section, key):
+                    return str(parser.get(section, key)).strip()
+            except Exception:
+                continue
+        return default
+
+    @staticmethod
+    def _cfg_bool(parser: configparser.ConfigParser, candidates: List[Tuple[str, str]]) -> bool:
+        raw = WindowsOps._cfg_get(parser, candidates, "")
+        return str(raw).strip().casefold() in {"1", "true", "yes", "on", "enabled"}
+
+    @staticmethod
+    def discover_obs_profiles() -> List[Dict[str, Any]]:
+        """Read OBS profile metadata without modifying profiles, scenes or sources."""
+        root = os.path.join(WindowsOps._obs_root(), "basic", "profiles")
+        profiles: List[Dict[str, Any]] = []
+        if not root or not os.path.isdir(root):
+            return profiles
+        try:
+            names = sorted(os.listdir(root))
+        except OSError:
+            return profiles
+        for name in names:
+            folder = os.path.join(root, name)
+            ini_path = os.path.join(folder, "basic.ini")
+            if not os.path.isdir(folder) or not os.path.isfile(ini_path):
+                continue
+            parser = WindowsOps._read_ini_file(ini_path)
+            output_mode = WindowsOps._cfg_get(parser, [("Output", "Mode")], "")
+            stream_encoder = WindowsOps._cfg_get(parser, [
+                ("AdvOut", "Encoder"),
+                ("AdvOut", "StreamEncoder"),
+                ("SimpleOutput", "StreamEncoder"),
+                ("SimpleOutput", "Encoder"),
+            ], "")
+            record_encoder = WindowsOps._cfg_get(parser, [
+                ("AdvOut", "RecEncoder"),
+                ("AdvOut", "RecEncoder2"),
+                ("SimpleOutput", "RecEncoder"),
+                ("SimpleOutput", "RecEncoder2"),
+            ], "")
+            record_format = WindowsOps._cfg_get(parser, [
+                ("AdvOut", "RecFormat2"),
+                ("AdvOut", "RecFormat"),
+                ("SimpleOutput", "RecFormat2"),
+                ("SimpleOutput", "RecFormat"),
+            ], "")
+            record_path = WindowsOps._cfg_get(parser, [
+                ("AdvOut", "RecFilePath"),
+                ("SimpleOutput", "FilePath"),
+                ("SimpleOutput", "RecFilePath"),
+            ], "")
+            replay_buffer = WindowsOps._cfg_bool(parser, [
+                ("AdvOut", "RecRB"),
+                ("AdvOut", "ReplayBuffer"),
+                ("SimpleOutput", "RecRB"),
+                ("SimpleOutput", "ReplayBuffer"),
+                ("ReplayBuffer", "Enable"),
+                ("ReplayBuffer", "Enabled"),
+            ])
+            profiles.append({
+                "name": name,
+                "path": folder,
+                "ini": ini_path,
+                "output_mode": output_mode or "unknown",
+                "stream_encoder": stream_encoder or "unknown",
+                "record_encoder": record_encoder or "unknown",
+                "record_format": (record_format or "unknown").lower(),
+                "record_path": os.path.expandvars(record_path) if record_path else "",
+                "replay_buffer": replay_buffer,
+            })
+        return profiles
+
+    @staticmethod
+    def _encoder_kind(encoder: str) -> str:
+        name = (encoder or "").casefold()
+        if not name or name == "unknown":
+            return "unknown"
+        if any(token in name for token in ("nvenc", "qsv", "amf", "vce", "vaapi", "videotoolbox", "av1", "hevc", "h264_texture")):
+            return "hardware"
+        if "x264" in name or "x265" in name:
+            return "cpu"
+        return "unknown"
+
+    @staticmethod
+    def latest_obs_log_issues(max_logs: int = 3) -> List[Dict[str, Any]]:
+        logs_dir = PathFinder._safe_join(WindowsOps._obs_root(), "logs")
+        if not logs_dir or not os.path.isdir(logs_dir):
+            return []
+        try:
+            files = [
+                os.path.join(logs_dir, name)
+                for name in os.listdir(logs_dir)
+                if name.lower().endswith((".txt", ".log"))
+            ]
+        except OSError:
+            return []
+        files.sort(key=lambda item: os.path.getmtime(item), reverse=True)
+        patterns: List[Tuple[str, re.Pattern[str]]] = [
+            ("encoding_overload", re.compile(r"encoding overloaded|encoder overloaded|skipped frames due to encoding lag", re.I)),
+            ("rendering_lag", re.compile(r"lagged frames due to rendering lag|rendering lag|rendering stalls", re.I)),
+            ("dropped_frames", re.compile(r"dropped frames.*(?:insufficient bandwidth|connection stalls|network)|network.*dropped frames", re.I)),
+            ("nvenc_error", re.compile(r"nvenc error|failed to open nvenc|no nvenc capable devices|nvenc.*failed", re.I)),
+            ("recording_failure", re.compile(r"recording.*(?:failed|stopped unexpectedly)|failed to start recording", re.I)),
+        ]
+        issues: List[Dict[str, Any]] = []
+        for path in files[:max_logs]:
+            try:
+                size = os.path.getsize(path)
+                with open(path, "rb") as fh:
+                    if size > 384 * 1024:
+                        fh.seek(max(0, size - 384 * 1024))
+                    text = fh.read().decode("utf-8", errors="replace")
+            except Exception:
+                continue
+            for kind, pattern in patterns:
+                matches = pattern.findall(text)
+                if matches:
+                    issues.append({"kind": kind, "count": len(matches), "log": os.path.basename(path)})
+        return issues
+
+    @staticmethod
+    def latest_obs_log_activity(max_logs: int = 2) -> Dict[str, bool]:
+        logs_dir = PathFinder._safe_join(WindowsOps._obs_root(), "logs")
+        activity = {"stream": False, "record": False, "replay": False}
+        if not logs_dir or not os.path.isdir(logs_dir):
+            return activity
+        try:
+            files = [os.path.join(logs_dir, name) for name in os.listdir(logs_dir) if name.lower().endswith((".txt", ".log"))]
+            files.sort(key=lambda item: os.path.getmtime(item), reverse=True)
+        except OSError:
+            return activity
+        checks = {
+            "stream": re.compile(r"streaming.*(?:start|started)|output '.*stream.*'", re.I),
+            "record": re.compile(r"recording.*(?:start|started)|output '.*(?:record|file).*'", re.I),
+            "replay": re.compile(r"replay buffer.*(?:start|started)|output '.*replay.*'", re.I),
+        }
+        for path in files[:max_logs]:
+            try:
+                with open(path, "rb") as fh:
+                    text = fh.read(512 * 1024).decode("utf-8", errors="replace")
+            except Exception:
+                continue
+            for key, pattern in checks.items():
+                if pattern.search(text):
+                    activity[key] = True
+        return activity
+
+    @staticmethod
+    def _sample_cpu_load(delay: float = 0.35) -> Optional[float]:
+        first = _get_windows_cpu_times()
+        if not first:
+            return None
+        time.sleep(max(0.05, min(1.0, delay)))
+        second = _get_windows_cpu_times()
+        if not second:
+            return None
+        idle_delta = second[0] - first[0]
+        total_delta = second[1] - first[1]
+        if total_delta <= 0:
+            return None
+        return max(0.0, min(100.0, 100.0 * (1.0 - (float(idle_delta) / float(total_delta)))))
+
+    @staticmethod
+    def _sample_gpu_load() -> Optional[float]:
+        if not IS_WINDOWS:
+            return None
+        ps = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
+        if not ps:
+            return None
+        command = (
+            "$samples=(Get-Counter '\\GPU Engine(*)\\Utilization Percentage' -ErrorAction Stop).CounterSamples;"
+            "$sum=($samples | Measure-Object -Property CookedValue -Sum).Sum;"
+            "[math]::Round([double]$sum,1)"
+        )
+        rc, output = WindowsOps.run_command_capture([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], timeout=10)
+        if rc != 0:
+            return None
+        match = re.search(r"[-+]?\d+(?:[\.,]\d+)?", output or "")
+        if not match:
+            return None
+        try:
+            value = float(match.group(0).replace(",", "."))
+            return max(0.0, min(100.0, value))
+        except Exception:
+            return None
+
+    @staticmethod
+    def quick_disk_write_test(preferred_folder: str = "", size_mb: int = 64) -> Dict[str, Any]:
+        folder = preferred_folder or tempfile.gettempdir()
+        folder = os.path.expandvars(folder)
+        if folder and not os.path.isdir(folder):
+            folder = os.path.dirname(folder)
+        if not folder or not os.path.isdir(folder):
+            folder = tempfile.gettempdir()
+        size_mb = max(8, min(256, int(size_mb or 64)))
+        path = ""
+        started = time.perf_counter()
+        try:
+            fd, path = tempfile.mkstemp(prefix="freecleaner_disk_test_", suffix=".tmp", dir=folder)
+            chunk = b"0" * (4 * 1024 * 1024)
+            remaining = size_mb * 1024 * 1024
+            with os.fdopen(fd, "wb", buffering=0) as fh:
+                while remaining > 0:
+                    part = chunk if remaining >= len(chunk) else chunk[:remaining]
+                    fh.write(part)
+                    remaining -= len(part)
+                try:
+                    os.fsync(fh.fileno())
+                except Exception:
+                    pass
+            elapsed = max(0.001, time.perf_counter() - started)
+            mbps = float(size_mb) / elapsed
+            return {"ok": True, "folder": folder, "size_mb": size_mb, "mbps": mbps}
+        except Exception as exc:
+            return {"ok": False, "folder": folder, "error": str(exc)}
+        finally:
+            if path:
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def collect_streaming_diagnostics() -> Dict[str, Any]:
+        """Collect a read-only streaming/OBS diagnostic report."""
+        profiles = WindowsOps.discover_obs_profiles()
+        primary_record_folder = ""
+        for profile in profiles:
+            record_path = str(profile.get("record_path") or "")
+            if record_path and os.path.isdir(record_path):
+                primary_record_folder = record_path
+                break
+        result: Dict[str, Any] = {
+            "obs_profiles": profiles,
+            "obs_log_issues": WindowsOps.latest_obs_log_issues(),
+            "obs_log_activity": WindowsOps.latest_obs_log_activity(),
+            "cpu_load": WindowsOps._sample_cpu_load(),
+            "ram_load": get_memory_load_percent(),
+            "gpu_load": WindowsOps._sample_gpu_load(),
+            "disk_write": WindowsOps.quick_disk_write_test(primary_record_folder or tempfile.gettempdir(), 64),
+        }
+        return result
 
     @staticmethod
     def registry_backup_root() -> str:

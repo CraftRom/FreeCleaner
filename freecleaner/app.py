@@ -1674,6 +1674,10 @@ class Cleaner(ctk.CTk):
 
     def register_optimizer_helper_tasks(self):
         self.add_task(self.card_opt_tools, CleanerTask(
+            key="streaming_diagnostics", title_key="task.streaming_diagnostics.title", desc_key="task.streaming_diagnostics.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.run_streaming_diagnostics,
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
             key="refresh_registry_statuses", title_key="task.refresh_registry_statuses.title", desc_key="task.refresh_registry_statuses.desc",
             kind="command", category="optimizer", default=False, instant_action=True, command=self.refresh_registry_statuses,
         ))
@@ -2059,6 +2063,103 @@ class Cleaner(ctk.CTk):
                         break
         self.log(self.tr("core_isolation_page_ok") if ok else self.tr("core_isolation_page_fail"))
 
+
+
+    def _diagnostic_encoder_kind(self, encoder: str) -> str:
+        name = (encoder or "").casefold()
+        if not name or name == "unknown":
+            return "unknown"
+        if any(token in name for token in ("nvenc", "qsv", "amf", "vce", "vaapi", "videotoolbox", "av1", "hevc", "h264_texture")):
+            return "hardware"
+        if "x264" in name or "x265" in name:
+            return "cpu"
+        return "unknown"
+
+    def run_streaming_diagnostics(self):
+        self.log(self.tr("streaming_diag_started"))
+        try:
+            report = WindowsOps.collect_streaming_diagnostics()
+        except Exception:
+            self.log(self.tr("streaming_diag_failed"))
+            return
+
+        profiles = list(report.get("obs_profiles") or [])
+        if not profiles:
+            self.log(self.tr("obs_profile_missing"))
+        for profile in profiles:
+            name = str(profile.get("name") or "OBS")
+            output_mode = str(profile.get("output_mode") or "unknown")
+            stream_encoder = str(profile.get("stream_encoder") or "unknown")
+            record_encoder = str(profile.get("record_encoder") or "unknown")
+            record_format = str(profile.get("record_format") or "unknown")
+            replay_buffer = bool(profile.get("replay_buffer"))
+            self.log(self.trf(
+                "obs_profile_summary_fmt",
+                profile=name,
+                mode=output_mode,
+                stream=stream_encoder,
+                record=record_encoder,
+                format=record_format,
+                replay=self.tr("yes") if replay_buffer else self.tr("no"),
+            ))
+            for label_key, encoder in (("obs_stream_encoder", stream_encoder), ("obs_record_encoder", record_encoder)):
+                kind = self._diagnostic_encoder_kind(encoder)
+                if kind == "hardware":
+                    self.log(self.trf("obs_encoder_hw_ok_fmt", label=self.tr(label_key), encoder=encoder))
+                elif kind == "cpu":
+                    self.log(self.trf("obs_encoder_cpu_warn_fmt", label=self.tr(label_key), encoder=encoder))
+                else:
+                    self.log(self.trf("obs_encoder_unknown_fmt", label=self.tr(label_key), encoder=encoder))
+            if record_format in {"mkv", "hybrid_mp4"}:
+                self.log(self.trf("obs_rec_format_ok_fmt", profile=name, format=record_format))
+            elif record_format and record_format != "unknown":
+                self.log(self.trf("obs_rec_format_warn_fmt", profile=name, format=record_format))
+            if replay_buffer:
+                self.log(self.tr("obs_replay_combo_warn"))
+
+        activity = dict(report.get("obs_log_activity") or {})
+        if activity.get("stream") and activity.get("record") and activity.get("replay"):
+            self.log(self.tr("obs_log_triple_activity_warn"))
+
+        issues = list(report.get("obs_log_issues") or [])
+        if issues:
+            seen = set()
+            for issue in issues:
+                kind = str(issue.get("kind") or "unknown")
+                count = int(issue.get("count") or 0)
+                log_name = str(issue.get("log") or "OBS log")
+                key = (kind, log_name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                issue_text = self.tr(f"obs_log_issue_{kind}")
+                self.log(self.trf("obs_log_issue_fmt", issue=issue_text, count=count, log=log_name))
+        else:
+            self.log(self.tr("obs_logs_clean"))
+
+        cpu = report.get("cpu_load")
+        ram = report.get("ram_load")
+        gpu = report.get("gpu_load")
+        cpu_text = f"{float(cpu):.0f}%" if isinstance(cpu, (int, float)) else "—"
+        ram_text = f"{float(ram):.0f}%" if isinstance(ram, (int, float)) else "—"
+        gpu_text = f"{float(gpu):.0f}%" if isinstance(gpu, (int, float)) else self.tr("unavailable_short")
+        self.log(self.trf("streaming_load_fmt", cpu=cpu_text, ram=ram_text, gpu=gpu_text))
+        if isinstance(cpu, (int, float)) and float(cpu) >= 85.0:
+            self.log(self.tr("streaming_cpu_high_warn"))
+        if isinstance(gpu, (int, float)) and float(gpu) >= 90.0:
+            self.log(self.tr("streaming_gpu_high_warn"))
+
+        disk = dict(report.get("disk_write") or {})
+        if disk.get("ok"):
+            mbps = float(disk.get("mbps") or 0.0)
+            folder = str(disk.get("folder") or "")
+            self.log(self.trf("disk_write_ok_fmt", mbps=mbps, folder=folder))
+            if mbps < 80.0:
+                self.log(self.tr("disk_write_low_warn"))
+        else:
+            self.log(self.trf("disk_write_fail_fmt", folder=str(disk.get("folder") or "")))
+
+        self.log(self.tr("streaming_diag_done"))
 
     def cleanup_registry_leftovers(self):
         include_machine = bool(self.is_admin)
