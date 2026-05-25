@@ -7,7 +7,7 @@ No filesystem operations, Windows registry, or cleanup logic here.
 from __future__ import annotations
 
 import customtkinter as ctk
-from typing import Optional, List, Tuple, Callable, Any
+from typing import Optional, List, Tuple, Callable, Any, Dict
 
 # ---- Theme / colors ----
 
@@ -128,6 +128,83 @@ class AnimatedButton(ctk.CTkButton):
 
 from .logic import CleanerTask  # type: ignore  # (runtime import is safe)
 
+
+
+class DiagnosticStatusCard(ctk.CTkFrame):
+    """Compact read-only diagnostic card with status and details."""
+
+    STATUS_COLORS = {
+        "ok": COLORS["success"],
+        "warn": COLORS["warning"],
+        "error": COLORS["ultimate"],
+        "info": COLORS["system"],
+        "unknown": COLORS["muted"],
+        "loading": COLORS["browsers"],
+    }
+
+    def __init__(self, master, title: str, subtitle: str, accent: str = COLORS["system"]):
+        super().__init__(master, fg_color=COLORS["bg_card"], corner_radius=16, border_width=1, border_color=COLORS["border"])
+        self._title = title
+        self._subtitle = subtitle
+        self._status = "unknown"
+        self._compact = False
+        self.grid_columnconfigure(0, weight=1)
+
+        self.accent = ctk.CTkFrame(self, height=4, fg_color=accent, corner_radius=999)
+        self.accent.grid(row=0, column=0, sticky="ew", padx=1, pady=(1, 10))
+
+        self.head = ctk.CTkFrame(self, fg_color="transparent")
+        self.head.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
+        self.head.grid_columnconfigure(0, weight=1)
+        self.title_label = ctk.CTkLabel(self.head, text=title, font=("Segoe UI Semibold", 15, "bold"), text_color=COLORS["white"], anchor="w")
+        self.title_label.grid(row=0, column=0, sticky="w")
+        self.status_label = ctk.CTkLabel(self.head, text="—", font=("Segoe UI", 11, "bold"), text_color=self.STATUS_COLORS["unknown"], anchor="e")
+        self.status_label.grid(row=0, column=1, sticky="e", padx=(12, 0))
+
+        self.subtitle_label = ctk.CTkLabel(self, text=subtitle, font=("Segoe UI", 11), text_color=COLORS["text_gray"], anchor="w", justify="left", wraplength=420)
+        self.subtitle_label.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+
+        self.detail_label = ctk.CTkLabel(self, text="—", font=("Segoe UI", 11), text_color=COLORS["text_gray"], anchor="nw", justify="left", wraplength=420)
+        self.detail_label.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 14))
+
+    def set_text(self, title: str, subtitle: str) -> None:
+        if title != self._title:
+            self._title = title
+            self.title_label.configure(text=title)
+        if subtitle != self._subtitle:
+            self._subtitle = subtitle
+            self.subtitle_label.configure(text=subtitle)
+
+    def set_status(self, status_text: str, details: str, severity: str = "unknown") -> None:
+        severity = severity if severity in self.STATUS_COLORS else "unknown"
+        self._status = severity
+        self.status_label.configure(text=status_text, text_color=self.STATUS_COLORS[severity])
+        self.detail_label.configure(text=details or "—")
+        if severity in {"ok", "warn", "error"}:
+            self.configure(border_color=mix_colors(COLORS["border"], self.STATUS_COLORS[severity], 0.38))
+        else:
+            self.configure(border_color=COLORS["border"])
+
+    def set_wraplength(self, wraplength: int) -> None:
+        wraplength = max(220, int(wraplength))
+        self.subtitle_label.configure(wraplength=wraplength)
+        self.detail_label.configure(wraplength=wraplength)
+
+    def set_compact(self, compact: bool) -> None:
+        compact = bool(compact)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.configure(corner_radius=13 if compact else 16)
+        self.accent.configure(height=3 if compact else 4)
+        self.title_label.configure(font=("Segoe UI Semibold", 13 if compact else 15, "bold"))
+        self.status_label.configure(font=("Segoe UI", 10 if compact else 11, "bold"))
+        self.subtitle_label.configure(font=("Segoe UI", 10 if compact else 11))
+        self.detail_label.configure(font=("Segoe UI", 10 if compact else 11))
+        self.accent.grid_configure(pady=(1, 8 if compact else 10))
+        self.head.grid_configure(padx=14 if compact else 16, pady=(0, 6 if compact else 8))
+        self.subtitle_label.grid_configure(padx=14 if compact else 16, pady=(0, 6 if compact else 8))
+        self.detail_label.grid_configure(padx=14 if compact else 16, pady=(0, 11 if compact else 14))
 
 class SummaryCard(ctk.CTkFrame):
     def __init__(self, master, title: str, value: str, color: str):

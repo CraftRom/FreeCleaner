@@ -26,7 +26,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, AnimatedButton, init_ui_theme, mix_colors
+from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, AnimatedButton, DiagnosticStatusCard, init_ui_theme, mix_colors
 from .logic import (
     IS_WINDOWS,
     ICONS_DIRNAME,
@@ -219,6 +219,8 @@ class Cleaner(ctk.CTk):
         self._last_search_query = ""
         self._about_header_icon_cache = None
         self.active_module_tab = "cleaner"
+        self._diagnostics_in_progress = False
+        self._last_diagnostics_report: Dict[str, Any] = {}
         self._update_check_in_progress = False
         self._last_update_info: Optional[UpdateInfo] = None
         self._ignored_update_tag = ""
@@ -468,23 +470,26 @@ class Cleaner(ctk.CTk):
             return
         self._layout_state["tab_layout"] = state
 
-        self.tab_cleaner_button.grid_forget()
-        self.tab_optimizer_button.grid_forget()
-        self.tab_bar.grid_columnconfigure(0, weight=1)
-        self.tab_bar.grid_columnconfigure(1, weight=1)
+        buttons = [self.tab_cleaner_button, self.tab_optimizer_button, self.tab_diagnostics_button]
+        for button in buttons:
+            button.grid_forget()
+        for column in range(3):
+            self.tab_bar.grid_columnconfigure(column, weight=1)
 
         if stacked:
-            self.tab_bar.grid_columnconfigure(1, weight=0)
-            self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
-            self.tab_optimizer_button.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
+            for column in range(1, 3):
+                self.tab_bar.grid_columnconfigure(column, weight=0)
+            for index, button in enumerate(buttons):
+                pady = (12, 8) if index == 0 else (0, 8) if index == 1 else (0, 12)
+                button.grid(row=index, column=0, sticky="ew", padx=12, pady=pady)
         else:
-            self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=(12, 8), pady=12)
-            self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(8, 12), pady=12)
+            pads = [(12, 7), (7, 7), (7, 12)]
+            for index, button in enumerate(buttons):
+                button.grid(row=0, column=index, sticky="ew", padx=pads[index], pady=12)
 
-        self.tab_cleaner_button.set_subtitle_wrap(subtitle_wrap)
-        self.tab_optimizer_button.set_subtitle_wrap(subtitle_wrap)
-        self.tab_cleaner_button.set_compact(stacked)
-        self.tab_optimizer_button.set_compact(stacked)
+        for button in buttons:
+            button.set_subtitle_wrap(subtitle_wrap)
+            button.set_compact(stacked)
 
     def layout_sidebar_bottom(self, stacked: bool):
         stacked = bool(stacked)
@@ -505,30 +510,43 @@ class Cleaner(ctk.CTk):
             self.btn_cancel.pack(side="right")
 
     def module_tab_title(self, key: str) -> str:
-        return self.tr("tab_optimizer") if key == "optimizer" else self.tr("tab_cleaner")
+        if key == "optimizer":
+            return self.tr("tab_optimizer")
+        if key == "diagnostics":
+            return self.tr("tab_diagnostics")
+        return self.tr("tab_cleaner")
 
     def module_tab_subtitle(self, key: str) -> str:
-        return self.tr("tab_optimizer_sub") if key == "optimizer" else self.tr("tab_cleaner_sub")
+        if key == "optimizer":
+            return self.tr("tab_optimizer_sub")
+        if key == "diagnostics":
+            return self.tr("tab_diagnostics_sub")
+        return self.tr("tab_cleaner_sub")
 
     def on_module_tab_changed(self, key: str):
         self.show_module_tab(key)
 
     def show_module_tab(self, key: str):
-        key = "optimizer" if key == "optimizer" else "cleaner"
+        key = key if key in {"cleaner", "optimizer", "diagnostics"} else "cleaner"
         self.active_module_tab = key
 
-        if hasattr(self, "cleaner_scroll") and hasattr(self, "optimizer_scroll"):
+        if hasattr(self, "cleaner_scroll") and hasattr(self, "optimizer_scroll") and hasattr(self, "diagnostics_scroll"):
+            self.cleaner_scroll.grid_remove()
+            self.optimizer_scroll.grid_remove()
+            self.diagnostics_scroll.grid_remove()
             if key == "optimizer":
-                self.cleaner_scroll.grid_remove()
                 self.optimizer_scroll.grid()
+            elif key == "diagnostics":
+                self.diagnostics_scroll.grid()
             else:
-                self.optimizer_scroll.grid_remove()
                 self.cleaner_scroll.grid()
 
         if hasattr(self, "tab_cleaner_button"):
             self.tab_cleaner_button.set_active(key == "cleaner")
         if hasattr(self, "tab_optimizer_button"):
             self.tab_optimizer_button.set_active(key == "optimizer")
+        if hasattr(self, "tab_diagnostics_button"):
+            self.tab_diagnostics_button.set_active(key == "diagnostics")
 
         self.schedule_responsive_layout()
 
@@ -589,6 +607,40 @@ class Cleaner(ctk.CTk):
                 self._layout_state["desc_wraplength"] = wraplength
                 for card in self.section_cards:
                     card.update_layout(wraplength)
+            if hasattr(self, "diagnostics_cards"):
+                diag_columns = 2 if content_width >= 820 else 1
+                if self._layout_state.get("diagnostics_columns") != diag_columns:
+                    self._layout_state["diagnostics_columns"] = diag_columns
+                    try:
+                        self.diagnostics_scroll.grid_columnconfigure(0, weight=1)
+                        self.diagnostics_scroll.grid_columnconfigure(1, weight=1 if diag_columns == 2 else 0)
+                        cards_order = ["obs", "windows", "disk", "network", "recommendations"]
+                        for index, key in enumerate(cards_order):
+                            card = self.diagnostics_cards.get(key)
+                            if not card:
+                                continue
+                            card.grid_forget()
+                            if diag_columns == 1 or key == "recommendations":
+                                row = index + 1 if diag_columns == 1 else 3
+                                card.grid(row=row, column=0, columnspan=diag_columns, sticky="nsew", padx=0, pady=(0, 14))
+                            else:
+                                row = 1 + index // 2
+                                col = index % 2
+                                card.grid(row=row, column=col, sticky="nsew", padx=(0, 8) if col == 0 else (8, 0), pady=(0, 14))
+                    except Exception:
+                        pass
+                diag_wrap = max(240, (content_width // diag_columns) - 72)
+                for card in self.diagnostics_cards.values():
+                    try:
+                        card.set_compact(section_compact)
+                        card.set_wraplength(diag_wrap)
+                    except Exception:
+                        pass
+                try:
+                    self.diagnostics_subtitle.configure(wraplength=max(280, content_width - 220))
+                except Exception:
+                    pass
+
         except Exception:
             pass
 
@@ -815,6 +867,12 @@ class Cleaner(ctk.CTk):
             self.tab_cleaner_button.set_text(self.module_tab_title("cleaner"), self.module_tab_subtitle("cleaner"))
         if hasattr(self, "tab_optimizer_button"):
             self.tab_optimizer_button.set_text(self.module_tab_title("optimizer"), self.module_tab_subtitle("optimizer"))
+        if hasattr(self, "tab_diagnostics_button"):
+            self.tab_diagnostics_button.set_text(self.module_tab_title("diagnostics"), self.module_tab_subtitle("diagnostics"))
+        if hasattr(self, "diagnostics_scroll"):
+            self.diagnostics_scroll.configure(label_text=self.tr("diagnostics_modules"))
+        if hasattr(self, "diagnostics_title"):
+            self.refresh_diagnostics_language()
         self.show_module_tab(self.active_module_tab)
         self.card_sys.set_header(self.tr("sec_system_title"), self.tr("sec_system_sub"))
         self.card_net.set_header(self.tr("sec_net_title"), self.tr("sec_net_sub"))
@@ -1164,7 +1222,7 @@ class Cleaner(ctk.CTk):
             border_color=COLORS["border"],
         )
         self.tab_bar.grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        self.tab_bar.grid_columnconfigure((0, 1), weight=1)
+        self.tab_bar.grid_columnconfigure((0, 1, 2), weight=1)
 
         self.tab_cleaner_button = ModernTabButton(
             self.tab_bar,
@@ -1182,7 +1240,16 @@ class Cleaner(ctk.CTk):
             accent=COLORS["gamer"],
             command=lambda: self.on_module_tab_changed("optimizer"),
         )
-        self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(8, 12), pady=12)
+        self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(8, 8), pady=12)
+
+        self.tab_diagnostics_button = ModernTabButton(
+            self.tab_bar,
+            title=self.module_tab_title("diagnostics"),
+            subtitle=self.module_tab_subtitle("diagnostics"),
+            accent=COLORS["system"],
+            command=lambda: self.on_module_tab_changed("diagnostics"),
+        )
+        self.tab_diagnostics_button.grid(row=0, column=2, sticky="ew", padx=(8, 12), pady=12)
 
         self.cleaner_scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("cleaner_modules"))
         self.cleaner_scroll.grid(row=3, column=0, sticky="nsew")
@@ -1191,6 +1258,10 @@ class Cleaner(ctk.CTk):
         self.optimizer_scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("optimizer_modules"))
         self.optimizer_scroll.grid(row=3, column=0, sticky="nsew")
         self.optimizer_scroll.grid_columnconfigure(0, weight=1)
+
+        self.diagnostics_scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("diagnostics_modules"))
+        self.diagnostics_scroll.grid(row=3, column=0, sticky="nsew")
+        self.diagnostics_scroll.grid_columnconfigure((0, 1), weight=1)
 
         self.card_sys = SectionCard(self, self.cleaner_scroll, self.tr("sec_system_title"), self.tr("sec_system_sub"), COLORS["system"])
         self.card_sys.grid(row=0, column=0, sticky="ew", pady=(0, 16))
@@ -1232,7 +1303,246 @@ class Cleaner(ctk.CTk):
         self.section_cards.append(self.card_opt_tools)
         self.register_optimizer_helper_tasks()
 
+        self.build_diagnostics_tab()
+
         self.show_module_tab(self.active_module_tab)
+
+
+    def _diagnostic_status_text(self, severity: str) -> str:
+        return self.tr({
+            "ok": "diag_status_ok",
+            "warn": "diag_status_warn",
+            "error": "diag_status_error",
+            "info": "diag_status_info",
+            "loading": "diag_status_loading",
+        }.get(severity, "diag_status_unknown"))
+
+    def build_diagnostics_tab(self):
+        self.diagnostics_cards: Dict[str, DiagnosticStatusCard] = {}
+        self.diagnostics_header = ctk.CTkFrame(self.diagnostics_scroll, fg_color=COLORS["bg_card"], corner_radius=18, border_width=1, border_color=COLORS["border"])
+        self.diagnostics_header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 14))
+        self.diagnostics_header.grid_columnconfigure(0, weight=1)
+        self.diagnostics_title = ctk.CTkLabel(self.diagnostics_header, text=self.tr("diagnostics_title"), font=("Segoe UI Semibold", 18, "bold"), text_color=COLORS["white"], anchor="w")
+        self.diagnostics_title.grid(row=0, column=0, sticky="w", padx=16, pady=(14, 2))
+        self.diagnostics_subtitle = ctk.CTkLabel(self.diagnostics_header, text=self.tr("diagnostics_subtitle"), font=("Segoe UI", 11), text_color=COLORS["text_gray"], anchor="w", justify="left", wraplength=860)
+        self.diagnostics_subtitle.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 14))
+        self.btn_refresh_diagnostics = AnimatedButton(
+            self.diagnostics_header,
+            text=self.tr("diagnostics_refresh"),
+            height=38,
+            width=170,
+            fg_color=mix_colors(COLORS["system"], COLORS["bg_soft"], 0.22),
+            hover_color=mix_colors(COLORS["system"], COLORS["bg_soft"], 0.38),
+            accent=COLORS["system"],
+            command=self.refresh_diagnostics_dashboard,
+        )
+        self.btn_refresh_diagnostics.grid(row=0, column=1, rowspan=2, sticky="e", padx=16, pady=14)
+
+        definitions = [
+            ("obs", "diag_card_obs_title", "diag_card_obs_sub", COLORS["browsers"]),
+            ("windows", "diag_card_windows_title", "diag_card_windows_sub", COLORS["gamer"]),
+            ("disk", "diag_card_disk_title", "diag_card_disk_sub", COLORS["deep"]),
+            ("network", "diag_card_network_title", "diag_card_network_sub", COLORS["system"]),
+            ("recommendations", "diag_card_recommendations_title", "diag_card_recommendations_sub", COLORS["success"]),
+        ]
+        for index, (key, title_key, sub_key, accent) in enumerate(definitions, start=1):
+            card = DiagnosticStatusCard(self.diagnostics_scroll, self.tr(title_key), self.tr(sub_key), accent=accent)
+            row = 1 + (index - 1) // 2
+            col = (index - 1) % 2
+            colspan = 2 if key == "recommendations" else 1
+            card.grid(row=row, column=col, columnspan=colspan, sticky="nsew", padx=(0, 8) if col == 0 and colspan == 1 else (8, 0) if col == 1 else 0, pady=(0, 14))
+            self.diagnostics_cards[key] = card
+        self._set_diagnostics_placeholder()
+
+    def refresh_diagnostics_language(self):
+        self.diagnostics_title.configure(text=self.tr("diagnostics_title"))
+        self.diagnostics_subtitle.configure(text=self.tr("diagnostics_subtitle"))
+        self.btn_refresh_diagnostics.configure(text=self.tr("diagnostics_refresh"))
+        mapping = {
+            "obs": ("diag_card_obs_title", "diag_card_obs_sub"),
+            "windows": ("diag_card_windows_title", "diag_card_windows_sub"),
+            "disk": ("diag_card_disk_title", "diag_card_disk_sub"),
+            "network": ("diag_card_network_title", "diag_card_network_sub"),
+            "recommendations": ("diag_card_recommendations_title", "diag_card_recommendations_sub"),
+        }
+        for key, card in getattr(self, "diagnostics_cards", {}).items():
+            title_key, sub_key = mapping.get(key, ("diagnostics_title", "diagnostics_subtitle"))
+            card.set_text(self.tr(title_key), self.tr(sub_key))
+        if not self._last_diagnostics_report:
+            self._set_diagnostics_placeholder()
+        else:
+            self.render_diagnostics_dashboard(self._last_diagnostics_report)
+
+    def _set_diagnostics_placeholder(self):
+        for card in getattr(self, "diagnostics_cards", {}).values():
+            card.set_status(self._diagnostic_status_text("info"), self.tr("diagnostics_not_run"), "info")
+
+    def refresh_diagnostics_dashboard(self):
+        if self._diagnostics_in_progress:
+            return
+        self._diagnostics_in_progress = True
+        self.btn_refresh_diagnostics.configure(state="disabled", text=self.tr("diagnostics_running"))
+        for card in self.diagnostics_cards.values():
+            card.set_status(self._diagnostic_status_text("loading"), self.tr("diagnostics_collecting"), "loading")
+        self.log(self.tr("diagnostics_dashboard_started"))
+
+        def worker():
+            try:
+                return {
+                    "streaming": WindowsOps.collect_streaming_diagnostics(),
+                    "gaming": WindowsOps.collect_gaming_compat_report(),
+                    "collected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            except Exception as exc:
+                return {"error": str(exc), "collected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+        def done(report: Dict[str, Any]):
+            self._diagnostics_in_progress = False
+            self._last_diagnostics_report = report
+            self.btn_refresh_diagnostics.configure(state="normal", text=self.tr("diagnostics_refresh"))
+            self.render_diagnostics_dashboard(report)
+            self.log(self.tr("diagnostics_dashboard_done"))
+
+        threading.Thread(target=lambda: (lambda report: self.after(0, lambda: done(report)))(worker()), daemon=True).start()
+
+    def _format_state(self, value: Any) -> str:
+        key = f"state_{str(value or 'unknown').strip().lower()}"
+        translated = self.tr(key)
+        return translated if translated != key else str(value or self.tr("unknown"))
+
+    def _format_gpu_preference_line(self, item: Dict[str, Any]) -> str:
+        name = str(item.get("name") or item.get("path") or "app")
+        return self.trf("diag_gpu_pref_line", app=name, pref=self._format_state(item.get("preference")))
+
+    def _build_diagnostic_recommendations(self, streaming: Dict[str, Any], gaming: Dict[str, Any]) -> List[str]:
+        recommendations: List[str] = []
+        profiles = list(streaming.get("obs_profiles") or [])
+        issues = list(streaming.get("obs_log_issues") or [])
+        for profile in profiles:
+            stream_kind = self._diagnostic_encoder_kind(str(profile.get("stream_encoder") or ""))
+            record_kind = self._diagnostic_encoder_kind(str(profile.get("record_encoder") or ""))
+            if stream_kind == "cpu" or record_kind == "cpu":
+                recommendations.append(self.tr("diag_rec_hardware_encoder"))
+                break
+        for profile in profiles:
+            record_format = str(profile.get("record_format") or "").lower()
+            if record_format and record_format not in {"mkv", "hybrid_mp4", "unknown"}:
+                recommendations.append(self.tr("diag_rec_mkv"))
+                break
+        if any(str(issue.get("kind")) == "dropped_frames" for issue in issues):
+            recommendations.append(self.tr("diag_rec_network_bitrate"))
+        if any(str(issue.get("kind")) == "rendering_lag" for issue in issues):
+            recommendations.append(self.tr("diag_rec_reduce_gpu_load"))
+        if str(gaming.get("game_dvr")) == "enabled":
+            recommendations.append(self.tr("diag_rec_disable_captures"))
+        summary = dict(gaming.get("gpu_preference_summary") or {})
+        if int(summary.get("power_saving") or 0) > 0 or int(summary.get("total_relevant") or 0) == 0:
+            recommendations.append(self.tr("diag_rec_gpu_high_performance"))
+        disk = dict(streaming.get("disk_write") or {})
+        if disk.get("ok") and float(disk.get("mbps") or 0.0) < 80.0:
+            recommendations.append(self.tr("diag_rec_recording_disk"))
+        if not recommendations:
+            recommendations.append(self.tr("diag_rec_all_good"))
+        # keep order, remove duplicates
+        unique: List[str] = []
+        for item in recommendations:
+            if item not in unique:
+                unique.append(item)
+        return unique[:7]
+
+    def render_diagnostics_dashboard(self, report: Dict[str, Any]):
+        if report.get("error"):
+            details = self.trf("diagnostics_error_fmt", error=str(report.get("error")))
+            for card in self.diagnostics_cards.values():
+                card.set_status(self._diagnostic_status_text("error"), details, "error")
+            return
+
+        streaming = dict(report.get("streaming") or {})
+        gaming = dict(report.get("gaming") or {})
+        issues = list(streaming.get("obs_log_issues") or [])
+        profiles = list(streaming.get("obs_profiles") or [])
+
+        # OBS card
+        obs_lines: List[str] = []
+        obs_severity = "ok"
+        if not profiles:
+            obs_severity = "warn"
+            obs_lines.append(self.tr("diag_obs_no_profiles"))
+        for profile in profiles[:4]:
+            name = str(profile.get("name") or "OBS")
+            stream_encoder = str(profile.get("stream_encoder") or "unknown")
+            record_encoder = str(profile.get("record_encoder") or "unknown")
+            record_format = str(profile.get("record_format") or "unknown")
+            replay = self.tr("yes") if profile.get("replay_buffer") else self.tr("no")
+            stream_kind = self._diagnostic_encoder_kind(stream_encoder)
+            record_kind = self._diagnostic_encoder_kind(record_encoder)
+            if stream_kind == "cpu" or record_kind == "cpu":
+                obs_severity = "warn"
+            if record_format not in {"mkv", "hybrid_mp4", "unknown"}:
+                obs_severity = "warn"
+            obs_lines.append(self.trf("diag_obs_profile_line", profile=name, stream=stream_encoder, record=record_encoder, format=record_format, replay=replay))
+        if issues:
+            bad = ", ".join(sorted({self.tr(f"obs_log_issue_{str(item.get('kind') or 'unknown')}") for item in issues})[:4])
+            obs_lines.append(self.trf("diag_obs_issues_line", issues=bad))
+            obs_severity = "warn"
+        else:
+            obs_lines.append(self.tr("diag_obs_logs_clean"))
+        self.diagnostics_cards["obs"].set_status(self._diagnostic_status_text(obs_severity), "\n".join(obs_lines), obs_severity)
+
+        # Windows card
+        win_lines = [
+            self.trf("diag_windows_state_line", label=self.tr("diag_label_game_mode"), value=self._format_state(gaming.get("game_mode"))),
+            self.trf("diag_windows_state_line", label=self.tr("diag_label_captures"), value=self._format_state(gaming.get("game_dvr"))),
+            self.trf("diag_windows_state_line", label=self.tr("diag_label_hags"), value=self._format_state(gaming.get("hags"))),
+            self.trf("diag_windows_state_line", label=self.tr("diag_label_power_plan"), value=str(gaming.get("active_power_scheme") or "unknown")),
+        ]
+        summary = dict(gaming.get("gpu_preference_summary") or {})
+        relevant = list(summary.get("relevant") or [])
+        if relevant:
+            win_lines.append(self.tr("diag_gpu_pref_header"))
+            for item in relevant[:4]:
+                win_lines.append(self._format_gpu_preference_line(item))
+            if int(summary.get("total_relevant") or 0) > 4:
+                win_lines.append(self.trf("diag_more_items_fmt", count=int(summary.get("total_relevant") or 0) - 4))
+        else:
+            win_lines.append(self.tr("diag_gpu_pref_missing"))
+        win_severity = "ok"
+        if str(gaming.get("game_dvr")) == "enabled" or str(gaming.get("game_mode")) == "disabled":
+            win_severity = "warn"
+        self.diagnostics_cards["windows"].set_status(self._diagnostic_status_text(win_severity), "\n".join(win_lines), win_severity)
+
+        # Disk card
+        disk = dict(streaming.get("disk_write") or {})
+        if disk.get("ok"):
+            mbps = float(disk.get("mbps") or 0.0)
+            disk_severity = "ok" if mbps >= 80.0 else "warn"
+            disk_details = self.trf("diag_disk_ok_fmt", mbps=mbps, folder=str(disk.get("folder") or ""), size=int(disk.get("size_mb") or 0))
+        else:
+            disk_severity = "error"
+            disk_details = self.trf("diag_disk_fail_fmt", folder=str(disk.get("folder") or ""), error=str(disk.get("error") or ""))
+        self.diagnostics_cards["disk"].set_status(self._diagnostic_status_text(disk_severity), disk_details, disk_severity)
+
+        # Network card
+        dropped = [item for item in issues if str(item.get("kind")) == "dropped_frames"]
+        activity = dict(streaming.get("obs_log_activity") or {})
+        network_lines = [self.trf("diag_network_activity_fmt", stream=self.tr("yes") if activity.get("stream") else self.tr("no"), record=self.tr("yes") if activity.get("record") else self.tr("no"), replay=self.tr("yes") if activity.get("replay") else self.tr("no"))]
+        if dropped:
+            total = sum(int(item.get("count") or 0) for item in dropped)
+            network_lines.append(self.trf("diag_network_dropped_fmt", count=total))
+            network_severity = "warn"
+        else:
+            network_lines.append(self.tr("diag_network_no_drops"))
+            network_severity = "ok"
+        if activity.get("stream") and activity.get("record") and activity.get("replay"):
+            network_lines.append(self.tr("diag_network_triple_warn"))
+            network_severity = "warn"
+        self.diagnostics_cards["network"].set_status(self._diagnostic_status_text(network_severity), "\n".join(network_lines), network_severity)
+
+        # Recommendations card
+        recs = self._build_diagnostic_recommendations(streaming, gaming)
+        rec_text = "\n".join(f"• {item}" for item in recs)
+        rec_severity = "ok" if recs == [self.tr("diag_rec_all_good")] else "info"
+        self.diagnostics_cards["recommendations"].set_status(self._diagnostic_status_text(rec_severity), rec_text, rec_severity)
 
     def build_footer(self):
 

@@ -379,3 +379,17 @@ FreeCleaner now chooses worker counts dynamically instead of using fixed limits:
 - Cleaning starts at logical CPU threads minus two to keep Windows responsive.
 - During work, each batch re-checks CPU and RAM pressure through Windows APIs and reduces workers on loaded systems.
 - No extra runtime dependency is required; the logic remains compatible with Python 3.8+ and Windows 10/11.
+
+## Diagnostics dashboard
+
+FreeCleaner includes a read-only **Diagnostics** tab for gaming and streaming checks.
+It does not change OBS profiles, Windows registry values, power plans, scenes, or recording settings automatically.
+
+The dashboard shows cards for:
+
+- OBS profiles, stream/record encoders, recording format, Replay Buffer and recent overload/NVENC issues;
+- Windows Game Mode, Captures/Game DVR, HAGS, active power plan and per-app GPU preference entries;
+- quick write-speed test for the OBS recording folder or the system temp folder;
+- dropped-frame warnings found in recent OBS logs;
+- practical recommendations that avoid unsafe one-click tweak behavior.
+

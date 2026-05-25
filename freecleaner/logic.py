@@ -2439,6 +2439,41 @@ class WindowsOps:
         return "custom"
 
     @staticmethod
+    def read_gpu_preferences(limit: int = 80) -> List[Dict[str, str]]:
+        """Read Windows per-app GPU preferences without changing them."""
+        result: List[Dict[str, str]] = []
+        key_path = r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences"
+        for app_path, raw_value in WindowsOps._enum_registry_values(key_path, limit=limit):
+            raw = str(raw_value or "")
+            match = re.search(r"GpuPreference\s*=\s*(\d+)", raw, re.I)
+            pref = match.group(1) if match else "unknown"
+            label = {
+                "0": "system_default",
+                "1": "power_saving",
+                "2": "high_performance",
+            }.get(pref, "unknown")
+            result.append({
+                "path": str(app_path),
+                "name": os.path.basename(str(app_path).strip('"')) or str(app_path),
+                "preference": label,
+                "raw": raw,
+            })
+        return result
+
+    @staticmethod
+    def summarize_gpu_preferences(entries: List[Dict[str, str]]) -> Dict[str, Any]:
+        relevant_tokens = ("obs", "wow", "warcraft", "battle.net", "streamlabs", "twitch", "xsplit", "minecraft", "javaw", "steam", "discord")
+        relevant: List[Dict[str, str]] = []
+        for item in entries or []:
+            hay = f"{item.get('path','')} {item.get('name','')}".casefold()
+            if any(token in hay for token in relevant_tokens):
+                relevant.append(item)
+        high = sum(1 for item in relevant if item.get("preference") == "high_performance")
+        low = sum(1 for item in relevant if item.get("preference") == "power_saving")
+        default = sum(1 for item in relevant if item.get("preference") == "system_default")
+        return {"relevant": relevant[:12], "high": high, "power_saving": low, "system_default": default, "total_relevant": len(relevant)}
+
+    @staticmethod
     def collect_gaming_compat_report() -> Dict[str, Any]:
         """Collect read-only gaming/streaming compatibility hints.
 
@@ -2455,12 +2490,18 @@ class WindowsOps:
             "hags": "unsupported",
             "power_throttling": "unknown",
             "dynamic_tick": "unknown",
+            "gpu_preferences": [],
+            "gpu_preference_summary": {"relevant": [], "high": 0, "power_saving": 0, "system_default": 0, "total_relevant": 0},
             "notes": [],
         }
         notes: List[str] = report["notes"]
         if not IS_WINDOWS:
             notes.append("gaming_report_note_windows_only")
             return report
+
+        gpu_preferences = WindowsOps.read_gpu_preferences()
+        report["gpu_preferences"] = gpu_preferences
+        report["gpu_preference_summary"] = WindowsOps.summarize_gpu_preferences(gpu_preferences)
 
         rc, output = WindowsOps.run_command_capture(["powercfg.exe", "/getactivescheme"], timeout=30)
         if rc == 0 and output:
