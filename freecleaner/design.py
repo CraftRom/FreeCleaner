@@ -60,18 +60,45 @@ COLORS = {
 }
 
 
+# Centralized design tokens keep widget styling consistent and cheap to adjust.
+# They also avoid recreating ad-hoc font/spacing tuples across the UI.
+SPACING: Dict[str, int] = {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20,
+}
+
+TYPOGRAPHY: Dict[str, Tuple[str, int, str]] = {
+    "title": ("Segoe UI Semibold", 15, "bold"),
+    "section": ("Segoe UI", 16, "bold"),
+    "button": ("Segoe UI", 13, "bold"),
+    "body": ("Segoe UI", 11, "normal"),
+    "small": ("Segoe UI", 10, "normal"),
+}
+
+MOTION: Dict[str, float] = {
+    "button_press_ms": 110.0,
+    "progress_frame_ms": 20.0,
+    "progress_easing": 0.32,
+    "progress_snap": 0.002,
+}
+
+
 class AnimatedButton(ctk.CTkButton):
     """Small CTkButton enhancement with press/hover feedback.
 
-    CustomTkinter already has hover colors.  This wrapper adds a tiny border
-    pulse on press/focus without changing layout size, so it is cheap even on
-    slower laptops and avoids expensive per-frame widget recreation.
+    CustomTkinter already has hover colors. This wrapper adds a tiny border
+    pulse on press/focus without changing layout size, so it stays cheap on
+    older laptops and avoids per-frame widget recreation.
     """
 
     def __init__(self, *args, accent: str = COLORS["system"], **kwargs):
         self._accent = accent
         self._normal_border = kwargs.get("border_color", "transparent")
         self._normal_border_width = int(kwargs.get("border_width", 0) or 0)
+        self._is_pressed = False
         kwargs.setdefault("corner_radius", 12)
         super().__init__(*args, **kwargs)
         self._pulse_after_id = None
@@ -90,6 +117,7 @@ class AnimatedButton(ctk.CTkButton):
     def _on_press(self, _event=None):
         if self._state_is_disabled():
             return
+        self._is_pressed = True
         try:
             self.configure(border_width=max(1, self._normal_border_width + 1), border_color=self._accent)
         except Exception:
@@ -100,7 +128,7 @@ class AnimatedButton(ctk.CTkButton):
             except Exception:
                 pass
         try:
-            self._pulse_after_id = self.after(130, self._on_release)
+            self._pulse_after_id = self.after(int(MOTION["button_press_ms"]), self._on_release)
         except Exception:
             self._pulse_after_id = None
 
@@ -119,10 +147,77 @@ class AnimatedButton(ctk.CTkButton):
             except Exception:
                 pass
         self._pulse_after_id = None
+        self._is_pressed = False
         try:
             self.configure(border_width=self._normal_border_width, border_color=self._normal_border)
         except Exception:
             pass
+
+
+class SmoothProgressBar(ctk.CTkProgressBar):
+    """Progress bar with coalesced/eased updates.
+
+    The cleaner can report progress from many worker threads. Calling Tk for
+    every file is expensive, so the app feeds this widget a target value and the
+    widget paints a small eased transition on the main loop.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._target_value = 0.0
+        self._display_value = 0.0
+        self._anim_after_id = None
+
+    @staticmethod
+    def _clamp(value: float) -> float:
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except Exception:
+            return 0.0
+
+    def cancel_animation(self) -> None:
+        if self._anim_after_id:
+            try:
+                self.after_cancel(self._anim_after_id)
+            except Exception:
+                pass
+        self._anim_after_id = None
+
+    def set_immediate(self, value: float) -> None:
+        value = self._clamp(value)
+        self.cancel_animation()
+        self._target_value = value
+        self._display_value = value
+        try:
+            super().set(value)
+        except Exception:
+            pass
+
+    def set_target(self, value: float) -> None:
+        self._target_value = self._clamp(value)
+        if self._anim_after_id:
+            return
+        self._animate_step()
+
+    def _animate_step(self) -> None:
+        self._anim_after_id = None
+        target = self._clamp(self._target_value)
+        current = self._clamp(self._display_value)
+        delta = target - current
+        if abs(delta) < float(MOTION["progress_snap"]):
+            current = target
+        else:
+            current += delta * float(MOTION["progress_easing"])
+        self._display_value = current
+        try:
+            super().set(current)
+        except Exception:
+            return
+        if abs(target - current) >= float(MOTION["progress_snap"]):
+            try:
+                self._anim_after_id = self.after(int(MOTION["progress_frame_ms"]), self._animate_step)
+            except Exception:
+                self._anim_after_id = None
 
 # ---- Reusable UI components ----
 
@@ -247,6 +342,15 @@ class SummaryCard(ctk.CTkFrame):
 
 
 class SectionCard(ctk.CTkFrame):
+    def _owner_task_texts(self, task: CleanerTask) -> Dict[str, str]:
+        getter = getattr(self.owner, "cached_task_texts", None)
+        if callable(getter):
+            return getter(task)
+        title = self.owner.task_title(task)
+        desc = self.owner.task_desc(task)
+        normalizer = getattr(self.owner, "_normalize_search_text", lambda value: str(value or "").casefold().strip())
+        return {"title": title, "desc": desc, "search": normalizer(title + " " + desc)}
+
     def __init__(self, owner, master, title, subtitle, color, **kwargs):
         super().__init__(master, fg_color=COLORS["bg_card"], corner_radius=14, border_width=1, border_color=COLORS["border"], **kwargs)
         self.owner = owner
@@ -274,10 +378,11 @@ class SectionCard(ctk.CTkFrame):
         row_wrap.grid_columnconfigure(0, weight=1)
 
         if task.instant_action and task.kind == "command":
+            task_texts = self._owner_task_texts(task)
             widget = AnimatedButton(
                 row_wrap,
                 accent=COLORS["gamer"],
-                text=self.owner.task_title(task),
+                text=task_texts["title"],
                 font=("Segoe UI", 13, "bold"),
                 height=42,
                 corner_radius=12,
@@ -294,7 +399,7 @@ class SectionCard(ctk.CTkFrame):
         else:
             widget = ctk.CTkCheckBox(
                 row_wrap,
-                text=self.owner.task_title(task),
+                text=self._owner_task_texts(task)["title"],
                 variable=variable,
                 font=("Segoe UI", 13, "bold"),
                 state=task.state,
@@ -311,7 +416,7 @@ class SectionCard(ctk.CTkFrame):
 
         desc_lbl = ctk.CTkLabel(
             self,
-            text=self.owner.task_desc(task),
+            text=self._owner_task_texts(task)["desc"],
             text_color=COLORS["text_gray"],
             font=("Segoe UI", 10),
             wraplength=self.desc_wraplength,
@@ -345,8 +450,9 @@ class SectionCard(ctk.CTkFrame):
         query = normalizer(self.owner.search_var.get()) if hasattr(self.owner, "search_var") else ""
         visible_count = 0
         for index, (widget, desc_lbl, task, row_wrap, _visible) in enumerate(self.rows):
-            title = self.owner.task_title(task)
-            desc = self.owner.task_desc(task)
+            task_texts = self._owner_task_texts(task)
+            title = task_texts["title"]
+            desc = task_texts["desc"]
             if hasattr(widget, "configure"):
                 widget.configure(text=title)
             desc_lbl.configure(text=desc)
@@ -354,7 +460,7 @@ class SectionCard(ctk.CTkFrame):
                 for child in row_wrap.winfo_children():
                     if isinstance(child, ctk.CTkLabel):
                         child.configure(text=self.owner.tr("badge_admin_needed"))
-            haystack = normalizer(title + " " + desc)
+            haystack = task_texts.get("search") or normalizer(title + " " + desc)
             visible = not query or query in haystack
             if visible:
                 visible_count += 1
@@ -380,7 +486,8 @@ class SectionCard(ctk.CTkFrame):
         query = normalizer(query)
         visible_count = 0
         for index, (widget, desc_lbl, task, _row_wrap, _visible) in enumerate(self.rows):
-            haystack = normalizer(self.owner.task_title(task) + " " + self.owner.task_desc(task))
+            task_texts = self._owner_task_texts(task)
+            haystack = task_texts.get("search") or normalizer(task_texts.get("title", "") + " " + task_texts.get("desc", ""))
             visible = not query or query in haystack
             if visible:
                 visible_count += 1

@@ -421,3 +421,16 @@ Recent stability improvements focus on doing less duplicate work while keeping c
 - the OneDrive cleanup category is included in analysis summaries so estimates no longer fall into an untranslated/mixed category.
 
 The cleaner still preserves target root folders, skips symlinks/junctions/reparse points, and avoids deleting user documents or OneDrive sync folders.
+
+## Modern Python UI performance layer
+
+The UI layer now follows a more modern, low-overhead CustomTkinter pattern:
+
+- reusable design tokens for colors, spacing, typography and motion timing instead of scattered magic values;
+- a `SmoothProgressBar` widget that accepts target progress and paints eased updates on the Tk main loop;
+- coalesced selection-stat updates so bulk profile changes do not redraw counters dozens of times;
+- cached task title/description/search text, including registry-status descriptions, to avoid repeated registry reads while filtering;
+- safe cancellation of pending `after()` callbacks when closing the app;
+- background cleanup/analyze workers are wrapped through one helper so uncaught worker errors do not silently freeze the UI state.
+
+These changes keep Tk calls on the main thread, reduce redundant widget reconfiguration and make search/profile switching smoother on weak CPUs.

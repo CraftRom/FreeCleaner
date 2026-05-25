@@ -26,7 +26,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, AnimatedButton, DiagnosticStatusCard, init_ui_theme, mix_colors
+from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, AnimatedButton, SmoothProgressBar, DiagnosticStatusCard, init_ui_theme, mix_colors
 from .logic import (
     IS_WINDOWS,
     ICONS_DIRNAME,
@@ -203,6 +203,43 @@ class Cleaner(ctk.CTk):
         text = self._normalize_ui_text(value or "")
         return re.sub(r"\s+", " ", text.casefold()).strip()
 
+    def invalidate_task_text_cache(self, *task_keys: str) -> None:
+        """Invalidate cached UI task strings after language or registry changes."""
+        cache = getattr(self, "_task_text_cache", None)
+        if not isinstance(cache, dict):
+            self._task_text_cache = {}
+            return
+        if not task_keys:
+            cache.clear()
+            return
+        wanted = set(task_keys)
+        for key in list(cache.keys()):
+            try:
+                if key[0] in wanted:
+                    cache.pop(key, None)
+            except Exception:
+                cache.clear()
+                break
+
+    def cached_task_texts(self, task: CleanerTask) -> Dict[str, str]:
+        """Return cached title/description/search text for fast UI filtering."""
+        revision = int(getattr(self, "_registry_status_revision", 0))
+        cache_key = (task.key, self.lang, bool(self.is_admin), revision)
+        cache = getattr(self, "_task_text_cache", {})
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        title = self.task_title(task)
+        desc = self.task_desc(task)
+        item = {
+            "title": title,
+            "desc": desc,
+            "search": self._normalize_search_text(title + " " + desc),
+        }
+        cache[cache_key] = item
+        self._task_text_cache = cache
+        return item
+
 
     def __init__(self):
         super().__init__()
@@ -225,8 +262,11 @@ class Cleaner(ctk.CTk):
         self._running_pulse_after_id = None
         self._running_pulse_phase = 0
         self._selection_refresh_suspended = False
+        self._selection_refresh_after_id = None
         self._search_after_id = None
         self._last_search_query = ""
+        self._task_text_cache: Dict[Tuple[str, str, bool, int], Dict[str, str]] = {}
+        self._registry_status_revision = 0
         self._about_header_icon_cache = None
         self.active_module_tab = "cleaner"
         self._diagnostics_in_progress = False
@@ -774,6 +814,8 @@ class Cleaner(ctk.CTk):
         return "\n".join(lines)
 
     def refresh_registry_status_descriptions(self) -> None:
+        self._registry_status_revision = int(getattr(self, "_registry_status_revision", 0)) + 1
+        self.invalidate_task_text_cache()
         for attr in ("card_opt", "card_opt_adv"):
             card = getattr(self, attr, None)
             if card is not None:
@@ -845,6 +887,7 @@ class Cleaner(ctk.CTk):
             self.log(self.trf("language_switched", lang=self.lang.upper()))
 
     def apply_language(self):
+        self.invalidate_task_text_cache()
         self.title(self.app_title())
         self.brand_label.configure(text=self.tr("app_brand"))
         self.app_subtitle.configure(text=self.tr("app_subtitle"))
@@ -1609,9 +1652,9 @@ class Cleaner(ctk.CTk):
         self.lbl_analysis = ctk.CTkLabel(content, text=self.tr("analysis_idle"), font=("Segoe UI", 12), text_color=COLORS["text_gray"])
         self.lbl_analysis.pack(anchor="w", pady=(6, 10))
 
-        self.progress = ctk.CTkProgressBar(content, height=12, progress_color=COLORS["success"], border_width=0)
+        self.progress = SmoothProgressBar(content, height=12, progress_color=COLORS["success"], border_width=0)
         self.progress.pack(fill="x", pady=(0, 14))
-        self.progress.set(0)
+        self._set_progress_immediate(0)
 
         self.footer_actions = ctk.CTkFrame(content, fg_color="transparent")
         self.footer_actions.pack(fill="x")
@@ -1704,10 +1747,11 @@ class Cleaner(ctk.CTk):
             self._registered_visible_tasks = visible_index
 
         self.tasks[task.key] = task
+        self.invalidate_task_text_cache(task.key)
         var = None
         if not task.instant_action:
             var = ctk.BooleanVar(value=task.default)
-            var.trace_add("write", lambda *_: self.refresh_selection_stats())
+            var.trace_add("write", lambda *_: self.schedule_selection_stats_refresh())
             self.vars[task.key] = var
         parent_card.add_option(var, task)
 
@@ -2174,7 +2218,19 @@ class Cleaner(ctk.CTk):
             except Exception:
                 pass
 
+    def schedule_selection_stats_refresh(self) -> None:
+        if getattr(self, "_selection_refresh_suspended", False):
+            return
+        if getattr(self, "_selection_refresh_after_id", None):
+            return
+        try:
+            self._selection_refresh_after_id = self.after(35, self.refresh_selection_stats)
+        except Exception:
+            self._selection_refresh_after_id = None
+            self.refresh_selection_stats()
+
     def refresh_selection_stats(self):
+        self._selection_refresh_after_id = None
         if getattr(self, "_selection_refresh_suspended", False):
             return
         count = 0
@@ -2435,6 +2491,11 @@ class Cleaner(ctk.CTk):
             except Exception:
                 pass
         self._progress_anim_after_id = None
+        try:
+            if hasattr(self.progress, "cancel_animation"):
+                self.progress.cancel_animation()
+        except Exception:
+            pass
         if reset:
             try:
                 self.btn_start.configure(fg_color=COLORS["success"])
@@ -2786,16 +2847,46 @@ class Cleaner(ctk.CTk):
         finally:
             self.dism_running = False
 
+    def _set_progress_immediate(self, value: float) -> None:
+        if hasattr(self.progress, "set_immediate"):
+            self.progress.set_immediate(value)
+        else:
+            try:
+                self.progress.set(value)
+            except Exception:
+                pass
+
+    def _set_progress_target(self, value: float) -> None:
+        if hasattr(self.progress, "set_target"):
+            self.progress.set_target(value)
+        else:
+            try:
+                self.progress.set(value)
+            except Exception:
+                pass
+
+    def run_background(self, target: Callable[[], None], *, name: str = "FreeCleanerWorker") -> None:
+        def runner() -> None:
+            try:
+                target()
+            except Exception as exc:
+                self.log(f"Фонова дія завершилась з помилкою: {exc}")
+                try:
+                    self.after(0, lambda: self.set_running_state(False))
+                except Exception:
+                    pass
+        threading.Thread(target=runner, name=name, daemon=True).start()
+
     def start_analysis_thread(self):
         if self.is_running:
             return
         self.cancel_event.clear()
         self._progress_target_value = 0.0
         self._progress_display_value = 0.0
-        self.progress.set(0)
+        self._set_progress_immediate(0)
         self.progress.start()
         self.set_running_state(True)
-        threading.Thread(target=self.analysis_only_engine, daemon=True).start()
+        self.run_background(self.analysis_only_engine, name="FreeCleanerAnalyze")
 
     def start_thread(self):
         if self.is_running:
@@ -2807,10 +2898,10 @@ class Cleaner(ctk.CTk):
         self._last_progress_ui_bytes = 0
         self._progress_target_value = 0.0
         self._progress_display_value = 0.0
-        self.progress.set(0)
+        self._set_progress_immediate(0)
         self.progress.start()
         self.set_running_state(True)
-        threading.Thread(target=self.engine, daemon=True).start()
+        self.run_background(self.engine, name="FreeCleanerClean")
 
     def selected_tasks(self) -> List[CleanerTask]:
         chosen = []
@@ -2905,29 +2996,13 @@ class Cleaner(ctk.CTk):
     def animate_progress_to(self, target: float) -> None:
         target = max(0.0, min(1.0, float(target)))
         self._progress_target_value = target
-        if getattr(self, "_progress_anim_after_id", None):
-            return
-        self._animate_progress_step()
+        self._set_progress_target(target)
 
     def _animate_progress_step(self) -> None:
+        # Kept for compatibility with older saved state; SmoothProgressBar now
+        # owns progress animation and throttles painting internally.
         self._progress_anim_after_id = None
-        target = max(0.0, min(1.0, float(getattr(self, "_progress_target_value", 0.0))))
-        current = max(0.0, min(1.0, float(getattr(self, "_progress_display_value", 0.0))))
-        delta = target - current
-        if abs(delta) < 0.002:
-            current = target
-        else:
-            current += delta * 0.35
-        self._progress_display_value = current
-        try:
-            self.progress.set(current)
-        except Exception:
-            return
-        if abs(target - current) >= 0.002:
-            try:
-                self._progress_anim_after_id = self.after(24, self._animate_progress_step)
-            except Exception:
-                self._progress_anim_after_id = None
+        self._set_progress_target(getattr(self, "_progress_target_value", 0.0))
 
     def analyze_directory_tasks(self, dir_tasks: List[CleanerTask]) -> Tuple[int, Dict[str, int], List[Tuple[str, int]]]:
         total = 0
@@ -2957,8 +3032,9 @@ class Cleaner(ctk.CTk):
                     size = 0
                 total += size
                 category_totals[task.category] = category_totals.get(task.category, 0) + size
-                detail_rows.append((self.task_title(task), size))
-                self.log(self.trf("analysis_item_fmt", title=self.task_title(task), mb=size / (1024 ** 2)))
+                title = self.cached_task_texts(task)["title"]
+                detail_rows.append((title, size))
+                self.log(self.trf("analysis_item_fmt", title=title, mb=size / (1024 ** 2)))
 
         detail_rows.sort(key=lambda item: item[1], reverse=True)
         return total, category_totals, detail_rows
@@ -3094,7 +3170,7 @@ class Cleaner(ctk.CTk):
         self.refresh_analysis_label(total, category_totals)
         self.log(self.trf("analysis_done_estimate_fmt", mb=total / (1024 ** 2)))
         self.after(0, lambda: self.progress.stop())
-        self.after(0, lambda: self.progress.set(0))
+        self.after(0, lambda: self._set_progress_immediate(0))
         return dir_tasks, cmd_tasks
 
     def prepare_service_deps(self, dir_tasks: List[CleanerTask], start: bool):
@@ -3989,12 +4065,31 @@ class Cleaner(ctk.CTk):
         win.after(120, update_wrap_metrics)
         win.protocol("WM_DELETE_WINDOW", dismiss)
 
+    def cancel_pending_ui_timers(self) -> None:
+        for attr in (
+            "_responsive_after_id", "_progress_after_id", "_progress_anim_after_id",
+            "_running_pulse_after_id", "_search_after_id", "_selection_refresh_after_id",
+        ):
+            pending = getattr(self, attr, None)
+            if pending:
+                try:
+                    self.after_cancel(pending)
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+        try:
+            if hasattr(self.progress, "cancel_animation"):
+                self.progress.cancel_animation()
+        except Exception:
+            pass
+
     def on_close(self):
         if self.dism_running:
             self.log(self.tr("dism_busy_close_blocked"))
             return
         if self.is_running:
             self.cancel_event.set()
+        self.cancel_pending_ui_timers()
         self.destroy()
 
 
