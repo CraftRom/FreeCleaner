@@ -313,7 +313,7 @@ class SectionCard(ctk.CTkFrame):
             self,
             text=self.owner.task_desc(task),
             text_color=COLORS["text_gray"],
-            font=("Segoe UI", 11),
+            font=("Segoe UI", 10),
             wraplength=self.desc_wraplength,
             justify="left",
             anchor="w",
@@ -420,43 +420,43 @@ class ModernTabButton(ctk.CTkFrame):
         super().__init__(
             master,
             fg_color=COLORS["bg_card"],
-            corner_radius=18,
+            corner_radius=14,
             border_width=1,
             border_color=COLORS["border"],
             cursor="hand2",
         )
         self.grid_columnconfigure(0, weight=1)
 
-        self.highlight = ctk.CTkFrame(self, height=4, corner_radius=999, fg_color=mix_colors(accent, COLORS["bg_card"], 0.18))
-        self.highlight.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        self.highlight = ctk.CTkFrame(self, height=3, corner_radius=999, fg_color=mix_colors(accent, COLORS["bg_card"], 0.18))
+        self.highlight.grid(row=0, column=0, sticky="ew", padx=9, pady=(7, 4))
 
         self.content = ctk.CTkFrame(self, fg_color="transparent")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 12))
+        self.content.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 8))
         self.content.grid_columnconfigure(1, weight=1)
 
-        self.dot = ctk.CTkFrame(self.content, width=11, height=11, corner_radius=999, fg_color=accent)
-        self.dot.grid(row=0, column=0, sticky="nw", padx=(0, 10), pady=(5, 0))
+        self.dot = ctk.CTkFrame(self.content, width=9, height=9, corner_radius=999, fg_color=accent)
+        self.dot.grid(row=0, column=0, sticky="nw", padx=(0, 9), pady=(5, 0))
 
         self.labels = ctk.CTkFrame(self.content, fg_color="transparent")
         self.labels.grid(row=0, column=1, sticky="ew")
         self.labels.grid_columnconfigure(0, weight=1)
 
-        self.title_label = ctk.CTkLabel(self.labels, text=title, font=("Segoe UI Semibold", 15, "bold"), text_color=COLORS["white"], anchor="w")
+        self.title_label = ctk.CTkLabel(self.labels, text=title, font=("Segoe UI Semibold", 14, "bold"), text_color=COLORS["white"], anchor="w")
         self.title_label.grid(row=0, column=0, sticky="w")
 
         self.subtitle_label = ctk.CTkLabel(
             self.labels,
             text=subtitle,
-            font=("Segoe UI", 11),
+            font=("Segoe UI", 10),
             text_color=COLORS["text_gray"],
             anchor="w",
             justify="left",
             wraplength=360,
         )
         self._subtitle_wrap = 360
-        self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(3, 0))
+        self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
-        self.chevron = ctk.CTkLabel(self.content, text="›", font=("Segoe UI", 20, "bold"), text_color=COLORS["text_gray"])
+        self.chevron = ctk.CTkLabel(self.content, text="›", font=("Segoe UI", 18, "bold"), text_color=COLORS["text_gray"])
         self.chevron.grid(row=0, column=2, rowspan=2, sticky="e", padx=(12, 2))
 
         for widget in (self, self.content, self.dot, self.labels, self.title_label, self.subtitle_label, self.chevron, self.highlight):
@@ -534,9 +534,9 @@ class ModernTabButton(ctk.CTkFrame):
         if compact == self._compact:
             return
         self._compact = compact
-        self.configure(corner_radius=14 if compact else 18)
-        self.chevron.configure(font=("Segoe UI", 18 if compact else 20, "bold"))
-        self.title_label.configure(font=("Segoe UI Semibold", 14 if compact else 15, "bold"))
-        self.subtitle_label.configure(font=("Segoe UI", 10 if compact else 11))
-        self.content.grid_configure(padx=12 if compact else 14, pady=(0, 9 if compact else 12))
-        self.highlight.grid_configure(padx=9 if compact else 10, pady=(8 if compact else 10, 5 if compact else 6))
+        self.configure(corner_radius=12 if compact else 14)
+        self.chevron.configure(font=("Segoe UI", 16 if compact else 18, "bold"))
+        self.title_label.configure(font=("Segoe UI Semibold", 13 if compact else 14, "bold"))
+        self.subtitle_label.configure(font=("Segoe UI", 9 if compact else 10))
+        self.content.grid_configure(padx=10 if compact else 12, pady=(0, 6 if compact else 8))
+        self.highlight.grid_configure(padx=8 if compact else 9, pady=(5 if compact else 7, 3 if compact else 4))

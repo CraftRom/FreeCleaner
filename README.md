@@ -33,7 +33,7 @@ The gaming optimizer is intentionally conservative. It can adjust Windows-level 
 - Expanded Windows, browser, app, launcher, shader cache, Windows log and packaged-app temp cleanup
 - Safer cleanup traversal that skips symlinks/junctions instead of following them
 - Quick profiles: Safe, Gaming cleanup, Gaming + Streaming cleanup, and Deep cleanup
-- Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing, standby RAM cleanup, streaming diagnostics and a read-only gaming compatibility report
+- Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing, standby RAM cleanup, streaming diagnostics, OneDrive background-impact checks and a read-only gaming compatibility report
 - Conservative registry leftovers cleanup for clearly broken Open With/Application, App Paths and startup entries, with registry backup before deletion
 - UI filtering that hides empty sections and keeps large task lists easier to scan
 - Simple desktop interface
@@ -76,6 +76,22 @@ Add your screenshots here after publishing visuals for the project.
 FreeCleaner targets rebuildable caches, temporary folders, logs and dumps. Newer cleanup coverage includes CryptnetUrlCache, IconCache.db, Windows user caches, Windows Update / WaaSMedic logs, setup/upgrade logs, WMI diagnostic ETL logs, additional Delivery Optimization cache locations and conservative Microsoft Store packaged-app temp folders.
 
 Registry cleanup is deliberately narrow. It does not touch COM, services, drivers, uninstall entries, shell extensions or broad file associations. It only removes clearly broken application/open-with/startup records that point to missing executable files and creates a registry backup first.
+
+
+## OneDrive handling
+
+FreeCleaner treats OneDrive as a background-impact component, not as a normal junk folder.
+
+OneDrive actions are intentionally conservative:
+
+- clean only OneDrive logs, setup logs, crash reports and rebuildable WebView/GPU caches;
+- never delete the user's OneDrive sync folders or documents;
+- provide a read-only OneDrive report for installed/running/autostart/policy/cache status;
+- stop the current OneDrive process and remove current-user startup when the disable action is selected;
+- enable the Windows OneDrive sync-blocking policy only when FreeCleaner is running with administrator rights;
+- provide a restore action that removes that policy and starts OneDrive again when possible.
+
+Account unlinking and uninstalling are left to the official OneDrive UI because forcing those steps from a cleaner can confuse users and break expected sync behavior.
 
 ## Streaming and OBS diagnostics
 

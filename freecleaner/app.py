@@ -480,12 +480,12 @@ class Cleaner(ctk.CTk):
             for column in range(1, 3):
                 self.tab_bar.grid_columnconfigure(column, weight=0)
             for index, button in enumerate(buttons):
-                pady = (12, 8) if index == 0 else (0, 8) if index == 1 else (0, 12)
-                button.grid(row=index, column=0, sticky="ew", padx=12, pady=pady)
+                pady = (8, 5) if index == 0 else (0, 5) if index == 1 else (0, 8)
+                button.grid(row=index, column=0, sticky="ew", padx=10, pady=pady)
         else:
-            pads = [(12, 7), (7, 7), (7, 12)]
+            pads = [(10, 6), (6, 6), (6, 10)]
             for index, button in enumerate(buttons):
-                button.grid(row=0, column=index, sticky="ew", padx=pads[index], pady=12)
+                button.grid(row=0, column=index, sticky="ew", padx=pads[index], pady=8)
 
         for button in buttons:
             button.set_subtitle_wrap(subtitle_wrap)
@@ -614,18 +614,22 @@ class Cleaner(ctk.CTk):
                     try:
                         self.diagnostics_scroll.grid_columnconfigure(0, weight=1)
                         self.diagnostics_scroll.grid_columnconfigure(1, weight=1 if diag_columns == 2 else 0)
-                        cards_order = ["obs", "windows", "disk", "network", "recommendations"]
+                        cards_order = ["obs", "windows", "onedrive", "disk", "network", "recommendations"]
+                        non_recommendation_index = 0
                         for index, key in enumerate(cards_order):
                             card = self.diagnostics_cards.get(key)
                             if not card:
                                 continue
                             card.grid_forget()
-                            if diag_columns == 1 or key == "recommendations":
-                                row = index + 1 if diag_columns == 1 else 3
-                                card.grid(row=row, column=0, columnspan=diag_columns, sticky="nsew", padx=0, pady=(0, 14))
+                            if diag_columns == 1:
+                                card.grid(row=index + 1, column=0, columnspan=1, sticky="nsew", padx=0, pady=(0, 14))
+                            elif key == "recommendations":
+                                row = 1 + ((len(cards_order) - 1) + 1) // 2
+                                card.grid(row=row, column=0, columnspan=2, sticky="nsew", padx=0, pady=(0, 14))
                             else:
-                                row = 1 + index // 2
-                                col = index % 2
+                                row = 1 + non_recommendation_index // 2
+                                col = non_recommendation_index % 2
+                                non_recommendation_index += 1
                                 card.grid(row=row, column=col, sticky="nsew", padx=(0, 8) if col == 0 else (8, 0), pady=(0, 14))
                     except Exception:
                         pass
@@ -877,6 +881,7 @@ class Cleaner(ctk.CTk):
         self.card_sys.set_header(self.tr("sec_system_title"), self.tr("sec_system_sub"))
         self.card_net.set_header(self.tr("sec_net_title"), self.tr("sec_net_sub"))
         self.card_deep.set_header(self.tr("sec_deep_title"), self.tr("sec_deep_sub"))
+        self.card_onedrive.set_header(self.tr("sec_onedrive_title"), self.tr("sec_onedrive_sub"))
         self.card_gamer.set_header(self.tr("sec_gamer_title"), self.tr("sec_gamer_sub"))
         self.card_opt.set_header(self.tr("sec_optimizer_title"), self.tr("sec_optimizer_sub"))
         self.card_opt_adv.set_header(self.tr("sec_optimizer_registry_title"), self.tr("sec_optimizer_registry_sub"))
@@ -1231,7 +1236,7 @@ class Cleaner(ctk.CTk):
             accent=COLORS["system"],
             command=lambda: self.on_module_tab_changed("cleaner"),
         )
-        self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=(12, 8), pady=12)
+        self.tab_cleaner_button.grid(row=0, column=0, sticky="ew", padx=(10, 6), pady=8)
 
         self.tab_optimizer_button = ModernTabButton(
             self.tab_bar,
@@ -1240,7 +1245,7 @@ class Cleaner(ctk.CTk):
             accent=COLORS["gamer"],
             command=lambda: self.on_module_tab_changed("optimizer"),
         )
-        self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(8, 8), pady=12)
+        self.tab_optimizer_button.grid(row=0, column=1, sticky="ew", padx=(6, 6), pady=8)
 
         self.tab_diagnostics_button = ModernTabButton(
             self.tab_bar,
@@ -1249,7 +1254,7 @@ class Cleaner(ctk.CTk):
             accent=COLORS["system"],
             command=lambda: self.on_module_tab_changed("diagnostics"),
         )
-        self.tab_diagnostics_button.grid(row=0, column=2, sticky="ew", padx=(8, 12), pady=12)
+        self.tab_diagnostics_button.grid(row=0, column=2, sticky="ew", padx=(6, 10), pady=8)
 
         self.cleaner_scroll = ctk.CTkScrollableFrame(self.main_wrap, fg_color="transparent", label_text=self.tr("cleaner_modules"))
         self.cleaner_scroll.grid(row=3, column=0, sticky="nsew")
@@ -1278,13 +1283,18 @@ class Cleaner(ctk.CTk):
         self.section_cards.append(self.card_deep)
         self.register_deep_tasks()
 
+        self.card_onedrive = SectionCard(self, self.cleaner_scroll, self.tr("sec_onedrive_title"), self.tr("sec_onedrive_sub"), COLORS["system"])
+        self.card_onedrive.grid(row=3, column=0, sticky="ew", pady=(0, 16))
+        self.section_cards.append(self.card_onedrive)
+        self.register_onedrive_tasks()
+
         self.card_gamer = SectionCard(self, self.cleaner_scroll, self.tr("sec_gamer_title"), self.tr("sec_gamer_sub"), COLORS["gamer"])
-        self.card_gamer.grid(row=3, column=0, sticky="ew", pady=(0, 16))
+        self.card_gamer.grid(row=4, column=0, sticky="ew", pady=(0, 16))
         self.section_cards.append(self.card_gamer)
         self.register_gaming_cleanup_tasks()
 
         self.card_ult = SectionCard(self, self.cleaner_scroll, self.tr("sec_ult_title"), self.tr("sec_ult_sub"), COLORS["ultimate"])
-        self.card_ult.grid(row=4, column=0, sticky="ew", pady=(0, 8))
+        self.card_ult.grid(row=5, column=0, sticky="ew", pady=(0, 8))
         self.section_cards.append(self.card_ult)
         self.register_ultimate_tasks()
 
@@ -1341,16 +1351,27 @@ class Cleaner(ctk.CTk):
         definitions = [
             ("obs", "diag_card_obs_title", "diag_card_obs_sub", COLORS["browsers"]),
             ("windows", "diag_card_windows_title", "diag_card_windows_sub", COLORS["gamer"]),
+            ("onedrive", "diag_card_onedrive_title", "diag_card_onedrive_sub", COLORS["system"]),
             ("disk", "diag_card_disk_title", "diag_card_disk_sub", COLORS["deep"]),
             ("network", "diag_card_network_title", "diag_card_network_sub", COLORS["system"]),
             ("recommendations", "diag_card_recommendations_title", "diag_card_recommendations_sub", COLORS["success"]),
         ]
-        for index, (key, title_key, sub_key, accent) in enumerate(definitions, start=1):
+        non_recommendation_count = len([item for item in definitions if item[0] != "recommendations"])
+        non_recommendation_index = 0
+        for key, title_key, sub_key, accent in definitions:
             card = DiagnosticStatusCard(self.diagnostics_scroll, self.tr(title_key), self.tr(sub_key), accent=accent)
-            row = 1 + (index - 1) // 2
-            col = (index - 1) % 2
-            colspan = 2 if key == "recommendations" else 1
-            card.grid(row=row, column=col, columnspan=colspan, sticky="nsew", padx=(0, 8) if col == 0 and colspan == 1 else (8, 0) if col == 1 else 0, pady=(0, 14))
+            if key == "recommendations":
+                row = 1 + (non_recommendation_count + 1) // 2
+                col = 0
+                colspan = 2
+                padx = 0
+            else:
+                row = 1 + non_recommendation_index // 2
+                col = non_recommendation_index % 2
+                colspan = 1
+                padx = (0, 8) if col == 0 else (8, 0)
+                non_recommendation_index += 1
+            card.grid(row=row, column=col, columnspan=colspan, sticky="nsew", padx=padx, pady=(0, 14))
             self.diagnostics_cards[key] = card
         self._set_diagnostics_placeholder()
 
@@ -1361,6 +1382,7 @@ class Cleaner(ctk.CTk):
         mapping = {
             "obs": ("diag_card_obs_title", "diag_card_obs_sub"),
             "windows": ("diag_card_windows_title", "diag_card_windows_sub"),
+            "onedrive": ("diag_card_onedrive_title", "diag_card_onedrive_sub"),
             "disk": ("diag_card_disk_title", "diag_card_disk_sub"),
             "network": ("diag_card_network_title", "diag_card_network_sub"),
             "recommendations": ("diag_card_recommendations_title", "diag_card_recommendations_sub"),
@@ -1391,6 +1413,7 @@ class Cleaner(ctk.CTk):
                 return {
                     "streaming": WindowsOps.collect_streaming_diagnostics(),
                     "gaming": WindowsOps.collect_gaming_compat_report(),
+                    "onedrive": WindowsOps.collect_onedrive_report(),
                     "collected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
             except Exception as exc:
@@ -1414,7 +1437,7 @@ class Cleaner(ctk.CTk):
         name = str(item.get("name") or item.get("path") or "app")
         return self.trf("diag_gpu_pref_line", app=name, pref=self._format_state(item.get("preference")))
 
-    def _build_diagnostic_recommendations(self, streaming: Dict[str, Any], gaming: Dict[str, Any]) -> List[str]:
+    def _build_diagnostic_recommendations(self, streaming: Dict[str, Any], gaming: Dict[str, Any], onedrive: Dict[str, Any]) -> List[str]:
         recommendations: List[str] = []
         profiles = list(streaming.get("obs_profiles") or [])
         issues = list(streaming.get("obs_log_issues") or [])
@@ -1441,6 +1464,8 @@ class Cleaner(ctk.CTk):
         disk = dict(streaming.get("disk_write") or {})
         if disk.get("ok") and float(disk.get("mbps") or 0.0) < 80.0:
             recommendations.append(self.tr("diag_rec_recording_disk"))
+        if onedrive.get("running") or onedrive.get("user_autostart") == "enabled":
+            recommendations.append(self.tr("diag_rec_onedrive_disable"))
         if not recommendations:
             recommendations.append(self.tr("diag_rec_all_good"))
         # keep order, remove duplicates
@@ -1511,6 +1536,20 @@ class Cleaner(ctk.CTk):
             win_severity = "warn"
         self.diagnostics_cards["windows"].set_status(self._diagnostic_status_text(win_severity), "\n".join(win_lines), win_severity)
 
+        # OneDrive card
+        od = dict(report.get("onedrive") or {})
+        od_lines = [
+            self.trf("diag_onedrive_state_line", label=self.tr("diag_onedrive_installed"), value=self.tr("yes") if od.get("installed") else self.tr("no")),
+            self.trf("diag_onedrive_state_line", label=self.tr("diag_onedrive_running"), value=self.tr("yes") if od.get("running") else self.tr("no")),
+            self.trf("diag_onedrive_state_line", label=self.tr("diag_onedrive_autostart"), value=self._format_state(od.get("user_autostart"))),
+            self.trf("diag_onedrive_state_line", label=self.tr("diag_onedrive_policy"), value=self._format_state(od.get("policy_sync"))),
+            self.trf("diag_onedrive_cleanup_line", targets=int(od.get("cleanup_targets") or 0), mb=int(od.get("cleanup_bytes") or 0) / (1024 * 1024)),
+        ]
+        od_severity = "ok"
+        if od.get("running") or od.get("user_autostart") == "enabled" or od.get("policy_sync") != "disabled":
+            od_severity = "warn"
+        self.diagnostics_cards["onedrive"].set_status(self._diagnostic_status_text(od_severity), "\n".join(od_lines), od_severity)
+
         # Disk card
         disk = dict(streaming.get("disk_write") or {})
         if disk.get("ok"):
@@ -1539,7 +1578,7 @@ class Cleaner(ctk.CTk):
         self.diagnostics_cards["network"].set_status(self._diagnostic_status_text(network_severity), "\n".join(network_lines), network_severity)
 
         # Recommendations card
-        recs = self._build_diagnostic_recommendations(streaming, gaming)
+        recs = self._build_diagnostic_recommendations(streaming, gaming, od)
         rec_text = "\n".join(f"• {item}" for item in recs)
         rec_severity = "ok" if recs == [self.tr("diag_rec_all_good")] else "info"
         self.diagnostics_cards["recommendations"].set_status(self._diagnostic_status_text(rec_severity), rec_text, rec_severity)
@@ -1805,6 +1844,42 @@ class Cleaner(ctk.CTk):
             command=lambda: self.run_logged_command_args(["netsh.exe", "winsock", "reset"], "winsock_ok", "winsock_fail", timeout=120),
         ))
 
+    def register_onedrive_tasks(self):
+        groups: Dict[str, Dict[str, Any]] = {}
+        for key, tkey, dkey, path, fmt in PathFinder.get_onedrive_cleanup_targets():
+            if not os.path.exists(path):
+                continue
+            if "webview" in key:
+                base = "onedrive_webview_cache"
+            elif "log" in key:
+                base = "onedrive_logs"
+            else:
+                base = "onedrive_crash_reports"
+            group = groups.setdefault(base, {"title_key": tkey, "desc_key": dkey, "paths": [], "app": "OneDrive"})
+            group["paths"].append(path)
+        for base, group in sorted(groups.items()):
+            paths = PathFinder.unique_existing(group["paths"])
+            if not paths:
+                continue
+            self.add_task(self.card_onedrive, CleanerTask(
+                key=f"{base}_group",
+                title_key=group["title_key"],
+                desc_key=group["desc_key"],
+                path=paths[0],
+                paths=paths,
+                category="onedrive",
+                default=False,
+                fmt={"app": group["app"], "path": paths[0]},
+            ))
+        self.add_task(self.card_onedrive, CleanerTask(
+            key="onedrive_report", title_key="task.onedrive_report.title", desc_key="task.onedrive_report.desc",
+            kind="command", category="onedrive", default=False, instant_action=True, command=self.run_onedrive_report,
+        ))
+        self.add_task(self.card_onedrive, CleanerTask(
+            key="disable_onedrive_background", title_key="task.disable_onedrive_background.title", desc_key="task.disable_onedrive_background.desc",
+            kind="command", category="onedrive", default=False, command=self.disable_onedrive_background, reboot_required=True,
+        ))
+
     def register_gaming_cleanup_tasks(self):
         state = "normal" if self.is_admin else "disabled"
         for key, tkey, dkey, path, requires_admin in PathFinder.get_gaming_cache_targets():
@@ -1993,6 +2068,14 @@ class Cleaner(ctk.CTk):
         self.add_task(self.card_opt_tools, CleanerTask(
             key="gaming_compat_report", title_key="task.gaming_compat_report.title", desc_key="task.gaming_compat_report.desc",
             kind="command", category="optimizer", default=False, instant_action=True, command=self.run_gaming_compat_report,
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="onedrive_report_tool", title_key="task.onedrive_report.title", desc_key="task.onedrive_report.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.run_onedrive_report,
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
+            key="restore_onedrive_background", title_key="task.restore_onedrive_background.title", desc_key="task.restore_onedrive_background.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.restore_onedrive_background,
         ))
         self.add_task(self.card_opt_tools, CleanerTask(
             key="refresh_registry_statuses", title_key="task.refresh_registry_statuses.title", desc_key="task.refresh_registry_statuses.desc",
@@ -2223,7 +2306,7 @@ class Cleaner(ctk.CTk):
             # Windows.old removes rollback files after a Windows upgrade, so keep
             # it manual even in the deep profile.
             return False
-        if task.category in {"system", "browsers", "gamer", "deep"}:
+        if task.category in {"system", "browsers", "gamer", "onedrive", "deep"}:
             return True
         return False
 
@@ -2398,6 +2481,59 @@ class Cleaner(ctk.CTk):
         if "x264" in name or "x265" in name:
             return "cpu"
         return "unknown"
+
+    def run_onedrive_report(self):
+        self.log(self.tr("onedrive_report_started"))
+        try:
+            report = WindowsOps.collect_onedrive_report()
+        except Exception:
+            self.log(self.tr("onedrive_report_failed"))
+            return
+        self.log(self.trf(
+            "onedrive_report_status_fmt",
+            installed=self.tr("yes") if report.get("installed") else self.tr("no"),
+            running=self.tr("yes") if report.get("running") else self.tr("no"),
+            autostart=self._format_state(report.get("user_autostart")),
+            policy=self._format_state(report.get("policy_sync")),
+        ))
+        bytes_value = int(report.get("cleanup_bytes") or 0)
+        self.log(self.trf("onedrive_report_cleanup_fmt", targets=int(report.get("cleanup_targets") or 0), mb=bytes_value / (1024 * 1024)))
+        if report.get("running"):
+            self.log(self.tr("onedrive_report_running_warn"))
+        if report.get("policy_sync") != "disabled":
+            self.log(self.tr("onedrive_report_policy_note"))
+        self.log(self.tr("onedrive_report_done"))
+
+    def disable_onedrive_background(self):
+        self.log(self.tr("onedrive_disable_started"))
+        try:
+            result = WindowsOps.disable_onedrive_background()
+        except Exception:
+            self.log(self.tr("onedrive_disable_failed"))
+            return
+        self.log(self.tr("onedrive_quit_ok") if result.get("quit") else self.tr("onedrive_quit_fail"))
+        self.log(self.tr("onedrive_autostart_removed") if result.get("autostart_removed") else self.tr("onedrive_autostart_remove_fail"))
+        if result.get("policy_disabled"):
+            self.log(self.tr("onedrive_policy_disabled"))
+        elif result.get("admin_policy_skipped"):
+            self.log(self.tr("onedrive_policy_admin_needed"))
+        else:
+            self.log(self.tr("onedrive_policy_disable_fail"))
+        self.log(self.tr("onedrive_disable_done"))
+
+    def restore_onedrive_background(self):
+        self.log(self.tr("onedrive_restore_started"))
+        try:
+            result = WindowsOps.restore_onedrive_background()
+        except Exception:
+            self.log(self.tr("onedrive_restore_failed"))
+            return
+        if result.get("policy_removed"):
+            self.log(self.tr("onedrive_policy_restored"))
+        else:
+            self.log(self.tr("onedrive_policy_restore_skipped"))
+        self.log(self.tr("onedrive_started") if result.get("started") else self.tr("onedrive_start_fail"))
+        self.log(self.tr("onedrive_restore_done"))
 
     def run_streaming_diagnostics(self):
         self.log(self.tr("streaming_diag_started"))

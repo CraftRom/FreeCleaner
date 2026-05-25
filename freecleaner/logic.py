@@ -1476,6 +1476,54 @@ class PathFinder:
         return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
 
     @staticmethod
+    def get_onedrive_cleanup_targets() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
+        """Return conservative OneDrive cleanup targets.
+
+        Never touches the user's OneDrive sync folders or account/settings DBs.
+        Targets are limited to logs, crash dumps, setup logs and WebView/cache
+        folders that OneDrive can rebuild.
+        """
+        local = os.environ.get("LOCALAPPDATA", "")
+        programdata = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
+        base = PathFinder._safe_join(local, r"Microsoft\OneDrive")
+        candidates: List[Tuple[str, str, str, str, Dict[str, str]]] = []
+        def add(key: str, title_key: str, desc_key: str, rel_or_path: str) -> None:
+            path = rel_or_path if os.path.isabs(rel_or_path) else PathFinder._safe_join(base, rel_or_path)
+            candidates.append((key, title_key, desc_key, path, {"app": "OneDrive", "path": path}))
+
+        if base:
+            # Logs and crash reports are safe to remove and often grow after sync issues.
+            add("onedrive_logs", "task.onedrive_logs.title", "task.onedrive_logs.desc", "logs")
+            add("onedrive_setup_logs", "task.onedrive_setup_logs.title", "task.onedrive_setup_logs.desc", r"setup\logs")
+            add("onedrive_crash_reports", "task.onedrive_crash_reports.title", "task.onedrive_crash_reports.desc", "CrashReports")
+            add("onedrive_standalone_updater_logs", "task.onedrive_setup_logs.title", "task.onedrive_setup_logs.desc", r"StandaloneUpdater\logs")
+
+            # OneDrive uses embedded web UI components on modern builds. Cache only.
+            for rel in (
+                r"EBWebView\Default\Cache",
+                r"EBWebView\Default\Code Cache",
+                r"EBWebView\Default\GPUCache",
+                r"EBWebView\Default\Service Worker\CacheStorage",
+                r"EBWebView\Default\DawnCache",
+                r"EBWebView\Default\GrShaderCache",
+                r"EBWebView\Default\ShaderCache",
+            ):
+                safe_key = "onedrive_webview_" + re.sub(r"[^a-zA-Z0-9_]+", "_", rel).strip("_").lower()
+                add(safe_key, "task.onedrive_webview_cache.title", "task.onedrive_webview_cache.desc", rel)
+
+        # Machine-wide updater/setup logs only; no program files or sync data.
+        if programdata:
+            candidates.append((
+                "onedrive_programdata_setup_logs",
+                "task.onedrive_setup_logs.title",
+                "task.onedrive_setup_logs.desc",
+                PathFinder._safe_join(programdata, r"Microsoft OneDrive\Setup\logs"),
+                {"app": "OneDrive"},
+            ))
+
+        return [item for item in candidates if item[3] and os.path.exists(item[3])]
+
+    @staticmethod
     def get_streaming_cache_targets() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
         """Return conservative streaming/recording app cleanup targets.
 
@@ -2402,6 +2450,109 @@ class WindowsOps:
                     os.remove(path)
                 except Exception:
                     pass
+
+    @staticmethod
+    def find_onedrive_executables() -> List[str]:
+        candidates: List[str] = []
+        local = os.environ.get("LOCALAPPDATA", "")
+        if local:
+            candidates.append(PathFinder._safe_join(local, r"Microsoft\OneDrive\OneDrive.exe"))
+        for root in PathFinder.get_program_files_paths():
+            candidates.append(PathFinder._safe_join(root, r"Microsoft OneDrive\OneDrive.exe"))
+        seen: Set[str] = set()
+        result: List[str] = []
+        for path in candidates:
+            if not path:
+                continue
+            expanded = PathFinder.expand(path)
+            key = os.path.normcase(os.path.abspath(expanded))
+            if key in seen:
+                continue
+            seen.add(key)
+            if os.path.isfile(expanded):
+                result.append(expanded)
+        return result
+
+    @staticmethod
+    def is_process_running(image_name: str) -> bool:
+        if not IS_WINDOWS or not image_name:
+            return False
+        rc, output = WindowsOps.run_command_capture(["tasklist.exe", "/FI", f"IMAGENAME eq {image_name}"], timeout=15)
+        return rc == 0 and image_name.casefold() in (output or "").casefold()
+
+    @staticmethod
+    def collect_onedrive_report() -> Dict[str, Any]:
+        """Collect read-only OneDrive state without touching sync folders."""
+        local = os.environ.get("LOCALAPPDATA", "")
+        one_root = PathFinder._safe_join(local, r"Microsoft\OneDrive") if local else ""
+        run_value = WindowsOps._query_registry_value(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "OneDrive")
+        policy_value = WindowsOps._query_registry_value(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\OneDrive", "DisableFileSyncNGSC")
+        files_on_demand = WindowsOps._query_registry_value(r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer", "SyncRootManager")
+        targets = [path for _key, _tkey, _dkey, path, _fmt in PathFinder.get_onedrive_cleanup_targets()]
+        cache_bytes = 0
+        try:
+            cache_bytes = SafeFS.fast_size_many(targets, threading.Event()) if targets else 0
+        except Exception:
+            cache_bytes = 0
+        return {
+            "installed": bool(WindowsOps.find_onedrive_executables() or os.path.isdir(one_root)),
+            "running": WindowsOps.is_process_running("OneDrive.exe"),
+            "executables": WindowsOps.find_onedrive_executables(),
+            "user_autostart": "enabled" if run_value else "disabled",
+            "policy_sync": "disabled" if WindowsOps._normalize_registry_value(policy_value, "REG_DWORD") == 1 else ("enabled" if WindowsOps._normalize_registry_value(policy_value, "REG_DWORD") == 0 else "unknown"),
+            "files_on_demand_hint": "available" if files_on_demand is not None else "unknown",
+            "cleanup_targets": len(targets),
+            "cleanup_bytes": cache_bytes,
+        }
+
+    @staticmethod
+    def quit_onedrive() -> bool:
+        if not IS_WINDOWS:
+            return False
+        ok = False
+        for exe in WindowsOps.find_onedrive_executables():
+            # /shutdown is supported by the sync client on current builds; if it
+            # is ignored, taskkill below is the fallback.
+            try:
+                subprocess.run([exe, "/shutdown"], shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=12)
+                ok = True
+            except Exception:
+                pass
+        time.sleep(0.6)
+        if WindowsOps.is_process_running("OneDrive.exe"):
+            ok = WindowsOps.run_command_args(["taskkill.exe", "/IM", "OneDrive.exe", "/F"], timeout=20) or ok
+        return ok or not WindowsOps.is_process_running("OneDrive.exe")
+
+    @staticmethod
+    def disable_onedrive_background() -> Dict[str, Any]:
+        """Stop OneDrive and disable its startup/sync policy when allowed.
+
+        User data and sync folders are intentionally untouched.  HKLM policy is
+        only written with admin rights; user autostart is removed for the current
+        user without requiring admin rights.
+        """
+        result = {"quit": False, "autostart_removed": False, "policy_disabled": False, "admin_policy_skipped": False}
+        result["quit"] = WindowsOps.quit_onedrive()
+        result["autostart_removed"] = WindowsOps._delete_registry_value(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "OneDrive")
+        if WindowsOps.is_admin():
+            result["policy_disabled"] = WindowsOps.reg_add(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\OneDrive", "DisableFileSyncNGSC", 1, "REG_DWORD")
+        else:
+            result["admin_policy_skipped"] = True
+        return result
+
+    @staticmethod
+    def restore_onedrive_background() -> Dict[str, Any]:
+        result = {"policy_removed": False, "started": False}
+        if WindowsOps.is_admin():
+            result["policy_removed"] = WindowsOps._delete_registry_value(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\OneDrive", "DisableFileSyncNGSC")
+        for exe in WindowsOps.find_onedrive_executables():
+            try:
+                subprocess.Popen([exe, "/background"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                result["started"] = True
+                break
+            except Exception:
+                continue
+        return result
 
     @staticmethod
     def collect_streaming_diagnostics() -> Dict[str, Any]:
