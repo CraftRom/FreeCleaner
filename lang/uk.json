@@ -603,5 +603,9 @@
   "diag_onedrive_autostart": "Автозапуск",
   "diag_onedrive_policy": "Політика синхронізації",
   "diag_onedrive_cleanup_line": "Безпечні цілі очищення: {targets}, приблизно {mb:.1f} MB",
-  "diag_rec_onedrive_disable": "OneDrive активний: вимкни автозапуск/синхронізацію, якщо він не потрібен під гру або стрім."
+  "diag_rec_onedrive_disable": "OneDrive активний: вимкни автозапуск/синхронізацію, якщо він не потрібен під гру або стрім.",
+  "category_onedrive": "OneDrive",
+  "pre_cleanup_actions": "Виконую підготовчі дії перед очищенням, щоб уникнути заблокованих файлів.",
+  "power_restore_conflict_skipped": "Конфлікт планів живлення: відновлення Balanced вибрано разом із продуктивними профілями. Продуктивні профілі пропущено.",
+  "ultimate_power_redundant_skipped": "Дублювання планів живлення: Ultimate Performance має вищий пріоритет, слабші перемикачі живлення пропущено."
 }

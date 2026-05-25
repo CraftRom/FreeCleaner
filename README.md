@@ -409,3 +409,15 @@ The dashboard shows cards for:
 - dropped-frame warnings found in recent OBS logs;
 - practical recommendations that avoid unsafe one-click tweak behavior.
 
+
+## Cleanup engine and conflict handling
+
+Recent stability improvements focus on doing less duplicate work while keeping cleanup safe:
+
+- directory task paths are normalized and cached so analysis and cleanup do not repeatedly resolve the same targets;
+- scan and clean operations use one adaptive worker pool per run phase instead of repeatedly creating short-lived pools;
+- OneDrive disable actions run before cache cleanup when selected, which reduces locked files without deleting synced user data;
+- mutually exclusive optimizer actions are resolved before execution, including HAGS on/off, dynamic tick custom/default and competing power-plan profiles;
+- the OneDrive cleanup category is included in analysis summaries so estimates no longer fall into an untranslated/mixed category.
+
+The cleaner still preserves target root folders, skips symlinks/junctions/reparse points, and avoids deleting user documents or OneDrive sync folders.

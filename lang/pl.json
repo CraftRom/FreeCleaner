@@ -603,5 +603,9 @@
   "diag_onedrive_autostart": "Autostart",
   "diag_onedrive_policy": "Polityka synchronizacji",
   "diag_onedrive_cleanup_line": "Bezpieczne cele czyszczenia: {targets}, około {mb:.1f} MB",
-  "diag_rec_onedrive_disable": "OneDrive jest aktywny: wyłącz autostart/synchronizację, jeśli nie jest potrzebny podczas gry lub streamu."
+  "diag_rec_onedrive_disable": "OneDrive jest aktywny: wyłącz autostart/synchronizację, jeśli nie jest potrzebny podczas gry lub streamu.",
+  "category_onedrive": "OneDrive",
+  "pre_cleanup_actions": "Wykonuję działania przed czyszczeniem, aby uniknąć zablokowanych plików.",
+  "power_restore_conflict_skipped": "Konflikt planu zasilania: przywrócenie Balanced wybrano razem z profilami wydajności. Profile wydajności pominięto.",
+  "ultimate_power_redundant_skipped": "Duplikacja planu zasilania: Ultimate Performance ma wyższy priorytet, słabsze przełączenia zasilania pominięto."
 }

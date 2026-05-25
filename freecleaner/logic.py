@@ -3330,6 +3330,29 @@ class SafeFS:
         return False
 
     @staticmethod
+    def _entry_is_reparse_point(entry: os.DirEntry) -> bool:
+        """Fast reparse-point check for os.scandir/os.walk entries.
+
+        Calling GetFileAttributesW for every file is expensive on large cache
+        folders.  DirEntry can answer symlink status cheaply and, on Windows,
+        exposes file attributes through stat(follow_symlinks=False).
+        """
+        try:
+            if entry.is_symlink():
+                return True
+        except OSError:
+            return True
+        if IS_WINDOWS:
+            try:
+                attrs = int(getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0) or 0)
+                return bool(attrs & 0x00000400)
+            except OSError:
+                return True
+            except Exception:
+                pass
+        return False
+
+    @staticmethod
     def is_safe_clean_target(path: str) -> bool:
         """Reject dangerous roots and protected Windows trees.
 
@@ -3589,7 +3612,7 @@ class SafeFS:
                 with os.scandir(current) as it:
                     for entry in it:
                         try:
-                            if SafeFS._is_reparse_point(entry.path):
+                            if SafeFS._entry_is_reparse_point(entry):
                                 if entry.is_dir(follow_symlinks=False):
                                     dirs += 1
                                 else:
@@ -3628,7 +3651,7 @@ class SafeFS:
                         if cancel_event is not None and cancel_event.is_set():
                             break
                         try:
-                            if SafeFS._is_reparse_point(entry.path):
+                            if SafeFS._entry_is_reparse_point(entry):
                                 continue
                             if entry.is_file(follow_symlinks=False):
                                 total += entry.stat(follow_symlinks=False).st_size
@@ -3773,7 +3796,11 @@ class SafeFS:
                 safe_dirs: List[str] = []
                 for name in list(dirs):
                     dir_path = os.path.join(root, name)
-                    if SafeFS._is_reparse_point(dir_path):
+                    try:
+                        is_link = SafeFS._is_reparse_point(dir_path)
+                    except Exception:
+                        is_link = True
+                    if is_link:
                         # Leave links/junctions in place rather than risk cleaning
                         # a target outside the selected cache folder.
                         result["skipped_links"] += 1

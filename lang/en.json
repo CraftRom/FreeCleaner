@@ -603,5 +603,9 @@
   "diag_onedrive_autostart": "Autostart",
   "diag_onedrive_policy": "Sync policy",
   "diag_onedrive_cleanup_line": "Safe cleanup targets: {targets}, about {mb:.1f} MB",
-  "diag_rec_onedrive_disable": "OneDrive is active: disable startup/sync if you do not need it while gaming or streaming."
+  "diag_rec_onedrive_disable": "OneDrive is active: disable startup/sync if you do not need it while gaming or streaming.",
+  "category_onedrive": "OneDrive",
+  "pre_cleanup_actions": "Running pre-cleanup actions to avoid locked files.",
+  "power_restore_conflict_skipped": "Power plan conflict: Balanced restore was selected together with performance profiles. Performance profiles were skipped.",
+  "ultimate_power_redundant_skipped": "Power plan duplication: Ultimate Performance has higher priority, weaker power switches were skipped."
 }

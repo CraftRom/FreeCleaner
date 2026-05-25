@@ -603,5 +603,9 @@
   "diag_onedrive_autostart": "Autostart",
   "diag_onedrive_policy": "Sync-Richtlinie",
   "diag_onedrive_cleanup_line": "Sichere Bereinigungsziele: {targets}, ca. {mb:.1f} MB",
-  "diag_rec_onedrive_disable": "OneDrive ist aktiv: Autostart/Synchronisierung deaktivieren, wenn es beim Gaming oder Streaming nicht benötigt wird."
+  "diag_rec_onedrive_disable": "OneDrive ist aktiv: Autostart/Synchronisierung deaktivieren, wenn es beim Gaming oder Streaming nicht benötigt wird.",
+  "category_onedrive": "OneDrive",
+  "pre_cleanup_actions": "Vorbereitende Aktionen werden ausgeführt, um gesperrte Dateien zu vermeiden.",
+  "power_restore_conflict_skipped": "Energieplan-Konflikt: Balanced-Wiederherstellung wurde zusammen mit Leistungsprofilen ausgewählt. Leistungsprofile wurden übersprungen.",
+  "ultimate_power_redundant_skipped": "Doppelter Energieplan: Ultimate Performance hat höhere Priorität, schwächere Energieumschaltungen wurden übersprungen."
 }

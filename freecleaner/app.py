@@ -65,6 +65,16 @@ from .logic import (
 # Initialize CTk appearance/theme once on import (safe to call multiple times).
 init_ui_theme()
 
+CLEANUP_CATEGORIES: Tuple[str, ...] = ("system", "browsers", "onedrive", "deep", "gamer", "ultimate")
+POWER_PLAN_PRIORITY: Tuple[str, ...] = (
+    "cpu_latency_power_profile",
+    "ultimate_perf_plan",
+    "safe_gaming_power_profile",
+    "high_perf_plan",
+)
+PRE_CLEANUP_COMMAND_KEYS: set[str] = {"disable_onedrive_background"}
+
+
 class Cleaner(ctk.CTk):
 
     def _normalize_ui_text(self, text: str) -> str:
@@ -232,6 +242,7 @@ class Cleaner(ctk.CTk):
         self.is_admin = WindowsOps.is_admin()
         self.vars: Dict[str, ctk.BooleanVar] = {}
         self.tasks: Dict[str, CleanerTask] = {}
+        self._task_path_cache: Dict[str, List[str]] = {}
         self.section_cards: List[SectionCard] = []
         self.total_lock = threading.Lock()
         self.log_queue: "queue.Queue[str]" = queue.Queue()
@@ -1614,12 +1625,22 @@ class Cleaner(ctk.CTk):
         self.btn_reset_all.pack(side="left")
 
     def _task_paths(self, task: CleanerTask) -> List[str]:
+        cache_key = task.key or str(id(task))
+        cached = getattr(self, "_task_path_cache", {}).get(cache_key)
+        if cached is not None:
+            return list(cached)
+
         raw_paths: List[str] = []
         if getattr(task, "paths", None):
             raw_paths.extend([p for p in (task.paths or []) if p])
         elif task.path:
             raw_paths.append(task.path)
-        return PathFinder.unique_existing(raw_paths)
+        unique = PathFinder.unique_existing(raw_paths)
+        try:
+            self._task_path_cache[cache_key] = unique
+        except Exception:
+            pass
+        return list(unique)
 
     def _task_visible_signature(self, task: CleanerTask) -> Tuple[Any, ...]:
         """Signature used to merge rows that would look identical in the UI.
@@ -1647,6 +1668,10 @@ class Cleaner(ctk.CTk):
         if merged:
             existing.paths = merged
             existing.path = merged[0]
+            try:
+                self._task_path_cache.pop(existing.key, None)
+            except Exception:
+                pass
 
     def add_task(self, parent_card: SectionCard, task: CleanerTask):
         # Do not render duplicate actions. Duplicates made the Cleaner menu look
@@ -2803,27 +2828,34 @@ class Cleaner(ctk.CTk):
     def resolve_selected_task_conflicts(self, chosen: List[CleanerTask]) -> List[CleanerTask]:
         keys = {task.key for task in chosen}
         skip: set[str] = set()
-        if "enable_hags" in keys and "disable_hags" in keys:
-            # These are exact opposites.  Do not silently let whichever task runs
-            # last win, because that makes registry state unpredictable.
-            skip.update({"enable_hags", "disable_hags"})
-            self.log(self.tr("hags_conflict_skipped"))
-        if "disable_dynamic_tick_latency" in keys and "restore_dynamic_tick_default" in keys:
-            skip.update({"disable_dynamic_tick_latency", "restore_dynamic_tick_default"})
-            self.log(self.tr("dynamic_tick_conflict_skipped"))
-        if "cpu_latency_power_profile" in keys and "restore_balanced_power_profile" in keys:
-            skip.update({"cpu_latency_power_profile", "restore_balanced_power_profile"})
-            self.log(self.tr("power_profile_conflict_skipped"))
-        if "cpu_latency_power_profile" in keys:
-            redundant = {"safe_gaming_power_profile", "high_perf_plan"} & keys
-            if redundant:
-                skip.update(redundant)
+
+        def skip_all(conflict_keys: set[str], message_key: str) -> None:
+            active = conflict_keys & keys
+            if len(active) >= 2:
+                skip.update(active)
+                self.log(self.tr(message_key))
+
+        skip_all({"enable_hags", "disable_hags"}, "hags_conflict_skipped")
+        skip_all({"disable_dynamic_tick_latency", "restore_dynamic_tick_default"}, "dynamic_tick_conflict_skipped")
+
+        selected_power = [key for key in POWER_PLAN_PRIORITY if key in keys]
+        if "restore_balanced_power_profile" in keys and selected_power:
+            skip.update(selected_power)
+            self.log(self.tr("power_restore_conflict_skipped"))
+        elif len(selected_power) > 1:
+            # Keep the most specific selected profile and skip weaker/duplicate
+            # plan switches. Otherwise the last command wins and the final power
+            # state becomes dependent on UI registration order.
+            keep = selected_power[0]
+            redundant = set(selected_power[1:])
+            skip.update(redundant)
+            if keep == "cpu_latency_power_profile":
                 self.log(self.tr("cpu_latency_redundant_skipped"))
-        if "safe_gaming_power_profile" in keys and "high_perf_plan" in keys:
-            # The safe profile already switches to High Performance, so running
-            # the basic task too only duplicates work and log noise.
-            skip.add("high_perf_plan")
-            self.log(self.tr("high_perf_redundant_skipped"))
+            elif keep == "ultimate_perf_plan":
+                self.log(self.tr("ultimate_power_redundant_skipped"))
+            elif keep == "safe_gaming_power_profile":
+                self.log(self.tr("high_perf_redundant_skipped"))
+
         if not skip:
             return chosen
         return [task for task in chosen if task.key not in skip]
@@ -2899,40 +2931,41 @@ class Cleaner(ctk.CTk):
 
     def analyze_directory_tasks(self, dir_tasks: List[CleanerTask]) -> Tuple[int, Dict[str, int], List[Tuple[str, int]]]:
         total = 0
-        category_totals: Dict[str, int] = {key: 0 for key in ("system", "browsers", "deep", "gamer", "ultimate")}
+        category_totals: Dict[str, int] = {key: 0 for key in CLEANUP_CATEGORIES}
         detail_rows: List[Tuple[str, int]] = []
-        pending_tasks = [task for task in dir_tasks if self._task_paths(task)]
+        pending_tasks = [(task, self._task_paths(task)) for task in dir_tasks]
+        pending_tasks = [(task, paths) for task, paths in pending_tasks if paths]
         if not pending_tasks:
             return 0, category_totals, detail_rows
 
-        while pending_tasks and not self.cancel_event.is_set():
-            workers = get_adaptive_workers("scan", len(pending_tasks))
-            self.log(self.trf("analyzing_targets_fmt", count=len(pending_tasks), workers=workers))
-            self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("scan")))
-            batch = pending_tasks[:workers]
-            pending_tasks = pending_tasks[workers:]
+        workers = get_adaptive_workers("scan", len(pending_tasks))
+        self.log(self.trf("analyzing_targets_fmt", count=len(pending_tasks), workers=workers))
+        self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("scan")))
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                future_map = {pool.submit(SafeFS.fast_size_many, self._task_paths(task), self.cancel_event): task for task in batch}
-                for future in concurrent.futures.as_completed(future_map):
-                    task = future_map[future]
-                    if self.cancel_event.is_set():
-                        break
-                    try:
-                        size = future.result()
-                    except Exception:
-                        size = 0
-                    total += size
-                    category_totals[task.category] = category_totals.get(task.category, 0) + size
-                    detail_rows.append((self.task_title(task), size))
-                    self.log(self.trf("analysis_item_fmt", title=self.task_title(task), mb=size / (1024 ** 2)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            future_map = {
+                pool.submit(SafeFS.fast_size_many, paths, self.cancel_event): task
+                for task, paths in pending_tasks
+            }
+            for future in concurrent.futures.as_completed(future_map):
+                task = future_map[future]
+                if self.cancel_event.is_set():
+                    break
+                try:
+                    size = int(future.result() or 0)
+                except Exception:
+                    size = 0
+                total += size
+                category_totals[task.category] = category_totals.get(task.category, 0) + size
+                detail_rows.append((self.task_title(task), size))
+                self.log(self.trf("analysis_item_fmt", title=self.task_title(task), mb=size / (1024 ** 2)))
 
         detail_rows.sort(key=lambda item: item[1], reverse=True)
         return total, category_totals, detail_rows
 
     def log_category_breakdown(self, category_totals: Dict[str, int], top_items: List[Tuple[str, int]], command_count: int):
         self.log(self.tr("analysis_summary_header"))
-        for cat_key in ("system", "browsers", "deep", "gamer", "ultimate"):
+        for cat_key in CLEANUP_CATEGORIES:
             size = category_totals.get(cat_key, 0)
             if size > 0:
                 label = self.category_label(cat_key)
@@ -2964,7 +2997,8 @@ class Cleaner(ctk.CTk):
         self.after(0, ui_update)
 
     def clean_targets(self, dir_tasks: List[CleanerTask]):
-        pending_tasks = [task for task in dir_tasks if self._task_paths(task)]
+        pending_tasks = [(task, self._task_paths(task)) for task in dir_tasks]
+        pending_tasks = [(task, paths) for task, paths in pending_tasks if paths]
         if not pending_tasks:
             return
 
@@ -2977,69 +3011,66 @@ class Cleaner(ctk.CTk):
             "errors": 0,
         }
 
-        while pending_tasks and not self.cancel_event.is_set():
-            workers = get_adaptive_workers("clean", len(pending_tasks))
-            self.log(self.trf("cleaning_targets_fmt", count=len(pending_tasks), workers=workers))
-            self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("clean")))
-            batch = pending_tasks[:workers]
-            pending_tasks = pending_tasks[workers:]
+        workers = get_adaptive_workers("clean", len(pending_tasks))
+        self.log(self.trf("cleaning_targets_fmt", count=len(pending_tasks), workers=workers))
+        self.log(self.trf("adaptive_threads_fmt", status=get_adaptive_thread_status("clean")))
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                future_map = {
-                    pool.submit(SafeFS.clean_many, self._task_paths(task), self.update_progress, self.cancel_event): task
-                    for task in batch
-                }
-                for future in concurrent.futures.as_completed(future_map):
-                    task = future_map[future]
-                    if self.cancel_event.is_set():
-                        break
-                    try:
-                        result = future.result()
-                        self.update_progress(0, force=True)
-                    except Exception:
-                        self.log(self.trf("cleanup_target_failed_fmt", title=self.task_title(task)))
-                        continue
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            future_map = {
+                pool.submit(SafeFS.clean_many, paths, self.update_progress, self.cancel_event): task
+                for task, paths in pending_tasks
+            }
+            for future in concurrent.futures.as_completed(future_map):
+                task = future_map[future]
+                if self.cancel_event.is_set():
+                    break
+                try:
+                    result = future.result()
+                    self.update_progress(0, force=True)
+                except Exception:
+                    self.log(self.trf("cleanup_target_failed_fmt", title=self.task_title(task)))
+                    continue
 
-                    removed_mb = float(result.get("removed_bytes", 0)) / (1024 ** 2)
-                    files_removed = int(result.get("files_removed", 0))
-                    dirs_removed = int(result.get("dirs_removed", 0))
-                    scheduled_reboot = int(result.get("scheduled_reboot", 0))
-                    remaining_files = int(result.get("remaining_files", 0))
-                    remaining_dirs = int(result.get("remaining_dirs", 0))
-                    skipped_links = int(result.get("skipped_links", 0))
-                    errors = int(result.get("errors", 0))
+                removed_mb = float(result.get("removed_bytes", 0)) / (1024 ** 2)
+                files_removed = int(result.get("files_removed", 0))
+                dirs_removed = int(result.get("dirs_removed", 0))
+                scheduled_reboot = int(result.get("scheduled_reboot", 0))
+                remaining_files = int(result.get("remaining_files", 0))
+                remaining_dirs = int(result.get("remaining_dirs", 0))
+                skipped_links = int(result.get("skipped_links", 0))
+                errors = int(result.get("errors", 0))
 
-                    cleanup_totals["removed_bytes"] += int(result.get("removed_bytes", 0) or 0)
-                    cleanup_totals["files_removed"] += files_removed
-                    cleanup_totals["dirs_removed"] += dirs_removed
-                    cleanup_totals["scheduled_reboot"] += scheduled_reboot
-                    cleanup_totals["skipped_links"] += skipped_links
-                    cleanup_totals["errors"] += errors
+                cleanup_totals["removed_bytes"] += int(result.get("removed_bytes", 0) or 0)
+                cleanup_totals["files_removed"] += files_removed
+                cleanup_totals["dirs_removed"] += dirs_removed
+                cleanup_totals["scheduled_reboot"] += scheduled_reboot
+                cleanup_totals["skipped_links"] += skipped_links
+                cleanup_totals["errors"] += errors
 
-                    if errors > 0:
-                        self.log(self.trf(
-                            "cleanup_target_partial_fmt",
-                            title=self.task_title(task),
-                            mb=removed_mb,
-                            files=files_removed,
-                            dirs=dirs_removed,
-                            errors=errors,
-                        ))
-                    else:
-                        self.log(self.trf(
-                            "cleanup_target_ok_fmt",
-                            title=self.task_title(task),
-                            mb=removed_mb,
-                            files=files_removed,
-                            dirs=dirs_removed,
-                        ))
+                if errors > 0:
+                    self.log(self.trf(
+                        "cleanup_target_partial_fmt",
+                        title=self.task_title(task),
+                        mb=removed_mb,
+                        files=files_removed,
+                        dirs=dirs_removed,
+                        errors=errors,
+                    ))
+                else:
+                    self.log(self.trf(
+                        "cleanup_target_ok_fmt",
+                        title=self.task_title(task),
+                        mb=removed_mb,
+                        files=files_removed,
+                        dirs=dirs_removed,
+                    ))
 
-                    if scheduled_reboot > 0:
-                        self.log(self.trf("cleanup_reboot_scheduled_fmt", title=self.task_title(task), count=scheduled_reboot))
-                    if skipped_links > 0:
-                        self.log(self.trf("cleanup_skipped_links_fmt", title=self.task_title(task), count=skipped_links))
-                    if (remaining_files + remaining_dirs) > skipped_links:
-                        self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
+                if scheduled_reboot > 0:
+                    self.log(self.trf("cleanup_reboot_scheduled_fmt", title=self.task_title(task), count=scheduled_reboot))
+                if skipped_links > 0:
+                    self.log(self.trf("cleanup_skipped_links_fmt", title=self.task_title(task), count=skipped_links))
+                if (remaining_files + remaining_dirs) > skipped_links:
+                    self.log(self.trf("cleanup_remaining_fmt", title=self.task_title(task), files=remaining_files, dirs=remaining_dirs))
 
         if any(int(value or 0) for value in cleanup_totals.values()):
             self.log(self.trf(
@@ -3089,6 +3120,19 @@ class Cleaner(ctk.CTk):
             if needs_delivery:
                 WindowsOps.run_command_args(["net.exe", "start", "dosvc"], timeout=60)
 
+    def _run_command_tasks(self, cmd_tasks: List[CleanerTask]) -> None:
+        for task in cmd_tasks:
+            if self.cancel_event.is_set():
+                break
+            self.log(self.trf("action_fmt", title=self.task_title(task)))
+            try:
+                if task.command:
+                    task.command()
+                if task.reboot_required:
+                    self.log(self.tr("reboot_recommended"))
+            except Exception:
+                self.log(self.trf("action_error_fmt", title=self.task_title(task)))
+
     def analysis_only_engine(self):
         try:
             chosen = self.selected_tasks()
@@ -3115,22 +3159,18 @@ class Cleaner(ctk.CTk):
                 return
             if not self.backup_registry_for_tasks(cmd_tasks):
                 return
+            pre_cmd_tasks = [task for task in cmd_tasks if task.key in PRE_CLEANUP_COMMAND_KEYS]
+            post_cmd_tasks = [task for task in cmd_tasks if task.key not in PRE_CLEANUP_COMMAND_KEYS]
+            if pre_cmd_tasks and not self.cancel_event.is_set():
+                self.log(self.tr("pre_cleanup_actions"))
+                self._run_command_tasks(pre_cmd_tasks)
             self.prepare_service_deps(dir_tasks, start=True)
             try:
                 self.clean_targets(dir_tasks)
             finally:
                 self.prepare_service_deps(dir_tasks, start=False)
-            if not self.cancel_event.is_set():
-                for task in cmd_tasks:
-                    if self.cancel_event.is_set():
-                        break
-                    self.log(self.trf("action_fmt", title=self.task_title(task)))
-                    try:
-                        task.command()
-                        if task.reboot_required:
-                            self.log(self.tr("reboot_recommended"))
-                    except Exception:
-                        self.log(self.trf("action_error_fmt", title=self.task_title(task)))
+            if post_cmd_tasks and not self.cancel_event.is_set():
+                self._run_command_tasks(post_cmd_tasks)
             if self.cancel_event.is_set():
                 self.log(self.tr("user_stopped"))
             else:
