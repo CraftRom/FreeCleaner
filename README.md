@@ -32,8 +32,8 @@ The gaming optimizer is intentionally conservative. It can adjust Windows-level 
 - Clean temporary and non-essential files
 - Expanded Windows, browser, app, launcher, shader cache, Windows log and packaged-app temp cleanup
 - Safer cleanup traversal that skips symlinks/junctions instead of following them
-- Quick profiles: Safe, Gaming cleanup, and Deep cleanup
-- Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing and standby RAM cleanup
+- Quick profiles: Safe, Gaming cleanup, Gaming + Streaming cleanup, and Deep cleanup
+- Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing, standby RAM cleanup, streaming diagnostics and a read-only gaming compatibility report
 - Conservative registry leftovers cleanup for clearly broken Open With/Application, App Paths and startup entries, with registry backup before deletion
 - UI filtering that hides empty sections and keeps large task lists easier to scan
 - Simple desktop interface
@@ -76,6 +76,12 @@ Add your screenshots here after publishing visuals for the project.
 FreeCleaner targets rebuildable caches, temporary folders, logs and dumps. Newer cleanup coverage includes CryptnetUrlCache, IconCache.db, Windows user caches, Windows Update / WaaSMedic logs, setup/upgrade logs, WMI diagnostic ETL logs, additional Delivery Optimization cache locations and conservative Microsoft Store packaged-app temp folders.
 
 Registry cleanup is deliberately narrow. It does not touch COM, services, drivers, uninstall entries, shell extensions or broad file associations. It only removes clearly broken application/open-with/startup records that point to missing executable files and creates a registry backup first.
+
+## Streaming and OBS diagnostics
+
+FreeCleaner includes read-only diagnostics for OBS and streaming workflows. It checks OBS profiles, selected encoders, recording format, Replay Buffer state, recent OBS logs, dropped-frame hints, encoder/rendering overload hints, current CPU/RAM/GPU pressure and a small temporary disk write test.
+
+The diagnostics do not rewrite OBS profiles automatically. That is intentional: changing encoders, scenes, recording paths or containers without user review can break a working streaming setup. The tool reports findings so the user can adjust OBS deliberately.
 
 ## Windows 10/11 gaming optimizer notes
 

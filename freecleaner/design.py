@@ -59,6 +59,71 @@ COLORS = {
     "white": "#F8FAFC",
 }
 
+
+class AnimatedButton(ctk.CTkButton):
+    """Small CTkButton enhancement with press/hover feedback.
+
+    CustomTkinter already has hover colors.  This wrapper adds a tiny border
+    pulse on press/focus without changing layout size, so it is cheap even on
+    slower laptops and avoids expensive per-frame widget recreation.
+    """
+
+    def __init__(self, *args, accent: str = COLORS["system"], **kwargs):
+        self._accent = accent
+        self._normal_border = kwargs.get("border_color", "transparent")
+        self._normal_border_width = int(kwargs.get("border_width", 0) or 0)
+        kwargs.setdefault("corner_radius", 12)
+        super().__init__(*args, **kwargs)
+        self._pulse_after_id = None
+        self.bind("<ButtonPress-1>", self._on_press, add="+")
+        self.bind("<ButtonRelease-1>", self._on_release, add="+")
+        self.bind("<Leave>", self._on_release, add="+")
+        self.bind("<FocusIn>", self._on_focus_in, add="+")
+        self.bind("<FocusOut>", self._on_release, add="+")
+
+    def _state_is_disabled(self) -> bool:
+        try:
+            return str(self.cget("state")) == "disabled"
+        except Exception:
+            return False
+
+    def _on_press(self, _event=None):
+        if self._state_is_disabled():
+            return
+        try:
+            self.configure(border_width=max(1, self._normal_border_width + 1), border_color=self._accent)
+        except Exception:
+            pass
+        if self._pulse_after_id:
+            try:
+                self.after_cancel(self._pulse_after_id)
+            except Exception:
+                pass
+        try:
+            self._pulse_after_id = self.after(130, self._on_release)
+        except Exception:
+            self._pulse_after_id = None
+
+    def _on_focus_in(self, _event=None):
+        if self._state_is_disabled():
+            return
+        try:
+            self.configure(border_width=max(1, self._normal_border_width), border_color=mix_colors(self._accent, COLORS["border"], 0.35))
+        except Exception:
+            pass
+
+    def _on_release(self, _event=None):
+        if self._pulse_after_id:
+            try:
+                self.after_cancel(self._pulse_after_id)
+            except Exception:
+                pass
+        self._pulse_after_id = None
+        try:
+            self.configure(border_width=self._normal_border_width, border_color=self._normal_border)
+        except Exception:
+            pass
+
 # ---- Reusable UI components ----
 
 from .logic import CleanerTask  # type: ignore  # (runtime import is safe)
@@ -132,8 +197,9 @@ class SectionCard(ctk.CTkFrame):
         row_wrap.grid_columnconfigure(0, weight=1)
 
         if task.instant_action and task.kind == "command":
-            widget = ctk.CTkButton(
+            widget = AnimatedButton(
                 row_wrap,
+                accent=COLORS["gamer"],
                 text=self.owner.task_title(task),
                 font=("Segoe UI", 13, "bold"),
                 height=42,

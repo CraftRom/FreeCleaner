@@ -26,7 +26,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, init_ui_theme, mix_colors
+from .design import COLORS, SummaryCard, SectionCard, ModernTabButton, AnimatedButton, init_ui_theme, mix_colors
 from .logic import (
     IS_WINDOWS,
     ICONS_DIRNAME,
@@ -209,6 +209,9 @@ class Cleaner(ctk.CTk):
         self._max_log_lines = 900
         self._progress_after_id = None
         self._pending_progress: Optional[Tuple[float, Optional[float]]] = None
+        self._progress_target_value = 0.0
+        self._progress_display_value = 0.0
+        self._progress_anim_after_id = None
         self._running_pulse_after_id = None
         self._running_pulse_phase = 0
         self._selection_refresh_suspended = False
@@ -868,7 +871,7 @@ class Cleaner(ctk.CTk):
         self.status_badge.pack(fill="x", padx=20, pady=(0, 10))
 
         if not self.is_admin:
-            self.btn_admin = ctk.CTkButton(
+            self.btn_admin = AnimatedButton(
                 self.sidebar,
                 text=self.tr("relaunch_admin"),
                 fg_color=COLORS["ultimate"],
@@ -891,17 +894,17 @@ class Cleaner(ctk.CTk):
         quick.pack(fill="x", padx=20, pady=(0, 14))
         self.quick_profiles_label = ctk.CTkLabel(quick, text=self.tr("quick_profiles"), font=("Segoe UI", 13, "bold"), text_color=COLORS["white"])
         self.quick_profiles_label.pack(anchor="w", padx=14, pady=(12, 8))
-        self.btn_safe = ctk.CTkButton(quick, text=self.tr("safe"), height=34, command=self.apply_safe_preset, fg_color="#1E293B", hover_color="#334155")
+        self.btn_safe = AnimatedButton(quick, text=self.tr("safe"), height=34, command=self.apply_safe_preset, fg_color="#1E293B", hover_color="#334155")
         self.btn_safe.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_gaming = ctk.CTkButton(quick, text=self.tr("gaming_profile"), height=34, command=self.apply_gaming_mode, fg_color="#0F766E", hover_color="#115E59")
+        self.btn_gaming = AnimatedButton(quick, text=self.tr("gaming_profile"), height=34, command=self.apply_gaming_mode, fg_color="#0F766E", hover_color="#115E59")
         self.btn_gaming.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_streamer = ctk.CTkButton(quick, text=self.tr("streamer"), height=34, command=self.apply_streaming_mode, fg_color="#164E63", hover_color="#155E75")
+        self.btn_streamer = AnimatedButton(quick, text=self.tr("streamer"), height=34, command=self.apply_streaming_mode, fg_color="#164E63", hover_color="#155E75")
         self.btn_streamer.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_deep_profile = ctk.CTkButton(quick, text=self.tr("deep_profile"), height=34, command=self.apply_deep_clean_mode, fg_color="#166534", hover_color="#14532D")
+        self.btn_deep_profile = AnimatedButton(quick, text=self.tr("deep_profile"), height=34, command=self.apply_deep_clean_mode, fg_color="#166534", hover_color="#14532D")
         self.btn_deep_profile.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_reset_selection = ctk.CTkButton(quick, text=self.tr("reset_selection"), height=34, command=self.clear_selection, fg_color="#374151", hover_color="#4B5563")
+        self.btn_reset_selection = AnimatedButton(quick, text=self.tr("reset_selection"), height=34, command=self.clear_selection, fg_color="#374151", hover_color="#4B5563")
         self.btn_reset_selection.pack(fill="x", padx=14, pady=(0, 8))
-        self.btn_restore_registry = ctk.CTkButton(
+        self.btn_restore_registry = AnimatedButton(
             quick,
             text=self.tr("restore_registry_backup"),
             height=34,
@@ -912,7 +915,7 @@ class Cleaner(ctk.CTk):
         self.btn_restore_registry.pack(fill="x", padx=14, pady=(0, 8))
         self.refresh_restore_backup_button()
         # About
-        self.btn_about = ctk.CTkButton(
+        self.btn_about = AnimatedButton(
             quick,
             text=self.tr("about"),
             height=34,
@@ -930,11 +933,11 @@ class Cleaner(ctk.CTk):
 
         btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         btn_frame.pack(fill="x", padx=20, pady=(0, 14))
-        self.btn_copy_log = ctk.CTkButton(btn_frame, text=self.tr("copy_log"), fg_color="#334155", hover_color="#475569", width=118, command=self.copy_log_to_clipboard)
+        self.btn_copy_log = AnimatedButton(btn_frame, text=self.tr("copy_log"), fg_color="#334155", hover_color="#475569", width=118, command=self.copy_log_to_clipboard)
         self.btn_copy_log.pack(side="left")
-        self.btn_clear_log = ctk.CTkButton(btn_frame, text=self.tr("clear_log"), fg_color="#334155", hover_color="#475569", width=110, command=self.clear_log)
+        self.btn_clear_log = AnimatedButton(btn_frame, text=self.tr("clear_log"), fg_color="#334155", hover_color="#475569", width=110, command=self.clear_log)
         self.btn_clear_log.pack(side="left", padx=8)
-        self.btn_cancel = ctk.CTkButton(btn_frame, text=self.tr("stop"), fg_color="#4B5563", hover_color="#6B7280", width=110, state="disabled", command=self.cancel_current_run)
+        self.btn_cancel = AnimatedButton(btn_frame, text=self.tr("stop"), fg_color="#4B5563", hover_color="#6B7280", width=110, state="disabled", command=self.cancel_current_run)
         self.btn_cancel.pack(side="right")
 
     def refresh_restore_backup_button(self):
@@ -1053,9 +1056,9 @@ class Cleaner(ctk.CTk):
         action_bar = ctk.CTkFrame(details, fg_color="transparent")
         action_bar.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 16))
 
-        btn_open_folder = ctk.CTkButton(action_bar, text=self.tr("open_backup_folder"), height=40, fg_color=COLORS["bg_card"], hover_color="#1F2937")
+        btn_open_folder = AnimatedButton(action_bar, text=self.tr("open_backup_folder"), height=40, fg_color=COLORS["bg_card"], hover_color="#1F2937")
         btn_open_folder.pack(side="left")
-        btn_restore = ctk.CTkButton(action_bar, text=self.tr("restore_selected_backup"), height=40, fg_color="#4C1D95", hover_color="#5B21B6")
+        btn_restore = AnimatedButton(action_bar, text=self.tr("restore_selected_backup"), height=40, fg_color="#4C1D95", hover_color="#5B21B6")
         btn_restore.pack(side="right")
 
         buttons = {}
@@ -1098,7 +1101,7 @@ class Cleaner(ctk.CTk):
         for item in backups:
             path = item["path"]
             label = f"{item['name']}\n{item['created']}"
-            button = ctk.CTkButton(
+            button = AnimatedButton(
                 backup_list,
                 text=label,
                 anchor="w",
@@ -1118,7 +1121,7 @@ class Cleaner(ctk.CTk):
 
         foot = ctk.CTkFrame(wrap, fg_color="transparent")
         foot.grid(row=2, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 18))
-        ctk.CTkButton(foot, text=self.tr("about_close"), height=40, fg_color=COLORS["bg_panel"], hover_color="#1F2937", command=win.destroy).pack(side="right")
+        AnimatedButton(foot, text=self.tr("about_close"), height=40, fg_color=COLORS["bg_panel"], hover_color="#1F2937", command=win.destroy).pack(side="right")
 
     def build_main_area(self):
         self.main_wrap = ctk.CTkFrame(self, fg_color="transparent")
@@ -1150,7 +1153,7 @@ class Cleaner(ctk.CTk):
         self.search_var.trace_add("write", lambda *_: self.schedule_search_filter())
         self.search_entry = ctk.CTkEntry(self.toolbar, textvariable=self.search_var, placeholder_text=self.tr("search_placeholder"), height=38, border_color=COLORS["border"], fg_color=COLORS["bg_soft"])
         self.search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 12), pady=10)
-        self.btn_clear_search = ctk.CTkButton(self.toolbar, text=self.tr("clear_search"), width=130, command=lambda: self.search_var.set(""), fg_color="#334155", hover_color="#475569")
+        self.btn_clear_search = AnimatedButton(self.toolbar, text=self.tr("clear_search"), width=130, command=lambda: self.search_var.set(""), fg_color="#334155", hover_color="#475569")
         self.btn_clear_search.grid(row=0, column=2, padx=(0, 12))
 
         self.tab_bar = ctk.CTkFrame(
@@ -1252,13 +1255,13 @@ class Cleaner(ctk.CTk):
 
         self.footer_actions = ctk.CTkFrame(content, fg_color="transparent")
         self.footer_actions.pack(fill="x")
-        self.btn_start = ctk.CTkButton(self.footer_actions, text=self.tr("analyze_clean"), font=("Segoe UI", 16, "bold"), height=48, corner_radius=10, fg_color=COLORS["success"], hover_color="#16A34A", command=self.start_thread)
+        self.btn_start = AnimatedButton(self.footer_actions, text=self.tr("analyze_clean"), font=("Segoe UI", 16, "bold"), height=48, corner_radius=10, fg_color=COLORS["success"], hover_color="#16A34A", command=self.start_thread)
         self.btn_start.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
-        self.btn_analyze = ctk.CTkButton(self.footer_actions, text=self.tr("analyze_only"), font=("Segoe UI", 14, "bold"), width=160, height=48, fg_color=COLORS["system"], hover_color="#2563EB", command=self.start_analysis_thread)
+        self.btn_analyze = AnimatedButton(self.footer_actions, text=self.tr("analyze_only"), font=("Segoe UI", 14, "bold"), width=160, height=48, fg_color=COLORS["system"], hover_color="#2563EB", command=self.start_analysis_thread)
         self.btn_analyze.pack(side="left", padx=(0, 8))
 
-        self.btn_reset_all = ctk.CTkButton(self.footer_actions, text=self.tr("reset_all"), font=("Segoe UI", 14, "bold"), width=150, height=48, fg_color="#374151", hover_color="#4B5563", command=self.clear_selection)
+        self.btn_reset_all = AnimatedButton(self.footer_actions, text=self.tr("reset_all"), font=("Segoe UI", 14, "bold"), width=150, height=48, fg_color="#374151", hover_color="#4B5563", command=self.clear_selection)
         self.btn_reset_all.pack(side="left")
 
     def _task_paths(self, task: CleanerTask) -> List[str]:
@@ -1678,6 +1681,10 @@ class Cleaner(ctk.CTk):
             kind="command", category="optimizer", default=False, instant_action=True, command=self.run_streaming_diagnostics,
         ))
         self.add_task(self.card_opt_tools, CleanerTask(
+            key="gaming_compat_report", title_key="task.gaming_compat_report.title", desc_key="task.gaming_compat_report.desc",
+            kind="command", category="optimizer", default=False, instant_action=True, command=self.run_gaming_compat_report,
+        ))
+        self.add_task(self.card_opt_tools, CleanerTask(
             key="refresh_registry_statuses", title_key="task.refresh_registry_statuses.title", desc_key="task.refresh_registry_statuses.desc",
             kind="command", category="optimizer", default=False, instant_action=True, command=self.refresh_registry_statuses,
         ))
@@ -2003,6 +2010,13 @@ class Cleaner(ctk.CTk):
             except Exception:
                 pass
         self._running_pulse_after_id = None
+        pending_progress = getattr(self, "_progress_anim_after_id", None)
+        if pending_progress:
+            try:
+                self.after_cancel(pending_progress)
+            except Exception:
+                pass
+        self._progress_anim_after_id = None
         if reset:
             try:
                 self.btn_start.configure(fg_color=COLORS["success"])
@@ -2161,6 +2175,43 @@ class Cleaner(ctk.CTk):
 
         self.log(self.tr("streaming_diag_done"))
 
+    def run_gaming_compat_report(self):
+        self.log(self.tr("gaming_report_started"))
+        try:
+            report = WindowsOps.collect_gaming_compat_report()
+        except Exception:
+            self.log(self.tr("gaming_report_failed"))
+            return
+
+        self.log(self.trf(
+            "gaming_report_system_fmt",
+            version=report.get("windows_version", "—"),
+            admin=self.tr("yes") if self.is_admin else self.tr("no"),
+            arch=report.get("process_arch", "—"),
+            osarch=report.get("os_arch", "—"),
+        ))
+        power = str(report.get("active_power_scheme") or "—").strip() or "—"
+        self.log(self.trf("gaming_report_power_fmt", plan=power))
+
+        for key, label_key in (
+            ("game_mode", "gaming_report_game_mode"),
+            ("game_dvr", "gaming_report_game_dvr"),
+            ("hags", "gaming_report_hags"),
+            ("power_throttling", "gaming_report_power_throttling"),
+            ("dynamic_tick", "gaming_report_dynamic_tick"),
+        ):
+            state = str(report.get(key) or "unknown")
+            state_text = self.tr(f"gaming_state_{state}")
+            self.log(self.trf("gaming_report_item_fmt", item=self.tr(label_key), state=state_text))
+
+        notes = list(report.get("notes") or [])
+        if notes:
+            for note in notes:
+                self.log(self.tr(str(note)))
+        else:
+            self.log(self.tr("gaming_report_no_critical_notes"))
+        self.log(self.tr("gaming_report_done"))
+
     def cleanup_registry_leftovers(self):
         include_machine = bool(self.is_admin)
         result = WindowsOps.cleanup_registry_leftovers(include_machine=include_machine)
@@ -2268,6 +2319,8 @@ class Cleaner(ctk.CTk):
         if self.is_running:
             return
         self.cancel_event.clear()
+        self._progress_target_value = 0.0
+        self._progress_display_value = 0.0
         self.progress.set(0)
         self.progress.start()
         self.set_running_state(True)
@@ -2281,6 +2334,8 @@ class Cleaner(ctk.CTk):
         self.total_size_bytes = 0
         self._last_progress_ui_at = 0.0
         self._last_progress_ui_bytes = 0
+        self._progress_target_value = 0.0
+        self._progress_display_value = 0.0
         self.progress.set(0)
         self.progress.start()
         self.set_running_state(True)
@@ -2367,7 +2422,34 @@ class Cleaner(ctk.CTk):
         self._pending_progress = None
         self.lbl_stats.configure(text=self.trf("freed_fmt", mb=mb), text_color=COLORS["success"])
         if progress is not None:
-            self.progress.set(progress)
+            self.animate_progress_to(progress)
+
+    def animate_progress_to(self, target: float) -> None:
+        target = max(0.0, min(1.0, float(target)))
+        self._progress_target_value = target
+        if getattr(self, "_progress_anim_after_id", None):
+            return
+        self._animate_progress_step()
+
+    def _animate_progress_step(self) -> None:
+        self._progress_anim_after_id = None
+        target = max(0.0, min(1.0, float(getattr(self, "_progress_target_value", 0.0))))
+        current = max(0.0, min(1.0, float(getattr(self, "_progress_display_value", 0.0))))
+        delta = target - current
+        if abs(delta) < 0.002:
+            current = target
+        else:
+            current += delta * 0.35
+        self._progress_display_value = current
+        try:
+            self.progress.set(current)
+        except Exception:
+            return
+        if abs(target - current) >= 0.002:
+            try:
+                self._progress_anim_after_id = self.after(24, self._animate_progress_step)
+            except Exception:
+                self._progress_anim_after_id = None
 
     def analyze_directory_tasks(self, dir_tasks: List[CleanerTask]) -> Tuple[int, Dict[str, int], List[Tuple[str, int]]]:
         total = 0
@@ -2606,7 +2688,7 @@ class Cleaner(ctk.CTk):
             if self.cancel_event.is_set():
                 self.log(self.tr("user_stopped"))
             else:
-                self.after(0, lambda: self.progress.set(1))
+                self.after(0, lambda: self.animate_progress_to(1))
                 self.log(self.tr("done_clean_sequence"))
         finally:
             self.after(0, lambda: self.set_running_state(False))
@@ -2656,7 +2738,7 @@ class Cleaner(ctk.CTk):
 
         ctk.CTkLabel(head, text=title, font=("Segoe UI", 16, "bold"), text_color=COLORS["white"]).grid(row=0, column=0, sticky="w")
 
-        btn_copy = ctk.CTkButton(head, text=self.tr("about_copy"), height=34, width=120, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"])
+        btn_copy = AnimatedButton(head, text=self.tr("about_copy"), height=34, width=120, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"])
         btn_copy.grid(row=0, column=2, sticky="e")
 
         txt = tk.Text(wrap, wrap="word", bg=COLORS["bg_soft"], fg=COLORS["white"], insertbackground=COLORS["white"])
@@ -2675,7 +2757,7 @@ class Cleaner(ctk.CTk):
 
         btn_copy.configure(command=do_copy)
 
-        ctk.CTkButton(wrap, text=self.tr("about_close"), height=40, fg_color=COLORS["gamer"], hover_color="#059669", command=win.destroy).pack(fill="x", padx=16, pady=(0, 16))
+        AnimatedButton(wrap, text=self.tr("about_close"), height=40, fg_color=COLORS["gamer"], hover_color="#059669", command=win.destroy).pack(fill="x", padx=16, pady=(0, 16))
 
     def open_doc_in_app(self, filename: str, title_key: str) -> None:
         path, text = self._read_local_doc(filename)
@@ -2757,16 +2839,16 @@ class Cleaner(ctk.CTk):
             left.pack(side="left", fill="both", expand=True, padx=14, pady=12)
             ctk.CTkLabel(left, text=self.tr(text_key), font=("Segoe UI", 13, "bold"), text_color=COLORS["white"]).pack(anchor="w")
             ctk.CTkLabel(left, text=self.tr(subtitle_key), font=("Segoe UI", 11), text_color=COLORS["text_gray"], wraplength=420, justify="left").pack(anchor="w", pady=(3, 0))
-            ctk.CTkButton(row, text=self.tr("about_open"), height=36, width=120, fg_color=COLORS["gamer"], hover_color="#059669", command=lambda: self.open_doc_in_app(filename, title_key)).pack(side="right", padx=12, pady=12)
+            AnimatedButton(row, text=self.tr("about_open"), height=36, width=120, fg_color=COLORS["gamer"], hover_color="#059669", command=lambda: self.open_doc_in_app(filename, title_key)).pack(side="right", padx=12, pady=12)
 
         doc_row("about_license", "about_license_sub", "LICENSE", "about_license")
         doc_row("about_privacy", "about_privacy_sub", "PRIVACY_POLICY.txt", "about_privacy")
 
         action_row = ctk.CTkFrame(wrap, fg_color="transparent")
         action_row.pack(fill="x", padx=18, pady=(8, 18))
-        self.btn_check_updates = ctk.CTkButton(action_row, text=self.tr("check_updates"), height=42, fg_color=COLORS["gamer"], hover_color="#059669", text_color=COLORS["white"], command=lambda: self.check_for_updates(silent_if_latest=False, source="about"))
+        self.btn_check_updates = AnimatedButton(action_row, text=self.tr("check_updates"), height=42, fg_color=COLORS["gamer"], hover_color="#059669", text_color=COLORS["white"], command=lambda: self.check_for_updates(silent_if_latest=False, source="about"))
         self.btn_check_updates.pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(action_row, text=self.tr("about_close"), height=42, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"], command=win.destroy).pack(side="left", fill="x", expand=True, padx=(10, 0))
+        AnimatedButton(action_row, text=self.tr("about_close"), height=42, fg_color=COLORS["bg_soft"], hover_color="#1F2937", text_color=COLORS["white"], command=win.destroy).pack(side="left", fill="x", expand=True, padx=(10, 0))
 
 
     def _set_update_check_busy(self, busy: bool) -> None:
@@ -3358,7 +3440,7 @@ class Cleaner(ctk.CTk):
             except Exception:
                 pass
 
-        download_btn = ctk.CTkButton(
+        download_btn = AnimatedButton(
             btns,
             text=self.tr("update_download"),
             height=44,
@@ -3370,7 +3452,7 @@ class Cleaner(ctk.CTk):
         )
         download_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
-        later_btn = ctk.CTkButton(
+        later_btn = AnimatedButton(
             btns,
             text=self.tr("update_later"),
             height=44,

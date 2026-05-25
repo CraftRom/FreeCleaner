@@ -1488,6 +1488,9 @@ class PathFinder:
         candidates = [
             ("obs_logs", "task.streaming_obs_logs.title", "task.streaming_obs_logs.desc", PathFinder._safe_join(appdata, r"obs-studio\logs"), {"app": "OBS Studio"}),
             ("obs_crashes", "task.streaming_obs_logs.title", "task.streaming_obs_logs.desc", PathFinder._safe_join(appdata, r"obs-studio\crashes"), {"app": "OBS Studio"}),
+            ("obs_browser_cache_streaming", "task.streaming_obs_cache.title", "task.streaming_obs_cache.desc", PathFinder._safe_join(appdata, r"obs-studio\plugin_config\obs-browser\Cache"), {"app": "OBS Studio"}),
+            ("obs_browser_code_cache", "task.streaming_obs_cache.title", "task.streaming_obs_cache.desc", PathFinder._safe_join(appdata, r"obs-studio\plugin_config\obs-browser\Code Cache"), {"app": "OBS Studio"}),
+            ("obs_browser_gpu_cache", "task.streaming_obs_cache.title", "task.streaming_obs_cache.desc", PathFinder._safe_join(appdata, r"obs-studio\plugin_config\obs-browser\GPUCache"), {"app": "OBS Studio"}),
             ("streamlabs_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"slobs-client\Cache"), {"app": "Streamlabs Desktop"}),
             ("streamlabs_code_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"slobs-client\Code Cache"), {"app": "Streamlabs Desktop"}),
             ("streamlabs_gpu_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(appdata, r"slobs-client\GPUCache"), {"app": "Streamlabs Desktop"}),
@@ -1496,6 +1499,7 @@ class PathFinder:
             ("twitch_studio_logs", "task.streaming_app_logs.title", "task.streaming_app_logs.desc", PathFinder._safe_join(appdata, r"Twitch Studio\Logs"), {"app": "Twitch Studio"}),
             ("xsplit_logs", "task.streaming_app_logs.title", "task.streaming_app_logs.desc", PathFinder._safe_join(appdata, r"SplitMediaLabs\XSplit Broadcaster\logs"), {"app": "XSplit Broadcaster"}),
             ("nvidia_broadcast_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(local, r"NVIDIA Corporation\NVIDIA Broadcast\Cache"), {"app": "NVIDIA Broadcast"}),
+            ("vdo_ninja_cache", "task.streaming_app_cache.title", "task.streaming_app_cache.desc", PathFinder._safe_join(local, r"VDO.Ninja\Cache"), {"app": "VDO.Ninja"}),
         ]
         return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
 
@@ -2419,6 +2423,118 @@ class WindowsOps:
             "disk_write": WindowsOps.quick_disk_write_test(primary_record_folder or tempfile.gettempdir(), 64),
         }
         return result
+
+    @staticmethod
+    def _registry_bool_state(key_path: str, value_name: str, enabled_value: Any = 1, disabled_value: Any = 0) -> str:
+        value = WindowsOps._query_registry_value(key_path, value_name)
+        if value is None:
+            return "unknown"
+        normalized = WindowsOps._normalize_registry_value(value, "REG_DWORD")
+        enabled_norm = WindowsOps._normalize_registry_value(enabled_value, "REG_DWORD")
+        disabled_norm = WindowsOps._normalize_registry_value(disabled_value, "REG_DWORD")
+        if normalized == enabled_norm:
+            return "enabled"
+        if normalized == disabled_norm:
+            return "disabled"
+        return "custom"
+
+    @staticmethod
+    def collect_gaming_compat_report() -> Dict[str, Any]:
+        """Collect read-only gaming/streaming compatibility hints.
+
+        The report is intentionally diagnostic.  It does not apply registry,
+        powercfg or BCDEdit changes, so it is safe to run before choosing tweaks.
+        """
+        report: Dict[str, Any] = {
+            "windows_version": ".".join(str(part) for part in get_windows_version()) if IS_WINDOWS else sys.platform,
+            "process_arch": get_process_architecture(),
+            "os_arch": get_os_architecture(),
+            "active_power_scheme": "unknown",
+            "game_mode": "unknown",
+            "game_dvr": "unknown",
+            "hags": "unsupported",
+            "power_throttling": "unknown",
+            "dynamic_tick": "unknown",
+            "notes": [],
+        }
+        notes: List[str] = report["notes"]
+        if not IS_WINDOWS:
+            notes.append("gaming_report_note_windows_only")
+            return report
+
+        rc, output = WindowsOps.run_command_capture(["powercfg.exe", "/getactivescheme"], timeout=30)
+        if rc == 0 and output:
+            report["active_power_scheme"] = " ".join(output.strip().split())
+
+        # Game Mode is controlled per user by GameBar keys.  Missing keys mean
+        # Windows will use defaults, so we avoid claiming a hard enabled state.
+        mode_values = [
+            WindowsOps._registry_bool_state(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1, 0),
+            WindowsOps._registry_bool_state(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1, 0),
+        ]
+        if "disabled" in mode_values:
+            report["game_mode"] = "disabled"
+        elif all(value == "enabled" for value in mode_values):
+            report["game_mode"] = "enabled"
+        else:
+            report["game_mode"] = "unknown"
+
+        # Windows capture/background recording can conflict with OBS recording.
+        capture_values = [
+            WindowsOps._registry_bool_state(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 1, 0),
+            WindowsOps._registry_bool_state(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "HistoricalCaptureEnabled", 1, 0),
+            WindowsOps._registry_bool_state(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 1, 0),
+        ]
+        policy_state = WindowsOps._registry_bool_state(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 1, 0)
+        if policy_state == "disabled" or all(value == "disabled" for value in capture_values if value != "unknown"):
+            report["game_dvr"] = "disabled"
+        elif "enabled" in capture_values or policy_state == "enabled":
+            report["game_dvr"] = "enabled"
+            notes.append("gaming_report_note_capture_enabled")
+        else:
+            report["game_dvr"] = "unknown"
+
+        if WindowsOps.supports_hags():
+            hags_value = WindowsOps._query_registry_value(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode")
+            normalized = WindowsOps._normalize_registry_value(hags_value, "REG_DWORD") if hags_value is not None else None
+            if normalized == 2:
+                report["hags"] = "enabled"
+            elif normalized == 1:
+                report["hags"] = "disabled"
+            elif normalized is None:
+                report["hags"] = "unknown"
+            else:
+                report["hags"] = "custom"
+        else:
+            notes.append("gaming_report_note_hags_unsupported")
+
+        power_value = WindowsOps._query_registry_value(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff")
+        normalized_power = WindowsOps._normalize_registry_value(power_value, "REG_DWORD") if power_value is not None else None
+        if normalized_power == 1:
+            report["power_throttling"] = "disabled"
+        elif normalized_power == 0:
+            report["power_throttling"] = "enabled"
+        else:
+            report["power_throttling"] = "unknown"
+
+        rc, output = WindowsOps.run_command_capture(["bcdedit.exe", "/enum", "{current}"], timeout=30)
+        lowered = (output or "").casefold()
+        if rc == 0 and "disabledynamictick" in lowered:
+            if re.search(r"disabledynamictick\s+yes", lowered):
+                report["dynamic_tick"] = "disabled"
+                notes.append("gaming_report_note_dynamic_tick_custom")
+            elif re.search(r"disabledynamictick\s+no", lowered):
+                report["dynamic_tick"] = "enabled"
+            else:
+                report["dynamic_tick"] = "custom"
+        elif rc == 0:
+            report["dynamic_tick"] = "default"
+
+        if is_32bit_process_on_64bit_windows():
+            notes.append("gaming_report_note_wow64")
+        if not WindowsOps.is_admin():
+            notes.append("gaming_report_note_admin_limited")
+        return report
 
     @staticmethod
     def registry_backup_root() -> str:
