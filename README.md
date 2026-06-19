@@ -1,7 +1,16 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-45 — Splash handoff polish: keeps the native splash visible until the Qt main window is fully styled and painted, preventing the gray background window from flashing behind the splash.
+Current package: 1.2.0.0-build-46 — Update system rebuild: uses CraftRom/FreeCleaner GitHub releases as the single update source, compares full base/build versions, selects the correct win64 installer asset, and can download/start the update from a safe per-user updates folder.
 
+
+## 1.2.0.0 build-46 — Update/version system rebuild
+
+- Moved update checks to the official CraftRom/FreeCleaner GitHub release feed.
+- Fixed version comparison for `v1.2`, `1.2.0.0-build-N` and release asset names.
+- Update checks now compare both base version and build number.
+- Release title version metadata is preferred over short tags when build metadata is present.
+- Installer selection now prefers the compatible `win64-setup.exe` asset and falls back to opening the release page when no installer asset is available.
+- Downloads are saved only to the per-user FreeCleaner updates folder and are launched through the existing safe installer launcher.
 
 
 ## Build 27 highlights

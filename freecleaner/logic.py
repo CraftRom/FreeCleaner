@@ -46,6 +46,11 @@ REGISTRY_BACKUP_DIRNAME = "registry_backups"
 UPDATES_DIRNAME = "updates"
 LOGS_DIRNAME = "logs"
 GITHUB_API_BASE = "https://api.github.com"
+APP_UPDATE_OWNER = os.environ.get("FREECLEANER_UPDATE_OWNER", "CraftRom").strip() or "CraftRom"
+APP_UPDATE_REPO = os.environ.get("FREECLEANER_UPDATE_REPO", "FreeCleaner").strip() or "FreeCleaner"
+APP_UPDATE_REPO_URL = f"https://github.com/{APP_UPDATE_OWNER}/{APP_UPDATE_REPO}"
+APP_UPDATE_RELEASES_URL = f"{APP_UPDATE_REPO_URL}/releases"
+APP_UPDATE_LATEST_RELEASE_URL = f"{APP_UPDATE_RELEASES_URL}/latest"
 
 
 @dataclass
@@ -464,33 +469,62 @@ def _format_version_display(raw: str) -> str:
     return f"v{a}.{b}.{c}.{d}"
 
 
-def normalize_version_tuple(raw: str) -> Tuple[int, ...]:
+_VERSION_RE = re.compile(
+    r"(?ix)"
+    r"(?:^|[^0-9])"
+    r"v?"
+    r"(?P<base>\d+(?:\.\d+){0,3})"
+    r"(?:\s*(?:-|_|\+|\.)?\s*build\s*(?:-|_|\.)?\s*(?P<build>\d+))?"
+)
+
+
+def extract_version_text(raw: str) -> str:
+    """Return the best version token found in a release tag/name/asset string."""
     text = (raw or "").strip()
     if not text:
-        return (0,)
-
-    if text.lower().startswith("v"):
-        text = text[1:]
-
-    text = text.split("+", 1)[0].strip()
-    text = text.split("-", 1)[0].strip()
-
-    parts: List[int] = []
-    for segment in text.split('.'):
-        piece = segment.strip()
-        if not piece:
+        return "0.0.0.0"
+    best = None
+    for match in _VERSION_RE.finditer(text):
+        candidate = match.group(0).strip(" -_+.")
+        if not candidate:
             continue
-        m = re.match(r"(\d+)", piece)
-        if not m:
-            break
-        parts.append(int(m.group(1)))
+        has_build = bool(match.group("build"))
+        parts_count = len((match.group("base") or "").split("."))
+        score = (100 if has_build else 0) + parts_count
+        if best is None or score > best[0]:
+            best = (score, candidate)
+    return best[1] if best else text
 
-    if not parts:
-        return (0,)
 
-    while len(parts) > 1 and parts[-1] == 0:
-        parts.pop()
-    return tuple(parts)
+def normalize_version_tuple(raw: str) -> Tuple[int, ...]:
+    """Normalize app/release versions into a comparable tuple.
+
+    Supports all formats used by FreeCleaner releases and CI artifacts:
+      - v1.2
+      - 1.2.0.0
+      - FreeCleaner 1.2.0.0-build-23
+      - FreeCleaner-1.2.0.0-build-23-win64-setup.exe
+    The returned tuple is always (major, minor, patch, revision, build).
+    """
+    text = extract_version_text(raw)
+    match = _VERSION_RE.search(text)
+    if not match:
+        return (0, 0, 0, 0, 0)
+
+    base_parts: List[int] = []
+    for segment in (match.group("base") or "0").split("."):
+        try:
+            base_parts.append(max(0, int(segment)))
+        except Exception:
+            base_parts.append(0)
+    while len(base_parts) < 4:
+        base_parts.append(0)
+    base_parts = base_parts[:4]
+    try:
+        build = max(0, int(match.group("build") or 0))
+    except Exception:
+        build = 0
+    return tuple(base_parts + [build])
 
 
 def compare_versions(left: str, right: str) -> int:
@@ -506,89 +540,119 @@ def compare_versions(left: str, right: str) -> int:
     return 0
 
 
-def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Optional[UpdateInfo]:
-    owner = (owner or '').strip()
-    repo = (repo or '').strip()
-    if not owner or not repo:
-        return None
+def _release_version_text(tag_name: str, name: str) -> str:
+    """Prefer full release title version over short tag when it contains build metadata."""
+    tag = (tag_name or "").strip()
+    title = (name or "").strip()
+    candidates = [title, tag]
+    best_text = tag or title or "0.0.0.0"
+    best_tuple = normalize_version_tuple(best_text)
+    best_score = -1
+    for candidate in candidates:
+        if not candidate:
+            continue
+        version = extract_version_text(candidate)
+        vt = normalize_version_tuple(version)
+        has_build = vt[-1] > 0 or bool(re.search(r"(?i)build", candidate))
+        score = (100 if has_build else 0) + sum(1 for part in vt[:4] if part != 0)
+        if score > best_score:
+            best_score = score
+            best_text = version
+            best_tuple = vt
+    return best_text or ".".join(str(x) for x in best_tuple[:4])
 
-    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest"
+
+def _github_api_request(url: str, timeout: int = 12) -> Optional[Dict[str, Any]]:
     request = urllib.request.Request(
         url,
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": f"{APP_NAME}-UpdateChecker",
+            "User-Agent": f"{APP_NAME}-UpdateChecker/{APP_VERSION_RAW if 'APP_VERSION_RAW' in globals() else '0'}",
             "X-GitHub-Api-Version": "2022-11-28",
         },
         method="GET",
     )
-
     try:
+        started = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8", errors="replace"))
-    except Exception:
+            status_code = getattr(response, "status", None) or getattr(response, "code", None)
+            log_system_response(
+                "http.response",
+                command={"method": "GET", "url": url},
+                returncode=status_code,
+                elapsed_ms=int((time.perf_counter() - started) * 1000),
+                timeout=timeout,
+                context={"update_check": True},
+            )
+            return payload if isinstance(payload, dict) else None
+    except Exception as exc:
+        log_system_response(
+            "http.update_check_failed",
+            command={"method": "GET", "url": url},
+            returncode="exception",
+            stderr=str(exc),
+            timeout=timeout,
+            context={"update_check": True},
+            level="WARNING",
+        )
         return None
 
-    if not isinstance(payload, dict):
+
+def _select_release_asset(assets: Any) -> Tuple[str, str]:
+    """Return (download_url, asset_name) for the best installer asset."""
+    if not isinstance(assets, list):
+        return "", ""
+
+    best: Tuple[int, str, str] = (-1, "", "")
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        candidate = str(asset.get("browser_download_url") or "").strip()
+        raw_name = str(asset.get("name") or "").strip()
+        if not candidate or not raw_name:
+            continue
+        name = raw_name.lower()
+        if not name.endswith((".exe", ".msi")):
+            continue
+        if not is_update_asset_compatible(raw_name):
+            continue
+        score = 10
+        if name.endswith("-setup.exe"):
+            score += 80
+        if name.endswith(f"-{get_update_asset_suffix()}-setup.exe"):
+            score += 60
+        if APP_NAME.lower() in name:
+            score += 20
+        if score > best[0]:
+            best = (score, candidate, raw_name)
+    return best[1], best[2]
+
+
+def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_UPDATE_REPO, timeout: int = 12) -> Optional[UpdateInfo]:
+    owner = (owner or APP_UPDATE_OWNER).strip()
+    repo = (repo or APP_UPDATE_REPO).strip()
+    if not owner or not repo:
+        return None
+
+    latest_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest"
+    payload = _github_api_request(latest_url, timeout=timeout)
+    if not payload:
         return None
 
     tag_name = str(payload.get("tag_name") or "").strip()
     name = str(payload.get("name") or tag_name or f"{owner}/{repo}").strip()
     body = str(payload.get("body") or "").strip()
-    html_url = str(payload.get("html_url") or "").strip()
+    html_url = str(payload.get("html_url") or f"https://github.com/{owner}/{repo}/releases/latest").strip()
     published_at = str(payload.get("published_at") or payload.get("created_at") or "").strip()
 
-    download_url = html_url
-    selected_asset_name = ""
-    assets = payload.get("assets")
-    if isinstance(assets, list):
-        arch_suffix = get_update_asset_suffix()
-        exact_setup = None
-        exact_setup_name = ""
-        win32_fallback = None
-        win32_fallback_name = ""
-        compatible_setup = None
-        compatible_setup_name = ""
-        generic_exe = None
-        generic_exe_name = ""
-        first_asset = None
-        first_asset_name = ""
+    download_url, selected_asset_name = _select_release_asset(payload.get("assets"))
+    if not download_url:
+        download_url = html_url
+        selected_asset_name = ""
 
-        for asset in assets:
-            if not isinstance(asset, dict):
-                continue
-            candidate = str(asset.get("browser_download_url") or "").strip()
-            raw_asset_name = str(asset.get("name") or "").strip()
-            asset_name = raw_asset_name.lower()
-            if not candidate:
-                continue
-
-            if first_asset is None:
-                first_asset = candidate
-                first_asset_name = raw_asset_name
-
-            if _asset_name_matches_update_arch(raw_asset_name, arch_suffix):
-                exact_setup = candidate
-                exact_setup_name = raw_asset_name
-                break
-
-            if _asset_name_is_compatible_fallback(raw_asset_name) and win32_fallback is None:
-                win32_fallback = candidate
-                win32_fallback_name = raw_asset_name
-
-            if is_update_asset_compatible(raw_asset_name) and compatible_setup is None:
-                compatible_setup = candidate
-                compatible_setup_name = raw_asset_name
-
-            if asset_name.endswith('.exe') and generic_exe is None and (not asset_name.endswith('-setup.exe') or is_update_asset_compatible(raw_asset_name)):
-                generic_exe = candidate
-                generic_exe_name = raw_asset_name
-
-        download_url = exact_setup or win32_fallback or compatible_setup or generic_exe or html_url
-        selected_asset_name = exact_setup_name or win32_fallback_name or compatible_setup_name or generic_exe_name
-
-    version_text = tag_name or name
-    return UpdateInfo(
+    version_text = _release_version_text(tag_name, name)
+    info = UpdateInfo(
         owner=owner,
         repo=repo,
         tag_name=tag_name or name,
@@ -601,6 +665,15 @@ def fetch_latest_github_release(owner: str, repo: str, timeout: int = 12) -> Opt
         version_text=version_text,
         version_tuple=normalize_version_tuple(version_text),
     )
+    log_action({
+        "update_release": f"{owner}/{repo}",
+        "tag": info.tag_name,
+        "name": info.name,
+        "version": info.version_text,
+        "asset": info.asset_name,
+        "url": info.html_url,
+    })
+    return info
 
 
 def get_default_download_dir() -> str:
@@ -1047,10 +1120,13 @@ def _parse_version_info_text(text: str) -> Dict[str, str]:
 
 def _load_version_info_from_file() -> Dict[str, str]:
     """Reads version_info.txt (external first, then bundled)."""
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    source_root = os.path.dirname(package_dir)
     candidates = [
         os.path.join(get_runtime_base_dir(), VERSION_INFO_FILENAME),
         os.path.join(get_bundle_base_dir(), VERSION_INFO_FILENAME),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), VERSION_INFO_FILENAME),
+        os.path.join(source_root, VERSION_INFO_FILENAME),
+        os.path.join(package_dir, VERSION_INFO_FILENAME),
     ]
     for path in candidates:
         try:

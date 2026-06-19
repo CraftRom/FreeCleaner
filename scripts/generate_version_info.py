@@ -21,7 +21,7 @@ def normalize_base_version(raw: str) -> tuple[int, int, int, int]:
 
     if len(parts) != 4:
         raise ValueError(
-            f"Version '{raw}' must contain 3 or 4 numeric parts, for example 0.2.0 or 0.2.0.0"
+            f"Version '{raw}' must contain 3 or 4 numeric parts, for example 1.2.0 or 1.2.0.0"
         )
 
     try:
@@ -78,7 +78,7 @@ def build_version_text(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate PyInstaller version_info.txt for FreeCleaner.")
-    parser.add_argument("--base-version", required=True, help="Base numeric version, e.g. 0.2.0.0")
+    parser.add_argument("--base-version", required=True, help="Base numeric version, e.g. 1.2.0.0")
     parser.add_argument("--build-number", required=True, type=int, help="CI build number")
     parser.add_argument("--product-name", default="FreeCleaner")
     parser.add_argument("--company-name", default="FreeCleaner")

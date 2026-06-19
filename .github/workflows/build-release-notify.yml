@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       base_version:
-        description: 'Base version (examples: 0.2, 0.2.0, 0.2.0.0)'
+        description: 'Base version (examples: 1.2, 1.2.0, 1.2.0.0)'
         required: true
         type: string
-        default: '0.2.0.0'
+        default: '1.2.0.0'
       is_prerelease:
         description: 'Mark release as pre-release'
         required: true

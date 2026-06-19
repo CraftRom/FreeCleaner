@@ -17,6 +17,7 @@ import re
 import sys
 import threading
 import time
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -61,6 +62,10 @@ from PySide6.QtWidgets import (
 from .logic import (
     APP_VERSION,
     APP_VERSION_RAW,
+    APP_UPDATE_LATEST_RELEASE_URL,
+    APP_UPDATE_OWNER,
+    APP_UPDATE_RELEASES_URL,
+    APP_UPDATE_REPO,
     CONFIG_PATH,
     LEGACY_CONFIG_PATH,
     CLEAN_WORKERS,
@@ -73,14 +78,21 @@ from .logic import (
     RegistryValueSpec,
     SafeFS,
     WindowsOps,
+    cleanup_old_update_files,
     compare_versions,
+    download_url_to_file,
     fetch_latest_github_release,
     find_icon_path,
     get_adaptive_workers,
+    get_update_download_path,
+    get_updates_dir,
     get_user_data_dir,
     get_logs_dir,
     get_system_drive_info,
+    guess_download_filename,
     language_display_name,
+    launch_update_installer,
+    schedule_update_cleanup_after_install,
 )
 from .runtime_logging import log_app, log_startup, log_error, log_action, log_security, log_qa_event, log_system_response, all_log_paths, app_log_path, startup_log_path
 
@@ -1134,6 +1146,8 @@ class FreeCleanerQt(QMainWindow):
         self._ui_watchdog_stop = threading.Event()
         self._auto_status_sync_enabled = False
         self._auto_update_check_enabled = False
+        self._update_check_running = False
+        self._update_download_running = False
         self._max_background_jobs = 2
         self.apply_runtime_config_flags()
         self.worker_bridge = WorkerBridge(self)
@@ -1778,7 +1792,7 @@ class FreeCleanerQt(QMainWindow):
         self.auto_update_switch = self.settings_toggle_card(
             startup_layout,
             "Автоматично перевіряти оновлення",
-            "Якщо дозволено автоперевірку на старті, FreeCleaner перевірить GitHub release у фоні після відкриття вікна.",
+            "Якщо дозволено автоперевірку на старті, FreeCleaner перевірить актуальний GitHub release CraftRom/FreeCleaner у фоні після відкриття вікна.",
             "auto_check_updates",
             True,
         )
@@ -3221,11 +3235,38 @@ class FreeCleanerQt(QMainWindow):
         except Exception:
             pass
         op = str(result.get("op") or "")
-        if op == "update" and self.setting_bool("notify_on_finish", True):
-            if result.get("available"):
-                self.show_toast(f"Доступне оновлення: {result.get('latest')}", "info")
+        if op == "update":
+            self._update_check_running = False
+            if result.get("failed"):
+                self.log(self.tr("update_check_failed"))
+                if self.setting_bool("notify_on_finish", True):
+                    self.show_toast(self.tr("update_check_failed"), "warning")
+            elif result.get("available"):
+                latest = str(result.get("latest") or "")
+                self.log(self.trf("update_available_log", current=APP_VERSION, latest=latest))
+                if self.setting_bool("notify_on_finish", True):
+                    self.show_toast(f"Доступне оновлення: {latest}", "info")
+                self.show_update_dialog(result)
             else:
-                self.show_toast("FreeCleaner актуальний", "info")
+                text = "FreeCleaner актуальний"
+                if result.get("newer_local"):
+                    text = "Локальна збірка новіша за останній GitHub release"
+                self.log(text)
+                if self.setting_bool("notify_on_finish", True):
+                    self.show_toast(text, "info")
+        elif op == "update_download":
+            self._update_download_running = False
+            ok = bool(result.get("ok"))
+            path = str(result.get("path") or "")
+            message = str(result.get("message") or "")
+            if ok:
+                self.log(self.trf("update_install_started", path=path))
+                self.show_toast(self.tr("update_install_started_button"), "success")
+                if IS_WINDOWS:
+                    QTimer.singleShot(1500, QApplication.quit)
+            else:
+                self.log(self.trf("update_download_failed_reason", reason=message))
+                self.show_toast(self.tr("update_download_failed"), "error")
         elif op == "registry_backup":
             path = str(result.get("path") or "")
             if path:
@@ -3265,7 +3306,11 @@ class FreeCleanerQt(QMainWindow):
                 self.background_jobs.remove((thread, worker))
         except Exception:
             pass
+        self._update_check_running = False
+        self._update_download_running = False
         self.log(f"Background job failed: {error}")
+        if hasattr(self, "toast"):
+            self.show_toast("Фонова дія завершилася з помилкою. Деталі в логах.", "error")
 
     def run_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         if self.thread is not None:
@@ -3735,14 +3780,164 @@ class FreeCleanerQt(QMainWindow):
         super().closeEvent(event)
 
     def check_updates(self) -> None:
-        self.log(self.tr("checking_updates"))
+        if getattr(self, "_update_check_running", False):
+            self.log(self.tr("update_check_running"))
+            self.show_toast(self.tr("update_check_running"), "warning")
+            return
+        limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
+        if len(getattr(self, "background_jobs", [])) >= limit:
+            self.show_toast("Фонові задачі зайняті. Повтори перевірку після завершення поточної дії.", "warning")
+            return
+        self._update_check_running = True
+        self.log(f"{self.tr('checking_updates')} ({APP_UPDATE_OWNER}/{APP_UPDATE_REPO})")
+
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
-            info = fetch_latest_github_release("LihvoDruida", "FreeCleaner")
-            if info and compare_versions(APP_VERSION_RAW, info.version_text) < 0:
+            emit(8, f"GitHub: {APP_UPDATE_OWNER}/{APP_UPDATE_REPO}")
+            info = fetch_latest_github_release(APP_UPDATE_OWNER, APP_UPDATE_REPO)
+            if not info:
+                emit(100, self.tr("update_check_failed"))
+                return {
+                    "total": self.analysis_total,
+                    "op": "update",
+                    "failed": True,
+                    "repo": f"{APP_UPDATE_OWNER}/{APP_UPDATE_REPO}",
+                    "release_url": APP_UPDATE_LATEST_RELEASE_URL,
+                }
+
+            cmp_result = compare_versions(APP_VERSION_RAW, info.version_text)
+            base = {
+                "total": self.analysis_total,
+                "op": "update",
+                "repo": f"{info.owner}/{info.repo}",
+                "current": APP_VERSION_RAW,
+                "current_display": APP_VERSION,
+                "latest": info.version_text,
+                "latest_name": info.name,
+                "tag": info.tag_name,
+                "release_url": info.html_url,
+                "download_url": info.download_url,
+                "asset_name": info.asset_name,
+                "published_at": info.published_at,
+                "body": info.body,
+            }
+            if cmp_result < 0:
                 emit(100, self.trf("update_available_log", current=APP_VERSION, latest=info.version_text))
-                return {"total": self.analysis_total, "op": "update", "available": True, "latest": info.version_text}
+                base["available"] = True
+                return base
             emit(100, self.trf("update_up_to_date_log", version=APP_VERSION))
-            return {"total": self.analysis_total, "op": "update", "available": False}
+            base["available"] = False
+            base["newer_local"] = cmp_result > 0
+            return base
+
+        self.run_background_worker(job)
+
+    def show_update_dialog(self, result: Dict[str, Any]) -> None:
+        latest = str(result.get("latest") or result.get("latest_name") or "")
+        current = str(result.get("current_display") or APP_VERSION)
+        release_url = str(result.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL)
+        body = str(result.get("body") or "").strip()
+        asset_name = str(result.get("asset_name") or "").strip()
+        published = str(result.get("published_at") or "").strip()
+
+        dlg = QMessageBox(self)
+        dlg.setIcon(QMessageBox.Information)
+        dlg.setWindowTitle(self.tr("update_dialog_title"))
+        dlg.setText(self.trf("update_available_body", current=current, latest=latest or "latest"))
+        details = []
+        if published:
+            details.append(self.trf("update_published_at", date=published))
+        if asset_name:
+            details.append(f"Asset: {asset_name}")
+        if release_url:
+            details.append(f"Release: {release_url}")
+        if body:
+            details.append("\n" + body[:5000])
+        dlg.setDetailedText("\n".join(details) if details else self.tr("update_no_changelog"))
+        download_btn = dlg.addButton(self.tr("update_download"), QMessageBox.AcceptRole)
+        open_btn = dlg.addButton("GitHub Release", QMessageBox.ActionRole)
+        later_btn = dlg.addButton(self.tr("update_later"), QMessageBox.RejectRole)
+        dlg.setDefaultButton(download_btn)
+        dlg.exec()
+        clicked = dlg.clickedButton()
+        if clicked == download_btn:
+            self.download_update_and_install(result)
+        elif clicked == open_btn:
+            try:
+                webbrowser.open(release_url)
+            except Exception as exc:
+                self.log(f"Could not open release page: {exc}")
+        else:
+            _ = later_btn
+
+    def download_update_and_install(self, update: Dict[str, Any]) -> None:
+        if getattr(self, "_update_download_running", False):
+            self.show_toast(self.tr("update_download_busy"), "warning")
+            return
+        download_url = str(update.get("download_url") or "").strip()
+        release_url = str(update.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL).strip()
+        asset_name = str(update.get("asset_name") or "").strip()
+        latest = str(update.get("latest") or update.get("latest_name") or "update")
+
+        if not download_url or not download_url.lower().startswith("https://"):
+            self.show_toast(self.tr("update_download_failed"), "error")
+            return
+        if not asset_name or not download_url.lower().endswith((".exe", ".msi")):
+            self.log("Update asset not found; opening release page instead.")
+            try:
+                webbrowser.open(release_url or download_url)
+                self.show_toast("Відкрито сторінку релізу GitHub", "info")
+            except Exception as exc:
+                self.show_toast(str(exc), "error")
+            return
+
+        limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
+        if len(getattr(self, "background_jobs", [])) >= limit:
+            self.show_toast("Фонові задачі зайняті. Повтори завантаження після завершення поточної дії.", "warning")
+            return
+        self._update_download_running = True
+        filename = asset_name or guess_download_filename(download_url, fallback="FreeCleaner-update.exe")
+        dest_path = get_update_download_path(filename, fallback="FreeCleaner-update.exe")
+        keep = {dest_path}
+        try:
+            removed = cleanup_old_update_files(keep)
+            if removed:
+                self.log(self.trf("update_cleanup_removed", count=removed))
+        except Exception:
+            pass
+        self.log(self.trf("update_download_started", version=latest))
+        self.log(self.trf("update_download_location", path=get_updates_dir(create=True)))
+
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            def on_progress(downloaded: int, total: Optional[int]) -> None:
+                if total and total > 0:
+                    percent = max(1, min(92, int(downloaded * 92 / total)))
+                    text = f"{self.tr('update_downloading')} {percent}%"
+                else:
+                    percent = 25
+                    text = f"{self.tr('update_downloading')} {downloaded // 1024} KB"
+                emit(percent, text)
+
+            ok, message = download_url_to_file(download_url, dest_path, progress_cb=on_progress)
+            if not ok:
+                emit(100, self.trf("update_download_failed_reason", reason=message))
+                return {"op": "update_download", "ok": False, "message": message, "path": dest_path}
+
+            emit(96, self.trf("update_download_saved", path=dest_path))
+            install_ok, install_message, pid = launch_update_installer(dest_path)
+            result = {
+                "op": "update_download",
+                "ok": bool(install_ok),
+                "path": dest_path,
+                "message": install_message,
+                "pid": pid,
+            }
+            if install_ok:
+                schedule_update_cleanup_after_install(pid)
+                emit(100, self.tr("update_install_started_button"))
+            else:
+                emit(100, self.trf("update_install_failed_reason", reason=install_message))
+            return result
+
         self.run_background_worker(job)
 
     def run_system_report(self) -> None:
