@@ -66,6 +66,8 @@ class UpdateInfo:
     published_at: str
     version_text: str
     version_tuple: Tuple[int, ...]
+    changelog: str = ""
+    changelog_count: int = 0
 
 
 
@@ -562,7 +564,7 @@ def _release_version_text(tag_name: str, name: str) -> str:
     return best_text or ".".join(str(x) for x in best_tuple[:4])
 
 
-def _github_api_request(url: str, timeout: int = 12) -> Optional[Dict[str, Any]]:
+def _github_api_request(url: str, timeout: int = 12) -> Optional[Any]:
     request = urllib.request.Request(
         url,
         headers={
@@ -585,7 +587,7 @@ def _github_api_request(url: str, timeout: int = 12) -> Optional[Dict[str, Any]]
                 timeout=timeout,
                 context={"update_check": True},
             )
-            return payload if isinstance(payload, dict) else None
+            return payload if isinstance(payload, (dict, list)) else None
     except Exception as exc:
         log_system_response(
             "http.update_check_failed",
@@ -597,6 +599,74 @@ def _github_api_request(url: str, timeout: int = 12) -> Optional[Dict[str, Any]]
             level="WARNING",
         )
         return None
+
+
+def _short_release_body(body: str, *, max_lines: int = 10, max_chars: int = 1400) -> str:
+    """Return a readable user-facing release note excerpt."""
+    text = str(body or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?s)<!--.*?-->", "", text)
+    text = re.sub(r"(?s)```.*?```", "", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    lines: List[str] = []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        line = re.sub(r"^#{1,6}\s*", "", line).strip()
+        line = re.sub(r"^[-*+]\s+", "• ", line).strip()
+        line = re.sub(r"^\d+[.)]\s+", "• ", line).strip()
+        line = re.sub(r"\s+", " ", line).strip()
+        if line:
+            lines.append(line)
+        if len(lines) >= max_lines:
+            break
+    result = "\n".join(lines).strip()
+    if len(result) > max_chars:
+        result = result[: max_chars - 1].rstrip() + "…"
+    return result
+
+
+def _build_recent_release_changelog(releases: Any, *, limit: int = 5) -> Tuple[str, int]:
+    """Build a changelog from the latest release tags returned by GitHub."""
+    if not isinstance(releases, list):
+        return "", 0
+    entries: List[str] = []
+    for release in releases:
+        if not isinstance(release, dict):
+            continue
+        if release.get("draft"):
+            continue
+        tag = str(release.get("tag_name") or "").strip()
+        name = str(release.get("name") or tag or "FreeCleaner").strip()
+        published = str(release.get("published_at") or release.get("created_at") or "").strip()[:10]
+        version = _release_version_text(tag, name)
+        title = name if name else version
+        if version and version not in title:
+            title = f"{title} ({version})"
+        if published:
+            title = f"{title} • {published}"
+        body = _short_release_body(str(release.get("body") or "").strip())
+        if body:
+            entries.append(f"{title}\n{body}")
+        else:
+            entries.append(f"{title}\n• Покращення стабільності та зручності FreeCleaner.")
+        if len(entries) >= limit:
+            break
+    return "\n\n".join(entries).strip(), len(entries)
+
+
+def fetch_recent_github_releases(owner: str = APP_UPDATE_OWNER, repo: str = APP_UPDATE_REPO, limit: int = 5, timeout: int = 12) -> List[Dict[str, Any]]:
+    owner = (owner or APP_UPDATE_OWNER).strip()
+    repo = (repo or APP_UPDATE_REPO).strip()
+    if not owner or not repo:
+        return []
+    safe_limit = max(1, min(10, int(limit or 5)))
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/releases?per_page={safe_limit}"
+    payload = _github_api_request(url, timeout=timeout)
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
 
 
 def _select_release_asset(assets: Any) -> Tuple[str, str]:
@@ -637,8 +707,11 @@ def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_U
 
     latest_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest"
     payload = _github_api_request(latest_url, timeout=timeout)
-    if not payload:
+    if not isinstance(payload, dict):
         return None
+
+    recent_releases = fetch_recent_github_releases(owner, repo, limit=5, timeout=timeout)
+    changelog, changelog_count = _build_recent_release_changelog(recent_releases, limit=5)
 
     tag_name = str(payload.get("tag_name") or "").strip()
     name = str(payload.get("name") or tag_name or f"{owner}/{repo}").strip()
@@ -657,13 +730,15 @@ def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_U
         repo=repo,
         tag_name=tag_name or name,
         name=name,
-        body=body,
+        body=changelog or body,
         html_url=html_url,
         download_url=download_url,
         asset_name=selected_asset_name,
         published_at=published_at,
         version_text=version_text,
         version_tuple=normalize_version_tuple(version_text),
+        changelog=changelog,
+        changelog_count=changelog_count,
     )
     log_action({
         "update_release": f"{owner}/{repo}",
@@ -672,6 +747,7 @@ def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_U
         "version": info.version_text,
         "asset": info.asset_name,
         "url": info.html_url,
+        "changelog_releases": info.changelog_count,
     })
     return info
 

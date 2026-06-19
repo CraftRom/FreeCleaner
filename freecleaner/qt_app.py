@@ -1187,6 +1187,7 @@ class UpdateDialog(QDialog):
         asset_name = str(self.result.get("asset_name") or "")
         published = str(self.result.get("published_at") or "")
         body = str(self.result.get("body") or "").strip()
+        changelog_count = int(self.result.get("changelog_count") or 0)
         release_url = str(self.result.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL)
 
         root = QVBoxLayout(self)
@@ -1251,7 +1252,7 @@ class UpdateDialog(QDialog):
         progress_l.addWidget(self.progress_meta)
         root.addWidget(progress_card)
 
-        notes_title = QLabel(self._tr("update_changelog"))
+        notes_title = QLabel(self._trf("update_changelog_recent", count=changelog_count or 5))
         notes_title.setObjectName("SectionTitle")
         root.addWidget(notes_title)
         self.notes = QTextEdit()
@@ -4268,7 +4269,8 @@ class FreeCleanerQt(QMainWindow):
                 "download_url": info.download_url,
                 "asset_name": info.asset_name,
                 "published_at": info.published_at,
-                "body": info.body,
+                "body": info.changelog or info.body,
+                "changelog_count": info.changelog_count,
             }
             if cmp_result < 0:
                 emit(100, self.trf("update_available_log", current=APP_VERSION, latest=info.version_text))

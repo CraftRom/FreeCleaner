@@ -1,16 +1,17 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-50 — Stable Windows packaging: FreeCleaner now ships as an installed app folder instead of a fragile one-file executable, preventing Python DLL startup failures from temporary extraction paths.
+Current package: 1.2.0.0-build-51 — Installer/update mode detection and recent changelog: setup now detects new installation vs in-place update, and the app builds the update changelog from the latest 5 GitHub release tags.
 
 
-## 1.2.0.0 build-50 — Stable Windows packaging
+## 1.2.0.0 build-51 — Installer update mode and recent release changelog
 
-- Reworked the Windows release package from one-file PyInstaller mode to one-directory mode.
-- The installer now copies the full FreeCleaner app folder, including Python, Qt and VC runtime files.
-- Removed UPX compression from the runtime package to avoid broken or blocked DLL loading.
-- Added explicit Python and VC runtime DLL collection for Python 3.13 builds.
-- Release workflow now uploads the installer and a portable ZIP instead of a fragile standalone EXE.
-- This prevents startup errors like `Failed to load Python DLL ... python313.dll` from temporary `_MEI` extraction folders.
+- Installer detects an existing FreeCleaner installation and switches into update mode.
+- Update mode reuses the existing installation folder and skips shortcut/directory steps that are only needed for first install.
+- Installer records install mode and installed version for future maintenance.
+- The app fetches the latest 5 GitHub releases and builds the update changelog from their tags and notes.
+- Update dialog now shows recent release history instead of only the latest release body.
+- Release notes are cleaned into short readable lines before they are shown in the UI.
+
 
 ## 1.2.0.0 build-49 — Localization cleanup
 
@@ -585,4 +586,3 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Added clickable setting cards with hover/pressed states and lightweight fade-in polish.
 - Background diagnostics/update/registry job limit is now configurable from Settings instead of being hardcoded.
 - Compact event log mode now hides noisy helper command lines from the visible UI log while retaining full disk logs for QA.
-
