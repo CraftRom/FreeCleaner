@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-33 — cleanup UI accounting fix: byte totals no longer overflow into negative MB, selected cleaner modules remain selected after cleanup, progress updates animate smoothly during long cleanup passes, and bulk cleanup no longer starts powershell.exe per locked temp file.
+Current package: 0.2.1.0-build-34 — optimizer interaction hardening: powercfg status parsing no longer reads numbers from GUIDs, power/boot toggle groups have a short stabilization lockout to prevent stacked system writes, and status refresh waits for power policy broadcasts before repainting.
 
 
 

@@ -869,6 +869,8 @@ class FreeCleanerQt(QMainWindow):
         self.worker: Optional[Worker] = None
         self.background_jobs: List[Tuple[QThread, Worker]] = []
         self.toggle_jobs: Dict[str, Tuple[QThread, Worker]] = {}
+        self._toggle_group_cooldown_until: Dict[str, float] = {}
+        self._toggle_group_cooldown_ms = 1200
         self.analysis_total = 0
         self.freed_bytes = 0
         self.revert_registry_specs: Dict[str, List[RegistryValueSpec]] = {}
@@ -2191,7 +2193,7 @@ class FreeCleanerQt(QMainWindow):
                 if task.category != "optimizer" or task.control != "switch":
                     continue
                 row = self.rows.get(task.key)
-                if not row or task.key in getattr(self, "toggle_jobs", {}):
+                if not row or task.key in getattr(self, "toggle_jobs", {}) or self.toggle_group_busy(task.key):
                     continue
                 row.control.setEnabled(self.row_base_enabled(row))
                 item = items.get(task.key) or {}
@@ -2333,7 +2335,7 @@ class FreeCleanerQt(QMainWindow):
         row.control.blockSignals(True)
         row.control.setChecked(bool(value))
         row.control.blockSignals(False)
-        row.control.setEnabled(self.row_base_enabled(row) and row.task.key not in getattr(self, "toggle_jobs", {}))
+        row.control.setEnabled(self.row_base_enabled(row) and row.task.key not in getattr(self, "toggle_jobs", {}) and not self.toggle_group_busy(row.task.key))
         row.set_selected_property(bool(value) and row.control.isEnabled())
         row.control.update()
 
@@ -2351,9 +2353,39 @@ class FreeCleanerQt(QMainWindow):
             return f"registry:{first.key_path.casefold()}:{first.name.casefold()}"
         return f"toggle:{key}"
 
+    def toggle_group_keys(self, group: str) -> List[str]:
+        return [k for k, task in self.tasks.items() if task.category == "optimizer" and self.toggle_action_group(k) == group]
+
+    def toggle_group_cooling(self, group: str) -> bool:
+        until = float(getattr(self, "_toggle_group_cooldown_until", {}).get(group, 0.0) or 0.0)
+        return time.monotonic() < until
+
     def toggle_group_busy(self, key: str) -> bool:
         group = self.toggle_action_group(key)
+        if self.toggle_group_cooling(group):
+            return True
         return any(other != key and self.toggle_action_group(other) == group for other in getattr(self, "toggle_jobs", {}))
+
+    def refresh_optimizer_interactivity(self) -> None:
+        for row in getattr(self, "rows", {}).values():
+            if row.task.category != "optimizer":
+                continue
+            group_busy = self.toggle_group_busy(row.task.key)
+            own_busy = row.task.key in getattr(self, "toggle_jobs", {})
+            enabled = self.row_base_enabled(row) and not group_busy and not own_busy
+            row.control.setEnabled(enabled)
+            row.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
+            row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
+            row.control.update()
+
+    def mark_toggle_group_cooldown(self, key: str, ms: Optional[int] = None) -> None:
+        group = self.toggle_action_group(key)
+        cooldown_ms = int(ms if ms is not None else getattr(self, "_toggle_group_cooldown_ms", 1200))
+        until = time.monotonic() + max(0.0, cooldown_ms / 1000.0)
+        self._toggle_group_cooldown_until[group] = max(float(self._toggle_group_cooldown_until.get(group, 0.0) or 0.0), until)
+        log_qa_event("toggle_group_cooldown", key=key, group=group, cooldown_ms=cooldown_ms)
+        self.refresh_optimizer_interactivity()
+        QTimer.singleShot(cooldown_ms + 50, self.refresh_optimizer_interactivity)
 
     def run_toggle_worker(self, key: str, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         if key in self.toggle_jobs:
@@ -2365,6 +2397,7 @@ class FreeCleanerQt(QMainWindow):
         worker = Worker(fn)
         worker.moveToThread(thread)
         self.toggle_jobs[key] = (thread, worker)
+        self.mark_toggle_group_cooldown(key, 600)
         thread.started.connect(worker.run)
         worker._fc_kind = "toggle"
         worker._fc_key = key
@@ -2421,6 +2454,7 @@ class FreeCleanerQt(QMainWindow):
 
     def on_toggle_finished(self, key: str, result: Dict[str, Any], thread: QThread, worker: Worker) -> None:
         self.toggle_jobs.pop(key, None)
+        self.mark_toggle_group_cooldown(key)
         log_qa_event("toggle_finished", key=key, result=result, remaining=list(self.toggle_jobs.keys()))
         row = self.rows.get(key)
         task = self.tasks.get(key)
@@ -2431,7 +2465,7 @@ class FreeCleanerQt(QMainWindow):
         final_status = "ready"
         if row and task:
             row.set_running(False)
-            row.control.setEnabled(self.row_base_enabled(row))
+            row.control.setEnabled(self.row_base_enabled(row) and not self.toggle_group_busy(key))
             if ok and not task.instant_action:
                 # Do not run any registry/powercfg/BCDEdit verification on the GUI
                 # thread.  The async status worker will verify and repaint shortly
@@ -2460,23 +2494,26 @@ class FreeCleanerQt(QMainWindow):
         self.refresh_backup_state()
         log_action({"toggle": key, "ok": ok, "requested_enabled": requested_enabled, "verified": verified_state})
         self.show_toast("Тумблер застосовано" if ok else "Не вдалося застосувати тумблер", "success" if ok else "error")
-        # Let QThread.quit()/deleteLater settle before a full status probe.
-        self.defer_status_sync(450)
+        self.refresh_optimizer_interactivity()
+        # Let QThread.quit()/deleteLater and power policy broadcasts settle before a full status probe.
+        self.defer_status_sync(1400)
 
     def on_toggle_failed(self, key: str, error: str, thread: QThread, worker: Worker) -> None:
         self.toggle_jobs.pop(key, None)
+        self.mark_toggle_group_cooldown(key)
         log_qa_event("toggle_failed", key=key, error=error, remaining=list(self.toggle_jobs.keys()))
         row = self.rows.get(key)
         if row:
             row.set_running(False)
-            row.control.setEnabled(self.row_base_enabled(row))
+            row.control.setEnabled(self.row_base_enabled(row) and not self.toggle_group_busy(key))
             row.update_status(self.status_for_task(row.task))
             row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
             row.control.update()
         self.log(error)
         log_error(f"toggle failed: {key}\n{error}")
         self.show_toast("Помилка тумблера. Деталі у Diagnostics.", "error")
-        self.defer_status_sync(180)
+        self.refresh_optimizer_interactivity()
+        self.defer_status_sync(1400)
 
     def start_toggle_task(self, key: str, enable: bool) -> None:
         task = self.tasks.get(key)
@@ -2492,7 +2529,8 @@ class FreeCleanerQt(QMainWindow):
             return
         if self.toggle_group_busy(key):
             self.rollback_toggle_control(row, previous_state)
-            self.show_toast("Суміжний системний твік ще виконується. Дочекайся завершення.", "warning")
+            self.refresh_optimizer_interactivity()
+            self.show_toast("Суміжний системний твік ще виконується або стабілізується. Дочекайся завершення.", "warning")
             return
         if task.requires_admin and not self.is_admin:
             self.rollback_toggle_control(row, previous_state)
@@ -2632,13 +2670,14 @@ class FreeCleanerQt(QMainWindow):
         for row in getattr(self, "rows", {}).values():
             admin_prompt_allowed = row.switch_mode and row.task.category == "optimizer"
             base_enabled = row.task.state != "disabled" and (not row.task.requires_admin or self.is_admin or admin_prompt_allowed)
-            row_busy = bool(busy and row.task.category != "optimizer") or row.task.key in getattr(self, "toggle_jobs", {})
+            group_busy = row.task.category == "optimizer" and self.toggle_group_busy(row.task.key)
+            row_busy = bool(busy and row.task.category != "optimizer") or row.task.key in getattr(self, "toggle_jobs", {}) or group_busy
             row.control.setEnabled(base_enabled and not row_busy)
             row.setCursor(Qt.PointingHandCursor if base_enabled and not row_busy else Qt.ArrowCursor)
         if not busy:
             # Repaint rows after transient busy-disable so they do not stay grey.
             for row in getattr(self, "rows", {}).values():
-                if row.task.category == "optimizer" and row.task.key not in getattr(self, "toggle_jobs", {}):
+                if row.task.category == "optimizer" and row.task.key not in getattr(self, "toggle_jobs", {}) and not self.toggle_group_busy(row.task.key):
                     row.update_status(self.status_for_task(row.task))
 
     def on_background_progress(self, _percent: int, text: str) -> None:

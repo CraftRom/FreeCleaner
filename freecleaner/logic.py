@@ -3323,17 +3323,19 @@ class WindowsOps:
 
     @staticmethod
     def parse_powercfg_numeric_value(output: str) -> Optional[int]:
-        """Extract the current numeric value from powercfg output.
+        """Extract only an explicit AC setting value from powercfg output.
 
-        Supports both `/GETACVALUEINDEX` and `/QUERY` output.  The parser is
-        intentionally tolerant because Windows localizes some labels while the
-        numeric values remain hexadecimal/decimal.
+        Older builds used the last number found in the text as a fallback.  That
+        is unsafe: on localized/OEM output without a real setting block it can
+        pick numbers from the scheme GUID, for example the ``9685`` segment in a
+        Balanced plan GUID, and then mark hidden CPU power settings as applied.
         """
         text = str(output or "")
         if not text.strip():
             return None
         patterns = (
             r"Current\s+AC\s+Power\s+Setting\s+Index\s*:\s*(0x[0-9a-fA-F]+|\d+)",
+            r"Power\s+Setting\s+AC\s+Value\s+Index\s*:\s*(0x[0-9a-fA-F]+|\d+)",
             r"AC\s+Power\s+Setting\s+Index\s*:\s*(0x[0-9a-fA-F]+|\d+)",
         )
         for pattern in patterns:
@@ -3344,14 +3346,7 @@ class WindowsOps:
                     return int(raw, 16) if raw.lower().startswith("0x") else int(raw)
                 except Exception:
                     return None
-        matches = re.findall(r"0x[0-9a-fA-F]+|\b\d+\b", text)
-        if not matches:
-            return None
-        raw = matches[-1]
-        try:
-            return int(raw, 16) if raw.lower().startswith("0x") else int(raw)
-        except Exception:
-            return None
+        return None
 
     @staticmethod
     def bcdedit_current_output(*, timeout: int = 45) -> Tuple[int, str]:
