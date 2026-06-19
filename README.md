@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-52 — Installer language selection: setup now starts with a language choice, reuses the saved language during updates when available, and writes the selected language as the app default.
+Current package: 1.2.0.0-build-53 — Installer language selection: setup now starts with a language choice, reuses the saved language during updates when available, and writes the selected language as the app default.
 
 
 ## 1.2.0.0 build-52 — Installer update mode and recent release changelog

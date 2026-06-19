@@ -47,14 +47,6 @@ ArchitecturesAllowed=x86compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-InstallModeFreshTitle=Install FreeCleaner
-InstallModeFreshWelcome=Install FreeCleaner
-InstallModeFreshDescription=This will install FreeCleaner on this computer.
-InstallModeUpdateTitle=Update FreeCleaner
-InstallModeUpdateWelcome=Update FreeCleaner
-InstallModeUpdateDescription=Setup found an existing FreeCleaner installation and will update it in place.
-InstallModeUpdateInfo=Installed version: %1%2New version: {#MyAppVersion}
-InstallModeNewInfo=New installation: {#MyAppVersion}
 LaunchAfterInstall=Launch FreeCleaner
 DesktopShortcut=Create a desktop shortcut
 AdditionalShortcuts=Additional shortcuts:
@@ -284,6 +276,9 @@ begin
   begin
     if LoadStringFromFile(Path, Content) then
       Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'language'));
+    if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'app_language'));
+    if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'locale'));
+    if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'default_language'));
   end;
 end;
 
@@ -301,32 +296,23 @@ end;
 
 function ReplaceOrAddJsonLanguage(Content: String; Value: String): String;
 var
-  KeyToken: String;
-  P, C, Q1, Q2, CloseBrace: Integer;
+  CloseBrace: Integer;
   Body: String;
 begin
   Value := NormalizeLanguagePreference(Value);
   Content := Trim(Content);
-  KeyToken := '"language"';
-  P := Pos(KeyToken, Content);
-  if P > 0 then
-  begin
-    C := P + Length(KeyToken);
-    while (C <= Length(Content)) and (Copy(Content, C, 1) <> ':') do C := C + 1;
-    Q1 := C + 1;
-    while (Q1 <= Length(Content)) and (Copy(Content, Q1, 1) <> '"') do Q1 := Q1 + 1;
-    Q2 := Q1 + 1;
-    while (Q2 <= Length(Content)) and (Copy(Content, Q2, 1) <> '"') do Q2 := Q2 + 1;
-    if (Q1 <= Length(Content)) and (Q2 <= Length(Content)) then
-    begin
-      Result := Copy(Content, 1, Q1) + Value + Copy(Content, Q2, Length(Content) - Q2 + 1);
-      Exit;
-    end;
-  end;
 
+  { Keep this file intentionally simple and predictable. The app treats these
+    keys as the default language written by the installer. Existing user
+    settings are preserved by the app on first launch, while installer metadata
+    remains clear for future update runs. }
   if (Length(Content) < 2) or (Copy(Content, 1, 1) <> '{') then
   begin
-    Result := '{'#13#10'  "language": "' + Value + '"'#13#10'}';
+    Result := '{'#13#10 +
+      '  "language": "' + Value + '",'#13#10 +
+      '  "app_language": "' + Value + '",'#13#10 +
+      '  "locale": "' + Value + '"'#13#10 +
+      '}';
     Exit;
   end;
 
@@ -334,15 +320,28 @@ begin
   while (CloseBrace > 0) and (Copy(Content, CloseBrace, 1) <> '}') do CloseBrace := CloseBrace - 1;
   if CloseBrace <= 0 then
   begin
-    Result := '{'#13#10'  "language": "' + Value + '"'#13#10'}';
+    Result := '{'#13#10 +
+      '  "language": "' + Value + '",'#13#10 +
+      '  "app_language": "' + Value + '",'#13#10 +
+      '  "locale": "' + Value + '"'#13#10 +
+      '}';
     Exit;
   end;
 
   Body := Trim(Copy(Content, 2, CloseBrace - 2));
   if Body = '' then
-    Result := '{'#13#10'  "language": "' + Value + '"'#13#10'}'
+    Result := '{'#13#10 +
+      '  "language": "' + Value + '",'#13#10 +
+      '  "app_language": "' + Value + '",'#13#10 +
+      '  "locale": "' + Value + '"'#13#10 +
+      '}'
   else
-    Result := '{'#13#10'  "language": "' + Value + '",'#13#10 + Body + #13#10'}';
+    Result := '{'#13#10 +
+      '  "language": "' + Value + '",'#13#10 +
+      '  "app_language": "' + Value + '",'#13#10 +
+      '  "locale": "' + Value + '",'#13#10 +
+      Body + #13#10 +
+      '}';
 end;
 
 procedure SaveSelectedLanguageConfig();
@@ -542,10 +541,14 @@ begin
   if CurPageID = wpReady then
   begin
     if IsUpdateInstall then
-      InfoText := UiText('update_title') + ': ' + ExistingVersion + ' → {#MyAppVersion}'
+      InfoText := UiText('update_title') + ': ' + ExistingVersion + ' -> {#MyAppVersion}'
     else
       InfoText := UiText('ready_new');
     InfoText := InfoText + #13#10 + UiText('language_title') + ': ' + LanguageName(SelectedLanguagePreference);
+
+    { Do not use parameterized {cm:...} constants here. Inno Setup treats
+      a pipe-delimited value as part of the message name and aborts the installer
+      with "Unknown custom message name" on the Ready page. }
     WizardForm.ReadyMemo.Lines.Insert(0, '');
     WizardForm.ReadyMemo.Lines.Insert(0, InfoText);
   end;
