@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import webbrowser
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -28,7 +29,7 @@ except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QProgressBar,
@@ -55,6 +57,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QToolButton,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -1684,7 +1687,8 @@ class FreeCleanerQt(QMainWindow):
         b1.setObjectName("PrimaryButton")
         b1.clicked.connect(self.manual_registry_backup)
         b2 = QPushButton(self.tr("restore_registry_backup"))
-        b2.clicked.connect(self.open_restore_dialog)
+        b2.setToolTip("Відновлює найновішу доступну резервну копію реєстру")
+        b2.clicked.connect(self.restore_latest_registry_backup)
         b3 = QPushButton(self.tr("open_backup_folder") if self.tr("open_backup_folder") != "open_backup_folder" else "Відкрити папку backup")
         b3.clicked.connect(lambda: WindowsOps.open_in_file_manager(WindowsOps.registry_backup_root()))
         actions.addWidget(b1)
@@ -1695,6 +1699,9 @@ class FreeCleanerQt(QMainWindow):
         parent.addWidget(panel)
 
         self.backup_list = QListWidget()
+        self.backup_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.backup_list.itemDoubleClicked.connect(self.restore_registry_backup_item)
+        self.backup_list.customContextMenuRequested.connect(self.show_registry_backup_context_menu)
         parent.addWidget(self.backup_list, 1)
 
     def build_diagnostics_page(self, parent: QVBoxLayout) -> None:
@@ -3618,26 +3625,53 @@ class FreeCleanerQt(QMainWindow):
             return
         self.backup_list.clear()
         backups = WindowsOps.list_registry_backups()
-        for item in backups:
-            self.backup_list.addItem(f"{item.get('created')} • {item.get('name')} • {item.get('count')} .reg")
+        for backup in backups:
+            row = QListWidgetItem(f"{backup.get('created')} • {backup.get('name')} • {backup.get('count')} .reg")
+            row.setData(Qt.UserRole, dict(backup))
+            row.setToolTip(str(backup.get("path") or ""))
+            self.backup_list.addItem(row)
         if hasattr(self, "home_backup_metric"):
             self.home_backup_metric.metric_label.setText(str(len(backups)))  # type: ignore[attr-defined]
 
-    def open_restore_dialog(self) -> None:
+    def _selected_registry_backup(self, item: Optional[QListWidgetItem] = None) -> Optional[Dict[str, Any]]:
+        if item is None and hasattr(self, "backup_list"):
+            item = self.backup_list.currentItem()
+        if item is not None:
+            data = item.data(Qt.UserRole)
+            if isinstance(data, dict):
+                return dict(data)
         backups = WindowsOps.list_registry_backups()
         if not backups:
+            return None
+        row = self.backup_list.currentRow() if hasattr(self, "backup_list") else 0
+        row = row if 0 <= row < len(backups) else 0
+        return dict(backups[row])
+
+    def _confirm_registry_restore(self, backup: Dict[str, Any], *, latest: bool = False) -> bool:
+        title = "Відновити найновішу резервну копію?" if latest else "Відновити цю резервну копію?"
+        details = (
+            f"{title}\n\n"
+            f"Дата: {backup.get('created')}\n"
+            f"Папка: {backup.get('name')}\n"
+            f"Файлів: {backup.get('count')} .reg\n\n"
+            "Перед імпортом FreeCleaner створить pre-restore snapshot, щоб можна було відкотити відновлення."
+        )
+        return QMessageBox.question(self, "FreeCleaner", details) == QMessageBox.Yes
+
+    def _start_registry_restore(self, backup: Dict[str, Any], *, latest: bool = False) -> None:
+        if not backup:
             QMessageBox.information(self, "FreeCleaner", self.tr("registry_restore_missing"))
             return
-        current_row = self.backup_list.currentRow() if hasattr(self, "backup_list") else 0
-        current_row = current_row if 0 <= current_row < len(backups) else 0
-        backup = backups[current_row]
         if not self.is_admin:
             QMessageBox.warning(self, "FreeCleaner", self.tr("restore_registry_admin_required"))
             return
-        if QMessageBox.question(self, "FreeCleaner", f"Restore backup?\n{backup.get('name')}") != QMessageBox.Yes:
+        if not self._confirm_registry_restore(backup, latest=latest):
             return
         backup_path = str(backup.get("path") or "")
         backup_name = str(backup.get("name") or "backup")
+        if not backup_path:
+            QMessageBox.warning(self, "FreeCleaner", self.tr("registry_restore_missing"))
+            return
         self.log(f"Registry restore: {backup_name}...")
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
             emit(10, f"Registry restore: {backup_name}...")
@@ -3645,6 +3679,106 @@ class FreeCleanerQt(QMainWindow):
             emit(100, "Registry restore: done" if ok else "Registry restore: failed")
             return {"op": "registry_restore", "ok": bool(ok), "name": backup_name}
         self.run_background_worker(job)
+
+    def restore_latest_registry_backup(self) -> None:
+        backups = WindowsOps.list_registry_backups()
+        if not backups:
+            QMessageBox.information(self, "FreeCleaner", self.tr("registry_restore_missing"))
+            return
+        self._start_registry_restore(dict(backups[0]), latest=True)
+
+    def restore_registry_backup_item(self, item: QListWidgetItem) -> None:
+        backup = self._selected_registry_backup(item)
+        if backup:
+            self._start_registry_restore(backup)
+
+    def open_restore_dialog(self) -> None:
+        backup = self._selected_registry_backup()
+        if not backup:
+            QMessageBox.information(self, "FreeCleaner", self.tr("registry_restore_missing"))
+            return
+        self._start_registry_restore(backup)
+
+    def _trash_menu_icon(self) -> QIcon:
+        pix = QPixmap(18, 18)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        try:
+            color = QColor(178, 75, 75)
+            painter.setPen(QPen(color, 1.7))
+            painter.drawLine(5, 6, 13, 6)
+            painter.drawLine(7, 4, 11, 4)
+            painter.drawRect(6, 7, 6, 8)
+            painter.drawLine(8, 9, 8, 14)
+            painter.drawLine(10, 9, 10, 14)
+        finally:
+            painter.end()
+        return QIcon(pix)
+
+    def _open_registry_backup_location(self, backup: Dict[str, Any]) -> None:
+        path = os.path.abspath(str(backup.get("path") or ""))
+        if path and os.path.isdir(path):
+            WindowsOps.open_in_file_manager(path)
+            self.log(f"Registry backup location opened: {path}")
+        else:
+            QMessageBox.warning(self, "FreeCleaner", self.tr("registry_restore_missing"))
+
+    def _delete_registry_backup(self, backup: Dict[str, Any]) -> None:
+        path = os.path.abspath(str(backup.get("path") or ""))
+        root = os.path.abspath(WindowsOps.registry_backup_root())
+        name = str(backup.get("name") or os.path.basename(path) or "backup")
+        try:
+            if not path or not os.path.isdir(path) or os.path.commonpath([root, path]) != root or path == root:
+                raise ValueError("unsafe backup path")
+        except Exception:
+            QMessageBox.warning(self, "FreeCleaner", "Неможливо безпечно видалити цю резервну копію.")
+            return
+        text = (
+            "Видалити цю резервну копію?\n\n"
+            f"{backup.get('created')} • {name}\n"
+            f"Файлів: {backup.get('count')} .reg\n\n"
+            "Буде видалено тільки цю конкретну папку backup з її файлами."
+        )
+        if QMessageBox.question(self, "FreeCleaner", text) != QMessageBox.Yes:
+            return
+        try:
+            shutil.rmtree(path, ignore_errors=False)
+            self.log(f"Registry backup deleted: {name}")
+            self.refresh_backup_state()
+            self.show_toast("Резервну копію видалено", "success")
+        except Exception as exc:
+            self.log(f"Registry backup delete failed: {name}: {exc}")
+            self.show_toast("Не вдалося видалити резервну копію", "error")
+
+    def show_registry_backup_context_menu(self, pos) -> None:
+        if not hasattr(self, "backup_list"):
+            return
+        item = self.backup_list.itemAt(pos)
+        if item is None:
+            return
+        self.backup_list.setCurrentItem(item)
+        backup = self._selected_registry_backup(item)
+        if not backup:
+            return
+        menu = QMenu(self.backup_list)
+        menu.setStyleSheet("QMenu { background: #242524; color: #F4F4F4; border: 1px solid #3A3B3A; padding: 4px; } QMenu::item { padding: 7px 28px 7px 24px; } QMenu::item:selected { background: #303130; }")
+        restore_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        folder_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
+        restore_action = QAction(restore_icon, "Відновити", self)
+        open_action = QAction(folder_icon, "Відкрити розташування", self)
+        delete_action = QAction(self._trash_menu_icon(), "Видалити", self)
+        delete_action.setToolTip("Видаляє тільки вибрану папку backup з її файлами")
+        menu.addAction(restore_action)
+        menu.addAction(open_action)
+        menu.addSeparator()
+        menu.addAction(delete_action)
+        chosen = menu.exec(self.backup_list.viewport().mapToGlobal(pos))
+        if chosen == restore_action:
+            self._start_registry_restore(backup)
+        elif chosen == open_action:
+            self._open_registry_backup_location(backup)
+        elif chosen == delete_action:
+            self._delete_registry_backup(backup)
 
     def setting_bool(self, key: str, default: bool = False) -> bool:
         value = self.config.get(key, default)

@@ -1,9 +1,9 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-46 — Update system rebuild: uses CraftRom/FreeCleaner GitHub releases as the single update source, compares full base/build versions, selects the correct win64 installer asset, and can download/start the update from a safe per-user updates folder.
+Current package: 1.2.0.0-build-47 — Registry backup restore UX: the toolbar restore button restores the newest backup, double-click restores a selected backup after confirmation, and right-click opens a Windows-like context menu with restore, open-location and delete actions.
 
 
-## 1.2.0.0 build-46 — Update/version system rebuild
+## 1.2.0.0 build-47 — Update/version system rebuild
 
 - Moved update checks to the official CraftRom/FreeCleaner GitHub release feed.
 - Fixed version comparison for `v1.2`, `1.2.0.0-build-N` and release asset names.
