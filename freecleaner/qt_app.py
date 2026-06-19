@@ -28,8 +28,8 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap, QPolygon
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -44,6 +44,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QAbstractItemView,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -282,7 +285,7 @@ QPushButton:disabled, QToolButton:disabled {
     background: #191A19;
     border-color: #252625;
 }
-QLineEdit, QComboBox, QTextEdit, QListWidget {
+QLineEdit, QComboBox, QTextEdit, QListWidget, QTreeWidget {
     background: #202120;
     color: #F7F7F7;
     border: 1px solid #343534;
@@ -291,6 +294,10 @@ QLineEdit, QComboBox, QTextEdit, QListWidget {
     selection-color: #101110;
 }
 QLineEdit { padding: 9px 10px; }
+QTreeWidget { alternate-background-color: #1B1C1B; outline: 0; }
+QTreeWidget::item { padding: 7px 6px; border-bottom: 1px solid #272827; }
+QTreeWidget::item:selected { background: #263619; color: #FFFFFF; }
+QHeaderView::section { background: #242524; color: #D8D8D8; border: 0; border-right: 1px solid #303130; padding: 8px 7px; font-weight: 800; }
 QComboBox { padding: 8px 10px; }
 QComboBox::drop-down { border: 0; width: 28px; }
 QCheckBox { color: #F5F5F5; spacing: 10px; }
@@ -883,6 +890,13 @@ class WorkerBridge(QObject):
     background_failed = Signal(str, object, object)
 
 
+class ProgramsBridge(QObject):
+    scan_finished = Signal(object)
+    scan_failed = Signal(str)
+    cleanup_finished = Signal(object)
+    cleanup_failed = Signal(str)
+
+
 class DiagnosticCard(QFrame):
     def __init__(self, title: str, desc: str, button_text: str, callback: Callable[[], None], accent: str = "#76B900") -> None:
         super().__init__()
@@ -1148,6 +1162,381 @@ def _format_bytes(value: object) -> str:
     if idx == 0:
         return f"{int(size)} {units[idx]}"
     return f"{size:.1f} {units[idx]}"
+
+
+
+def _program_norm(value: str) -> str:
+    value = str(value or "").lower()
+    value = re.sub(r"[^a-z0-9а-яіїєґё]+", " ", value, flags=re.IGNORECASE)
+    return " ".join(value.split())
+
+
+_PROGRAM_TOKEN_STOP = {
+    "app", "apps", "application", "setup", "installer", "update", "updater", "helper", "runtime",
+    "microsoft", "windows", "system", "package", "packages", "common", "files", "program", "programs",
+    "x64", "x86", "win64", "win32", "version", "freecleaner",
+}
+_APPDATA_SKIP_NAMES = {
+    "microsoft", "packages", "temp", "temporary internet files", "programs", "windows", "crashdumps",
+    "connecteddevicesplatform", "comms", "d3dscache", "nvidia", "amd", "intel", "freecleaner",
+}
+
+
+def _program_tokens(*values: str) -> set[str]:
+    tokens: set[str] = set()
+    for value in values:
+        normalized = _program_norm(value)
+        if not normalized:
+            continue
+        compact = normalized.replace(" ", "")
+        if len(compact) >= 4 and compact not in _PROGRAM_TOKEN_STOP:
+            tokens.add(compact)
+        for token in normalized.split():
+            if len(token) >= 4 and token not in _PROGRAM_TOKEN_STOP:
+                tokens.add(token)
+    return tokens
+
+
+def _path_drive(path: str) -> str:
+    try:
+        drive, _tail = os.path.splitdrive(os.path.abspath(path or ""))
+        return drive.upper() or "—"
+    except Exception:
+        return "—"
+
+
+def _expand_win_path(path: str) -> str:
+    return os.path.expandvars(str(path or "").strip().strip('"'))
+
+
+def _extract_exe_from_command(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    raw = raw.replace("/I{", "{").replace("/X{", "{")
+    if raw.startswith('"'):
+        end = raw.find('"', 1)
+        candidate = raw[1:end] if end > 1 else raw.strip('"')
+    else:
+        match = re.search(r"[A-Za-z]:\\[^\n\r\t]*?\.exe", raw, flags=re.IGNORECASE)
+        candidate = match.group(0) if match else raw.split()[0]
+    candidate = _expand_win_path(candidate.split(",")[0])
+    if candidate.lower().endswith(".exe") and os.path.isfile(candidate):
+        return candidate
+    return ""
+
+
+def _find_exe_in_install_dir(path: str, display_name: str = "") -> str:
+    folder = _expand_win_path(path)
+    if not folder or not os.path.isdir(folder):
+        return ""
+    preferred_tokens = _program_tokens(display_name, os.path.basename(folder))
+    try:
+        candidates: list[str] = []
+        with os.scandir(folder) as it:
+            for entry in it:
+                try:
+                    if entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".exe"):
+                        candidates.append(entry.path)
+                except OSError:
+                    continue
+        if not candidates:
+            return ""
+        def score(p: str) -> tuple[int, int, str]:
+            name = os.path.splitext(os.path.basename(p))[0]
+            tokens = _program_tokens(name)
+            hit = len(preferred_tokens & tokens)
+            low = name.lower()
+            bad = 1 if any(x in low for x in ("unins", "setup", "update", "helper", "crash", "report")) else 0
+            return (-hit, bad, name.lower())
+        candidates.sort(key=score)
+        return candidates[0]
+    except Exception:
+        return ""
+
+
+def _appdata_roots() -> list[str]:
+    roots: list[str] = []
+    for env_name in ("APPDATA", "LOCALAPPDATA"):
+        value = os.environ.get(env_name)
+        if value and os.path.isdir(value):
+            roots.append(value)
+    user_profile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    locallow = os.path.join(user_profile, "AppData", "LocalLow") if user_profile else ""
+    if locallow and os.path.isdir(locallow):
+        roots.append(locallow)
+    unique: list[str] = []
+    seen: set[str] = set()
+    for path in roots:
+        norm = os.path.normcase(os.path.abspath(path))
+        if norm not in seen:
+            seen.add(norm)
+            unique.append(path)
+    return unique
+
+
+def _safe_appdata_child(path: str) -> bool:
+    if not path:
+        return False
+    try:
+        abs_path = os.path.abspath(path)
+        if SafeFS._is_reparse_point(abs_path):
+            return False
+        for root in _appdata_roots():
+            root_abs = os.path.abspath(root)
+            try:
+                if os.path.commonpath([root_abs, abs_path]) == root_abs and os.path.normcase(root_abs) != os.path.normcase(abs_path):
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        return False
+    return False
+
+
+def _read_reg_value(key: Any, name: str, default: Any = "") -> Any:
+    try:
+        return winreg.QueryValueEx(key, name)[0]
+    except Exception:
+        return default
+
+
+def _iter_installed_programs_from_registry() -> list[dict[str, Any]]:
+    if not IS_WINDOWS or winreg is None:
+        return []
+    roots = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    ]
+    by_key: dict[str, dict[str, Any]] = {}
+    for hive, path in roots:
+        try:
+            base = winreg.OpenKey(hive, path)
+        except Exception:
+            continue
+        try:
+            count = winreg.QueryInfoKey(base)[0]
+            for idx in range(count):
+                try:
+                    sub_name = winreg.EnumKey(base, idx)
+                    sub = winreg.OpenKey(base, sub_name)
+                except Exception:
+                    continue
+                try:
+                    name = str(_read_reg_value(sub, "DisplayName", "") or "").strip()
+                    if not name:
+                        continue
+                    if int(_read_reg_value(sub, "SystemComponent", 0) or 0) == 1:
+                        continue
+                    release_type = str(_read_reg_value(sub, "ReleaseType", "") or "").lower()
+                    if release_type in {"security update", "update rollup", "hotfix"}:
+                        continue
+                    publisher = str(_read_reg_value(sub, "Publisher", "") or "").strip()
+                    install_location = _expand_win_path(str(_read_reg_value(sub, "InstallLocation", "") or ""))
+                    display_icon = str(_read_reg_value(sub, "DisplayIcon", "") or "")
+                    uninstall = str(_read_reg_value(sub, "UninstallString", "") or "")
+                    estimated = _read_reg_value(sub, "EstimatedSize", 0) or 0
+                    try:
+                        estimated_bytes = max(0, int(estimated)) * 1024
+                    except Exception:
+                        estimated_bytes = 0
+                    exe_path = _extract_exe_from_command(display_icon) or _extract_exe_from_command(uninstall)
+                    if not exe_path and install_location:
+                        exe_path = _find_exe_in_install_dir(install_location, name)
+                    if install_location and not os.path.isdir(install_location):
+                        install_location = os.path.dirname(exe_path) if exe_path else install_location
+                    key = _program_norm(name + " " + (publisher or ""))
+                    if not key:
+                        continue
+                    existing = by_key.get(key)
+                    record = {
+                        "name": name,
+                        "publisher": publisher,
+                        "install_path": install_location if install_location and os.path.exists(install_location) else "",
+                        "exe_path": exe_path if exe_path and os.path.isfile(exe_path) else "",
+                        "estimated_size": estimated_bytes,
+                        "tokens": _program_tokens(name, publisher, os.path.basename(install_location or "")),
+                    }
+                    if existing:
+                        if not existing.get("install_path") and record.get("install_path"):
+                            existing.update(record)
+                        elif int(record.get("estimated_size") or 0) > int(existing.get("estimated_size") or 0):
+                            existing.update(record)
+                    else:
+                        by_key[key] = record
+                finally:
+                    try:
+                        sub.Close()
+                    except Exception:
+                        pass
+        finally:
+            try:
+                base.Close()
+            except Exception:
+                pass
+    return list(by_key.values())
+
+
+def _scan_appdata_children(cancel_event: Optional[threading.Event] = None) -> list[dict[str, Any]]:
+    children: list[dict[str, Any]] = []
+    for root in _appdata_roots():
+        if cancel_event is not None and cancel_event.is_set():
+            break
+        try:
+            with os.scandir(root) as it:
+                for entry in it:
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
+                    try:
+                        if not entry.is_dir(follow_symlinks=False):
+                            continue
+                        name = entry.name.strip()
+                        if not name or name.lower() in _APPDATA_SKIP_NAMES:
+                            continue
+                        if SafeFS._entry_is_reparse_point(entry):
+                            continue
+                        tokens = _program_tokens(name)
+                        if not tokens:
+                            continue
+                        children.append({
+                            "name": name,
+                            "path": entry.path,
+                            "root": root,
+                            "tokens": tokens,
+                        })
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return children
+
+
+def _program_match_score(program: dict[str, Any], child: dict[str, Any]) -> int:
+    ptokens = set(program.get("tokens") or set())
+    ctokens = set(child.get("tokens") or set())
+    if not ptokens or not ctokens:
+        return 0
+    score = len(ptokens & ctokens) * 10
+    pname = _program_norm(str(program.get("name") or "")).replace(" ", "")
+    cname = _program_norm(str(child.get("name") or "")).replace(" ", "")
+    if pname and cname and (pname in cname or cname in pname):
+        score += 18
+    return score
+
+
+def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> list[dict[str, Any]]:
+    installed = _iter_installed_programs_from_registry()
+    app_children = _scan_appdata_children(cancel_event)
+    matched_child_indexes: set[int] = set()
+    program_leftovers: dict[int, list[dict[str, Any]]] = {idx: [] for idx in range(len(installed))}
+
+    for cidx, child in enumerate(app_children):
+        best_idx = -1
+        best_score = 0
+        for pidx, program in enumerate(installed):
+            score = _program_match_score(program, child)
+            if score > best_score:
+                best_idx = pidx
+                best_score = score
+        if best_idx >= 0 and best_score >= 10:
+            program_leftovers.setdefault(best_idx, []).append(child)
+            matched_child_indexes.add(cidx)
+
+    entries: list[dict[str, Any]] = []
+    for pidx, program in enumerate(installed):
+        if cancel_event is not None and cancel_event.is_set():
+            break
+        leftovers = program_leftovers.get(pidx, [])
+        leftover_paths = [str(x.get("path") or "") for x in leftovers if x.get("path")]
+        install_path = str(program.get("install_path") or "")
+        install_size = int(program.get("estimated_size") or 0)
+        if not install_size and install_path and os.path.isdir(install_path):
+            install_size = SafeFS.fast_size_limited(install_path, cancel_event, max_seconds=0.35, max_entries=1800)
+        leftover_size = SafeFS.fast_size_many_limited(leftover_paths, cancel_event, max_seconds=0.55, max_entries=3200) if leftover_paths else 0
+        leftover_drives = sorted({_path_drive(p) for p in leftover_paths if p})
+        entries.append({
+            "status": "installed",
+            "name": str(program.get("name") or ""),
+            "publisher": str(program.get("publisher") or ""),
+            "install_path": install_path,
+            "exe_path": str(program.get("exe_path") or ""),
+            "install_drive": _path_drive(install_path) if install_path else "—",
+            "install_size": install_size,
+            "leftover_paths": leftover_paths,
+            "leftover_drive": ", ".join(leftover_drives) if leftover_drives else "—",
+            "leftover_size": leftover_size,
+        })
+
+    for cidx, child in enumerate(app_children):
+        if cidx in matched_child_indexes:
+            continue
+        if cancel_event is not None and cancel_event.is_set():
+            break
+        path = str(child.get("path") or "")
+        size = SafeFS.fast_size_limited(path, cancel_event, max_seconds=0.45, max_entries=2600) if path else 0
+        entries.append({
+            "status": "removed",
+            "name": str(child.get("name") or ""),
+            "publisher": "",
+            "install_path": "",
+            "exe_path": "",
+            "install_drive": "removed",
+            "install_size": 0,
+            "leftover_paths": [path] if path else [],
+            "leftover_drive": _path_drive(path),
+            "leftover_size": size,
+        })
+
+    entries.sort(key=lambda item: (0 if item.get("status") == "removed" else 1, str(item.get("name") or "").lower()))
+    return entries
+
+
+def delete_program_leftover_paths(paths: list[str], cancel_event: Optional[threading.Event] = None) -> dict[str, int]:
+    result = {"removed_bytes": 0, "removed_items": 0, "errors": 0}
+    unique: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        if not path:
+            continue
+        try:
+            abs_path = os.path.abspath(path)
+        except Exception:
+            continue
+        norm = os.path.normcase(abs_path)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        unique.append(abs_path)
+    for path in unique:
+        if cancel_event is not None and cancel_event.is_set():
+            break
+        if not os.path.exists(path):
+            continue
+        if not _safe_appdata_child(path):
+            log_security(f"blocked unsafe program leftover delete: {path}", level="WARNING")
+            result["errors"] += 1
+            continue
+        try:
+            size = SafeFS.fast_size(path, cancel_event)
+            if os.path.isdir(path):
+                def onerror(func, p, _exc):
+                    try:
+                        SafeFS._clear_attributes(p, is_dir=os.path.isdir(p))
+                        func(p)
+                    except Exception:
+                        pass
+                shutil.rmtree(path, onerror=onerror)
+            else:
+                SafeFS._clear_attributes(path, is_dir=False)
+                os.remove(path)
+            result["removed_bytes"] += max(0, int(size or 0))
+            result["removed_items"] += 1
+            log_action(f"program leftover removed: {path}")
+        except Exception as exc:
+            result["errors"] += 1
+            log_error(f"program leftover delete failed: {path}: {exc}")
+    return result
 
 
 def _format_eta(seconds: object) -> str:
@@ -1429,7 +1818,16 @@ class FreeCleanerQt(QMainWindow):
         self._update_progress_dialog: Optional[UpdateDialog] = None
         self._update_download_cancel_event: Optional[threading.Event] = None
         self._max_background_jobs = 2
+        self.program_entries: List[Dict[str, Any]] = []
+        self._program_scan_running = False
+        self._program_scan_started = False
+        self._program_cleanup_running = False
         self.apply_runtime_config_flags()
+        self.programs_bridge = ProgramsBridge(self)
+        self.programs_bridge.scan_finished.connect(self.on_program_scan_ready, Qt.QueuedConnection)
+        self.programs_bridge.scan_failed.connect(self.on_program_scan_failed, Qt.QueuedConnection)
+        self.programs_bridge.cleanup_finished.connect(self.on_program_cleanup_finished, Qt.QueuedConnection)
+        self.programs_bridge.cleanup_failed.connect(self.on_program_cleanup_failed, Qt.QueuedConnection)
         self.worker_bridge = WorkerBridge(self)
         self.worker_bridge.toggle_progress.connect(self.on_toggle_progress, Qt.QueuedConnection)
         self.worker_bridge.toggle_finished.connect(self.on_toggle_finished, Qt.QueuedConnection)
@@ -1631,6 +2029,7 @@ class FreeCleanerQt(QMainWindow):
         items = [
             ("home", self.tr("nav_home")),
             ("cleaner", self.tr("nav_cleaner")),
+            ("programs", self.tr("nav_programs")),
             ("optimizer", self.tr("nav_optimizer")),
             ("registry", self.tr("nav_registry")),
             ("diagnostics", self.tr("nav_diagnostics")),
@@ -1651,7 +2050,7 @@ class FreeCleanerQt(QMainWindow):
                 btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
                 btn.setText(label)
             else:
-                fallback = {"home": "⌂", "cleaner": "◫", "optimizer": "☑", "registry": "▣", "diagnostics": "◈", "settings": "⚙"}.get(icon_name, "•")
+                fallback = {"home": "⌂", "cleaner": "◫", "programs": "▦", "optimizer": "☑", "registry": "▣", "diagnostics": "◈", "settings": "⚙"}.get(icon_name, "•")
                 btn.setText(f"{fallback}\n{label}")
                 btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
             btn.setToolTip(text)
@@ -1674,6 +2073,8 @@ class FreeCleanerQt(QMainWindow):
         if previous == index:
             return
         self.stack.setCurrentIndex(index)
+        if index == getattr(self, "programs_page_index", -1) and not getattr(self, "_program_scan_started", False):
+            QTimer.singleShot(150, self.start_program_scan)
         page = self.stack.currentWidget()
         if page is not None:
             UiFx.fade_in(page, 140)
@@ -1687,7 +2088,7 @@ class FreeCleanerQt(QMainWindow):
         from the stored asset path is cheap and keeps the rail stable.
         """
         specs = getattr(self, "_nav_icon_specs", [])
-        fallback_map = {"home": "⌂", "cleaner": "◫", "optimizer": "☑", "registry": "▣", "diagnostics": "◈", "settings": "⚙"}
+        fallback_map = {"home": "⌂", "cleaner": "◫", "programs": "▦", "optimizer": "☑", "registry": "▣", "diagnostics": "◈", "settings": "⚙"}
         for btn, icon_name, label, text in specs:
             try:
                 icon_path = find_icon_path(os.path.join("nav", f"{icon_name}.svg")) or find_icon_path(os.path.join("nav", f"{icon_name}.png"))
@@ -1756,6 +2157,13 @@ class FreeCleanerQt(QMainWindow):
         )
         self.build_cleaner_page(cleaner_layout)
         self.stack.addWidget(self.cleaner_page)
+
+        self.programs_page, programs_layout = self.content_page(
+            self.tr("programs_title"),
+            self.tr("programs_subtitle"),
+        )
+        self.build_programs_page(programs_layout)
+        self.programs_page_index = self.stack.addWidget(self.programs_page)
 
         self.optimizer_page, opt_layout = self.content_page(
             self.tr("optimizer_modules").strip(),
@@ -2014,6 +2422,298 @@ class FreeCleanerQt(QMainWindow):
         except Exception:
             pass
         parent.addWidget(self.log_box, 1)
+
+    def build_programs_page(self, parent: QVBoxLayout) -> None:
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(12)
+
+        top = QHBoxLayout()
+        self.program_scan_btn = QPushButton(self.tr("programs_scan"))
+        self.program_scan_btn.setObjectName("PrimaryButton")
+        self.program_scan_btn.clicked.connect(self.start_program_scan)
+        top.addWidget(self.program_scan_btn)
+        self.program_clean_removed_btn = QPushButton(self.tr("programs_clean_removed"))
+        self.program_clean_removed_btn.setObjectName("DangerButton")
+        self.program_clean_removed_btn.setEnabled(False)
+        self.program_clean_removed_btn.clicked.connect(self.clean_removed_program_leftovers)
+        top.addWidget(self.program_clean_removed_btn)
+        top.addStretch(1)
+        self.program_summary = QLabel(self.tr("programs_summary_empty"))
+        self.program_summary.setObjectName("Muted")
+        top.addWidget(self.program_summary)
+        layout.addLayout(top)
+
+        self.program_search = QLineEdit()
+        self.program_search.setPlaceholderText(self.tr("programs_search_placeholder"))
+        self.program_search.textChanged.connect(self.filter_program_rows)
+        layout.addWidget(self.program_search)
+
+        self.program_tree = QTreeWidget()
+        self.program_tree.setColumnCount(7)
+        self.program_tree.setHeaderLabels([
+            self.tr("programs_col_name"),
+            self.tr("programs_col_status"),
+            self.tr("programs_col_install_disk"),
+            self.tr("programs_col_install_size"),
+            self.tr("programs_col_leftover_disk"),
+            self.tr("programs_col_leftover_size"),
+            self.tr("programs_col_location"),
+        ])
+        self.program_tree.setAlternatingRowColors(True)
+        self.program_tree.setRootIsDecorated(False)
+        self.program_tree.setSortingEnabled(True)
+        self.program_tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.program_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.program_tree.customContextMenuRequested.connect(self.show_program_context_menu)
+        self.program_tree.itemDoubleClicked.connect(lambda item, _col: self.open_program_location(item.data(0, Qt.UserRole) or {}))
+        self.program_tree.setMinimumHeight(430)
+        layout.addWidget(self.program_tree, 1)
+        parent.addWidget(panel, 1)
+
+    def _program_icon(self, removed: bool = False) -> QIcon:
+        pix = QPixmap(20, 20)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.Antialiasing)
+        if removed:
+            painter.setBrush(QColor("#3A1717"))
+            painter.setPen(QPen(QColor("#C65B5B"), 2))
+            painter.drawEllipse(3, 3, 14, 14)
+            painter.setPen(QPen(QColor("#E07A7A"), 2))
+            painter.drawLine(7, 7, 13, 13)
+            painter.drawLine(13, 7, 7, 13)
+        else:
+            painter.setBrush(QColor("#1D2A12"))
+            painter.setPen(QPen(QColor("#76B900"), 2))
+            painter.drawRoundedRect(3, 4, 14, 12, 2, 2)
+            painter.drawLine(6, 8, 14, 8)
+        painter.end()
+        return QIcon(pix)
+
+    def _context_icon(self, kind: str) -> QIcon:
+        pix = QPixmap(18, 18)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.Antialiasing)
+        if kind == "run":
+            painter.setPen(QPen(QColor("#76B900"), 2))
+            painter.setBrush(QColor("#76B900"))
+            painter.drawPolygon(QPolygon([pix.rect().center() + QPoint(-3, -6), pix.rect().center() + QPoint(-3, 6), pix.rect().center() + QPoint(6, 0)]))
+        elif kind == "folder":
+            painter.setPen(QPen(QColor("#D8B45A"), 2))
+            painter.setBrush(QColor("#4A3715"))
+            painter.drawRoundedRect(2, 5, 14, 10, 2, 2)
+            painter.drawLine(3, 5, 7, 3)
+        elif kind == "delete":
+            painter.setPen(QPen(QColor("#B95A5A"), 2))
+            painter.drawLine(5, 5, 13, 13)
+            painter.drawLine(13, 5, 5, 13)
+        painter.end()
+        return QIcon(pix)
+
+    def start_program_scan(self) -> None:
+        if getattr(self, "_program_scan_running", False):
+            return
+        self._program_scan_started = True
+        self._program_scan_running = True
+        self.program_scan_btn.setEnabled(False)
+        self.program_clean_removed_btn.setEnabled(False)
+        self.program_summary.setText(self.tr("programs_summary_scanning"))
+        self.program_tree.clear()
+        def worker() -> None:
+            try:
+                entries = scan_program_inventory(threading.Event())
+                self.programs_bridge.scan_finished.emit(entries)
+            except Exception as exc:
+                import traceback
+                detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                log_error(detail)
+                self.programs_bridge.scan_failed.emit(str(exc))
+        threading.Thread(target=worker, name="FreeCleanerProgramInventory", daemon=True).start()
+
+    def on_program_scan_ready(self, entries: object) -> None:
+        self._program_scan_running = False
+        self.program_scan_btn.setEnabled(True)
+        try:
+            self.program_entries = list(entries or [])  # type: ignore[arg-type]
+        except Exception:
+            self.program_entries = []
+        self.render_program_entries()
+        removed_count = sum(1 for e in self.program_entries if e.get("status") == "removed")
+        leftover_total = sum(int(e.get("leftover_size") or 0) for e in self.program_entries)
+        self.program_summary.setText(self.trf("programs_summary_fmt", count=len(self.program_entries), removed=removed_count, size=_format_bytes(leftover_total)))
+        self.program_clean_removed_btn.setEnabled(removed_count > 0)
+        self.show_toast(self.tr("programs_scan_done"), "success")
+
+    def on_program_scan_failed(self, error: str) -> None:
+        self._program_scan_running = False
+        self.program_scan_btn.setEnabled(True)
+        self.program_summary.setText(self.tr("programs_scan_failed"))
+        QMessageBox.warning(self, "FreeCleaner", self.trf("programs_scan_failed_detail", error=error))
+
+    def render_program_entries(self) -> None:
+        self.program_tree.setSortingEnabled(False)
+        self.program_tree.clear()
+        for entry in self.program_entries:
+            removed = entry.get("status") == "removed"
+            status = self.tr("programs_status_removed") if removed else self.tr("programs_status_installed")
+            location = self.tr("programs_install_location_removed") if removed else (entry.get("install_path") or self.tr("programs_unknown"))
+            if removed and entry.get("leftover_paths"):
+                location = str((entry.get("leftover_paths") or [""])[0])
+            item = QTreeWidgetItem([
+                str(entry.get("name") or self.tr("programs_unknown")),
+                status,
+                self.tr("programs_install_location_removed") if removed else str(entry.get("install_drive") or "—"),
+                _format_bytes(entry.get("install_size") or 0) if not removed else "—",
+                str(entry.get("leftover_drive") or "—"),
+                _format_bytes(entry.get("leftover_size") or 0),
+                location,
+            ])
+            item.setIcon(0, self._program_icon(removed))
+            item.setData(0, Qt.UserRole, entry)
+            if removed:
+                item.setForeground(1, QColor("#FCA5A5"))
+            self.program_tree.addTopLevelItem(item)
+        for col in range(self.program_tree.columnCount()):
+            self.program_tree.resizeColumnToContents(col)
+        self.program_tree.setSortingEnabled(True)
+        self.program_tree.sortItems(1, Qt.DescendingOrder)
+        self.filter_program_rows()
+
+    def filter_program_rows(self) -> None:
+        if not hasattr(self, "program_tree"):
+            return
+        query = _program_norm(self.program_search.text() if hasattr(self, "program_search") else "")
+        for idx in range(self.program_tree.topLevelItemCount()):
+            item = self.program_tree.topLevelItem(idx)
+            hay = _program_norm(" ".join(item.text(col) for col in range(item.columnCount())))
+            item.setHidden(bool(query and query not in hay))
+
+    def current_program_entry(self) -> Dict[str, Any]:
+        item = self.program_tree.currentItem() if hasattr(self, "program_tree") else None
+        if not item:
+            return {}
+        data = item.data(0, Qt.UserRole)
+        return data if isinstance(data, dict) else {}
+
+    def show_program_context_menu(self, pos) -> None:
+        item = self.program_tree.itemAt(pos)
+        if not item:
+            return
+        self.program_tree.setCurrentItem(item)
+        entry = item.data(0, Qt.UserRole) or {}
+        if not isinstance(entry, dict):
+            return
+        menu = QMenu(self)
+        run_action = QAction(self._context_icon("run"), self.tr("programs_open_run"), menu)
+        run_action.setEnabled(bool(entry.get("exe_path")) and entry.get("status") != "removed")
+        run_action.triggered.connect(lambda: self.open_or_run_program(entry))
+        menu.addAction(run_action)
+        loc_action = QAction(self._context_icon("folder"), self.tr("programs_open_location"), menu)
+        loc_action.triggered.connect(lambda: self.open_program_location(entry))
+        menu.addAction(loc_action)
+        menu.addSeparator()
+        del_action = QAction(self._context_icon("delete"), self.tr("programs_delete_leftovers"), menu)
+        del_action.setEnabled(bool(entry.get("leftover_paths")))
+        del_action.triggered.connect(lambda: self.delete_selected_program_leftovers(entry))
+        menu.addAction(del_action)
+        menu.exec(self.program_tree.viewport().mapToGlobal(pos))
+
+    def open_or_run_program(self, entry: Dict[str, Any]) -> None:
+        path = str(entry.get("exe_path") or "")
+        if not path or not os.path.isfile(path):
+            self.open_program_location(entry)
+            return
+        try:
+            if IS_WINDOWS:
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                webbrowser.open(path)
+            log_action(f"program launched: {path}")
+        except Exception as exc:
+            QMessageBox.warning(self, "FreeCleaner", self.trf("programs_open_failed", error=str(exc)))
+
+    def open_program_location(self, entry: Dict[str, Any]) -> None:
+        paths = list(entry.get("leftover_paths") or [])
+        path = ""
+        if entry.get("status") == "removed" and paths:
+            path = str(paths[0])
+        else:
+            path = str(entry.get("install_path") or "") or (str(paths[0]) if paths else "")
+        if path and os.path.isfile(path):
+            path = os.path.dirname(path)
+        if not path or not os.path.exists(path):
+            QMessageBox.information(self, "FreeCleaner", self.tr("programs_no_location"))
+            return
+        try:
+            if IS_WINDOWS:
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                webbrowser.open(path)
+            log_action(f"program location opened: {path}")
+        except Exception as exc:
+            QMessageBox.warning(self, "FreeCleaner", self.trf("programs_open_failed", error=str(exc)))
+
+    def delete_selected_program_leftovers(self, entry: Optional[Dict[str, Any]] = None) -> None:
+        entry = entry or self.current_program_entry()
+        paths = [str(p) for p in (entry.get("leftover_paths") or []) if p]
+        if not paths:
+            QMessageBox.information(self, "FreeCleaner", self.tr("programs_no_leftovers"))
+            return
+        name = str(entry.get("name") or self.tr("programs_unknown"))
+        text = self.trf("programs_delete_selected_confirm", name=name, count=len(paths), size=_format_bytes(entry.get("leftover_size") or 0))
+        if QMessageBox.question(self, self.tr("programs_confirm_title"), text) != QMessageBox.Yes:
+            return
+        self._run_program_cleanup(paths)
+
+    def clean_removed_program_leftovers(self) -> None:
+        removed = [e for e in self.program_entries if e.get("status") == "removed" and e.get("leftover_paths")]
+        if not removed:
+            QMessageBox.information(self, "FreeCleaner", self.tr("programs_no_leftovers"))
+            return
+        paths: list[str] = []
+        total = 0
+        for entry in removed:
+            paths.extend([str(p) for p in (entry.get("leftover_paths") or []) if p])
+            total += int(entry.get("leftover_size") or 0)
+        text = self.trf("programs_delete_removed_all_confirm", count=len(removed), size=_format_bytes(total))
+        if QMessageBox.question(self, self.tr("programs_confirm_title"), text) != QMessageBox.Yes:
+            return
+        self._run_program_cleanup(paths)
+
+    def _run_program_cleanup(self, paths: List[str]) -> None:
+        if getattr(self, "_program_cleanup_running", False):
+            return
+        self._program_cleanup_running = True
+        self.program_clean_removed_btn.setEnabled(False)
+        self.program_scan_btn.setEnabled(False)
+        self.program_summary.setText(self.tr("programs_cleanup_running"))
+        def worker() -> None:
+            try:
+                result = delete_program_leftover_paths(paths, threading.Event())
+                self.programs_bridge.cleanup_finished.emit(result)
+            except Exception as exc:
+                import traceback
+                detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                log_error(detail)
+                self.programs_bridge.cleanup_failed.emit(str(exc))
+        threading.Thread(target=worker, name="FreeCleanerProgramLeftoverCleanup", daemon=True).start()
+
+    def on_program_cleanup_finished(self, result: object) -> None:
+        self._program_cleanup_running = False
+        self.program_scan_btn.setEnabled(True)
+        data = result if isinstance(result, dict) else {}
+        self.show_toast(self.trf("programs_deleted_fmt", count=int(data.get("removed_items") or 0), size=_format_bytes(data.get("removed_bytes") or 0)), "success" if not data.get("errors") else "warning")
+        self.start_program_scan()
+
+    def on_program_cleanup_failed(self, error: str) -> None:
+        self._program_cleanup_running = False
+        self.program_scan_btn.setEnabled(True)
+        self.program_clean_removed_btn.setEnabled(True)
+        QMessageBox.warning(self, "FreeCleaner", self.trf("programs_delete_failed", error=error))
 
     def build_settings_page(self, parent: QVBoxLayout) -> None:
         tabs = QTabWidget()

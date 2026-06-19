@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-54 — Installer language selection: setup now starts with a language choice, reuses the saved language during updates when available, and writes the selected language as the app default.
+Current package: 1.2.0.0-build-55 — Programs inventory and AppData leftovers: adds a Programs tab with installed app sizes, leftover AppData detection, removed-app markers, context actions and safe cleanup for leftovers from removed apps.
 
 
 ## 1.2.0.0 build-52 — Installer update mode and recent release changelog
