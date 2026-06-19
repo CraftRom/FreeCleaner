@@ -157,6 +157,33 @@ QFrame#Panel, QFrame#StatusCard, QFrame#TaskRow, QFrame#RegistryPanel, QFrame#Se
     border: 1px solid #2C2D2C;
     border-radius: 0px;
 }
+QFrame#SettingsCard {
+    background: #1A1B1A;
+    border: 1px solid #2C2D2C;
+    border-left: 3px solid transparent;
+    border-radius: 0px;
+}
+QFrame#SettingsCard:hover {
+    background: #202120;
+    border-color: #3A3B3A;
+    border-left-color: #76B900;
+}
+QFrame#SettingsCard[pressed="true"] {
+    background: #202A17;
+    border-color: #76B900;
+}
+QFrame#SettingsCard[changed="true"] {
+    border-left-color: #F59E0B;
+}
+QLabel#SettingsKey {
+    color: #8F928F;
+    font-size: 10px;
+}
+QLabel#SettingsRestart {
+    color: #FFD166;
+    font-size: 10px;
+    font-weight: 800;
+}
 QFrame#TaskRow:hover, QFrame#StatusCard:hover {
     background: #202120;
     border-color: #3A3B3A;
@@ -476,6 +503,54 @@ class ClickableTile(QFrame):
         self.setFocusPolicy(Qt.StrongFocus)
         self.setProperty("pressed", "false")
         self.setAccessibleName("Home navigation tile")
+
+    def _set_pressed(self, value: bool) -> None:
+        prop = "true" if value else "false"
+        if self.property("pressed") == prop:
+            return
+        self.setProperty("pressed", prop)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.LeftButton:
+            self._set_pressed(True)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.LeftButton:
+            inside = self.rect().contains(event.position().toPoint()) if hasattr(event, "position") else self.rect().contains(event.pos())
+            self._set_pressed(False)
+            if inside:
+                self.clicked.emit()
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._set_pressed(False)
+        super().leaveEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
+class ClickableSettingRow(QFrame):
+    clicked = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("SettingsCard")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setProperty("pressed", "false")
+        self.setAccessibleName("Settings row")
 
     def _set_pressed(self, value: bool) -> None:
         prop = "true" if value else "false"
@@ -1047,8 +1122,10 @@ class FreeCleanerQt(QMainWindow):
         self._last_ui_heartbeat_monotonic = time.monotonic()
         self._last_ui_heartbeat_logged = 0.0
         self._ui_watchdog_stop = threading.Event()
-        self._auto_status_sync_enabled = os.environ.get("FREECLEANER_AUTO_STATUS_SYNC") == "1"
-        self._auto_update_check_enabled = os.environ.get("FREECLEANER_AUTO_UPDATE_CHECK") == "1"
+        self._auto_status_sync_enabled = False
+        self._auto_update_check_enabled = False
+        self._max_background_jobs = 2
+        self.apply_runtime_config_flags()
         self.worker_bridge = WorkerBridge(self)
         self.worker_bridge.toggle_progress.connect(self.on_toggle_progress, Qt.QueuedConnection)
         self.worker_bridge.toggle_finished.connect(self.on_toggle_finished, Qt.QueuedConnection)
@@ -1141,6 +1218,32 @@ class FreeCleanerQt(QMainWindow):
             os.replace(tmp, CONFIG_PATH)
         except Exception as exc:
             log_app(f"config save failed: {exc}", level="ERROR")
+
+    def setting_bool_from_config(self, key: str, default: bool = False) -> bool:
+        value = (self.config or {}).get(key, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().casefold() in {"1", "true", "yes", "on", "enabled"}
+
+    def setting_int_from_config(self, key: str, default: int = 0, *, minimum: int = 0, maximum: int = 999999) -> int:
+        try:
+            value = int((self.config or {}).get(key, default))
+        except Exception:
+            value = int(default)
+        return max(int(minimum), min(int(maximum), value))
+
+    def apply_runtime_config_flags(self) -> None:
+        """Apply config-backed runtime switches that used to be env-only."""
+        env_animations_default = os.environ.get("FREECLEANER_DISABLE_UI_ANIMATIONS") != "1"
+        UiFx.enabled = self.setting_bool_from_config("ui_animations_enabled", env_animations_default)
+        UiFx.duration_ms = self.setting_int_from_config("ui_animation_duration_ms", 150, minimum=60, maximum=420)
+        self._auto_status_sync_enabled = self.setting_bool_from_config(
+            "startup_status_sync_enabled", os.environ.get("FREECLEANER_AUTO_STATUS_SYNC") == "1"
+        )
+        self._auto_update_check_enabled = self.setting_bool_from_config(
+            "startup_update_check_enabled", os.environ.get("FREECLEANER_AUTO_UPDATE_CHECK") == "1"
+        )
+        self._max_background_jobs = self.setting_int_from_config("background_worker_limit", 2, minimum=1, maximum=4)
 
     @staticmethod
     def normalize_language_preference(value: str) -> str:
@@ -1608,32 +1711,96 @@ class FreeCleanerQt(QMainWindow):
         tabs = QTabWidget()
         tabs.setDocumentMode(True)
 
-        functions = QWidget()
-        functions_layout = QVBoxLayout(functions)
-        functions_layout.setContentsMargins(0, 16, 0, 0)
-        functions_layout.setSpacing(12)
-        functions_layout.addWidget(self.settings_section_header("Функції", "Поведінка програми, запуск, оновлення та режим адміністратора."))
+        interface, interface_layout = self.settings_tab_page()
+        interface_layout.addWidget(self.settings_section_header(
+            "Інтерфейс",
+            "Анімації, швидкість переходів, журнал і поведінка видимих елементів."
+        ))
+        self.ui_animations_switch = self.settings_toggle_card(
+            interface_layout,
+            "Плавні анімації інтерфейсу",
+            "Вмикає fade-появу сторінок, карток, toast-повідомлень і відфільтрованих рядків. Аналог ключа FREECLEANER_DISABLE_UI_ANIMATIONS, але керується з UI.",
+            "ui_animations_enabled",
+            os.environ.get("FREECLEANER_DISABLE_UI_ANIMATIONS") != "1",
+            restart_hint=False,
+            on_changed=lambda value: self.apply_runtime_config_flags(),
+        )
+        self.animation_speed_combo = self.settings_combo_card(
+            interface_layout,
+            "Швидкість анімацій",
+            "Контролює тривалість легких UI-переходів без важких GPU-ефектів.",
+            "ui_animation_duration_ms",
+            [(90, "Швидко"), (150, "Збалансовано"), (220, "Плавно"), (320, "Дуже плавно")],
+            150,
+            on_changed=lambda _value: self.apply_runtime_config_flags(),
+        )
+        self.compact_logs_switch = self.settings_toggle_card(
+            interface_layout,
+            "Компактний журнал подій",
+            "Лог у вікні показує важливі події без зайвого шуму, системні логи на диску все одно залишаються повними.",
+            "compact_event_log",
+            True,
+        )
+        interface_layout.addStretch(1)
+        tabs.addTab(interface, "Інтерфейс")
 
-        self.auto_update_switch = ToggleSwitch()
-        self.auto_update_switch.setChecked(self.setting_bool("auto_check_updates", True))
-        functions_layout.addLayout(self.setting_row(self.tr("setting_auto_updates") if self.tr("setting_auto_updates") != "setting_auto_updates" else "Перевіряти оновлення під час запуску", self.auto_update_switch, "Рекомендовано: показує нові релізи без авто-встановлення."))
+        startup, startup_layout = self.settings_tab_page()
+        startup_layout.addWidget(self.settings_section_header(
+            "Запуск і фонова робота",
+            "Те, що раніше керувалося тільки ключами середовища або config.json."
+        ))
+        self.startup_status_sync_switch = self.settings_toggle_card(
+            startup_layout,
+            "Автооновлення статусів після старту",
+            "Після відкриття програми асинхронно перевіряє registry/powercfg статуси. Вимкнено за замовчуванням для максимальної стабільності UI.",
+            "startup_status_sync_enabled",
+            os.environ.get("FREECLEANER_AUTO_STATUS_SYNC") == "1",
+            on_changed=lambda value: self.apply_runtime_config_flags(),
+        )
+        self.startup_update_gate_switch = self.settings_toggle_card(
+            startup_layout,
+            "Дозволити автоперевірку оновлень на старті",
+            "Глобальний запобіжник для фонового update-check після запуску. Саму перевірку також контролює перемикач нижче.",
+            "startup_update_check_enabled",
+            os.environ.get("FREECLEANER_AUTO_UPDATE_CHECK") == "1",
+            on_changed=lambda value: self.apply_runtime_config_flags(),
+        )
+        self.auto_update_switch = self.settings_toggle_card(
+            startup_layout,
+            "Автоматично перевіряти оновлення",
+            "Якщо дозволено автоперевірку на старті, FreeCleaner перевірить GitHub release у фоні після відкриття вікна.",
+            "auto_check_updates",
+            True,
+        )
+        self.background_limit_combo = self.settings_combo_card(
+            startup_layout,
+            "Ліміт фонових задач",
+            "Обмежує одночасні Diagnostics / Update / Registry jobs, щоб вони не забивали систему.",
+            "background_worker_limit",
+            [(1, "1 — максимально обережно"), (2, "2 — стандартно"), (3, "3 — швидше"), (4, "4 — агресивно")],
+            2,
+            on_changed=lambda _value: self.apply_runtime_config_flags(),
+        )
+        startup_layout.addStretch(1)
+        tabs.addTab(startup, "Запуск")
 
-        self.confirm_heavy_switch = ToggleSwitch()
-        self.confirm_heavy_switch.setChecked(self.setting_bool("confirm_heavy_actions", True))
-        functions_layout.addLayout(self.setting_row(self.tr("setting_confirm_heavy") if self.tr("setting_confirm_heavy") != "setting_confirm_heavy" else "Підтверджувати важкі дії очищення", self.confirm_heavy_switch, "Захист від випадкового запуску DISM, глибокої очистки та registry-дій."))
-
-        self.compact_logs_switch = ToggleSwitch()
-        self.compact_logs_switch.setChecked(self.setting_bool("compact_event_log", True))
-        functions_layout.addLayout(self.setting_row("Компактний журнал подій", self.compact_logs_switch, "Лог показує тільки важливі події, без зайвого шуму."))
-
-        self.auto_update_switch.stateChanged.connect(lambda: self.set_setting_bool("auto_check_updates", self.auto_update_switch.isChecked()))
-        self.confirm_heavy_switch.stateChanged.connect(lambda: self.set_setting_bool("confirm_heavy_actions", self.confirm_heavy_switch.isChecked()))
-        self.compact_logs_switch.stateChanged.connect(lambda: self.set_setting_bool("compact_event_log", self.compact_logs_switch.isChecked()))
-
+        safety, safety_layout = self.settings_tab_page()
+        safety_layout.addWidget(self.settings_section_header(
+            "Безпека дій",
+            "Підтвердження, адмін-режим і захист від випадкового запуску важких операцій."
+        ))
+        self.confirm_heavy_switch = self.settings_toggle_card(
+            safety_layout,
+            "Підтверджувати важкі дії",
+            "Запитує підтвердження перед DISM, глибокою очисткою, registry-змінами й іншими діями з підвищеним ризиком.",
+            "confirm_heavy_actions",
+            True,
+        )
         admin_panel = QFrame()
         admin_panel.setObjectName("SettingsSection")
         al = QHBoxLayout(admin_panel)
         al.setContentsMargins(14, 12, 14, 12)
+        al.setSpacing(12)
         admin_text = QVBoxLayout()
         admin_title = QLabel("Адмін режим")
         admin_title.setObjectName("SectionTitle")
@@ -1643,8 +1810,6 @@ class FreeCleanerQt(QMainWindow):
         admin_text.addWidget(admin_title)
         admin_text.addWidget(admin_desc)
         al.addLayout(admin_text, 1)
-        admin_pill = Pill(self.tr("admin_access") if self.is_admin else self.tr("limited_mode"), "Green" if self.is_admin else "Amber")
-        al.addWidget(admin_pill)
         self.admin_mode_switch = ToggleSwitch()
         self.admin_mode_switch.setChecked(self.is_admin)
         self.admin_mode_switch.setEnabled(not self.is_admin)
@@ -1655,30 +1820,30 @@ class FreeCleanerQt(QMainWindow):
         admin_btn.setObjectName("PrimaryButton" if not self.is_admin else "GhostButton")
         admin_btn.clicked.connect(self.restart_as_admin)
         al.addWidget(admin_btn)
-        functions_layout.addWidget(admin_panel)
-        functions_layout.addStretch(1)
-        tabs.addTab(functions, "Функції")
+        safety_layout.addWidget(admin_panel)
+        safety_layout.addStretch(1)
+        tabs.addTab(safety, "Безпека")
 
-        notify = QWidget()
-        notify_layout = QVBoxLayout(notify)
-        notify_layout.setContentsMargins(0, 16, 0, 0)
-        notify_layout.setSpacing(12)
-        notify_layout.addWidget(self.settings_section_header("Сповіщення", "Візуальні підказки та безпечні підтвердження."))
-        self.notify_done_switch = ToggleSwitch()
-        self.notify_done_switch.setChecked(self.setting_bool("notify_on_finish", True))
-        notify_layout.addLayout(self.setting_row("Повідомляти після завершення", self.notify_done_switch, "Показує підсумок після аналізу, очищення або застосування твікiв."))
-        self.notify_admin_switch = ToggleSwitch()
-        self.notify_admin_switch.setChecked(self.setting_bool("notify_admin_required", True))
-        notify_layout.addLayout(self.setting_row("Пояснювати недоступні дії", self.notify_admin_switch, "Показує, чому дія disabled/admin-only/unavailable."))
-        self.notify_done_switch.stateChanged.connect(lambda: self.set_setting_bool("notify_on_finish", self.notify_done_switch.isChecked()))
-        self.notify_admin_switch.stateChanged.connect(lambda: self.set_setting_bool("notify_admin_required", self.notify_admin_switch.isChecked()))
+        notify, notify_layout = self.settings_tab_page()
+        notify_layout.addWidget(self.settings_section_header("Сповіщення", "Toast-повідомлення, пояснення недоступних дій та завершення процесів."))
+        self.notify_done_switch = self.settings_toggle_card(
+            notify_layout,
+            "Повідомляти після завершення",
+            "Показує підсумок після аналізу, очищення, діагностики, оновлення або застосування твікiв.",
+            "notify_on_finish",
+            True,
+        )
+        self.notify_admin_switch = self.settings_toggle_card(
+            notify_layout,
+            "Пояснювати недоступні дії",
+            "Показує причину, якщо дія disabled/admin-only/unavailable або потребує іншого режиму запуску.",
+            "notify_admin_required",
+            True,
+        )
         notify_layout.addStretch(1)
         tabs.addTab(notify, "Сповіщення")
 
-        info = QWidget()
-        info_layout = QVBoxLayout(info)
-        info_layout.setContentsMargins(0, 16, 0, 0)
-        info_layout.setSpacing(14)
+        info, info_layout = self.settings_tab_page()
         info_layout.addWidget(self.settings_section_header("Інформація", "Мова, версія, оновлення, папки та документи програми."))
 
         lang_panel = QFrame()
@@ -1734,10 +1899,7 @@ class FreeCleanerQt(QMainWindow):
         info_layout.addStretch(1)
         tabs.addTab(info, "Інформація")
 
-        license_page = QWidget()
-        license_layout = QVBoxLayout(license_page)
-        license_layout.setContentsMargins(0, 16, 0, 0)
-        license_layout.setSpacing(12)
+        license_page, license_layout = self.settings_tab_page()
         license_layout.addWidget(self.settings_section_header(self.tr("about_license") if self.tr("about_license") != "about_license" else "Ліцензія", self.tr("about_license_sub") if self.tr("about_license_sub") != "about_license_sub" else "Умови використання FreeCleaner."))
         self.license_text = QTextEdit()
         self.license_text.setReadOnly(True)
@@ -1749,6 +1911,130 @@ class FreeCleanerQt(QMainWindow):
         tabs.addTab(license_page, self.tr("about_license") if self.tr("about_license") != "about_license" else "Ліцензія")
 
         parent.addWidget(tabs, 1)
+
+    def settings_tab_page(self) -> Tuple[QWidget, QVBoxLayout]:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(0, 16, 0, 0)
+        layout.setSpacing(12)
+        scroll.setWidget(inner)
+        return scroll, layout
+
+    def settings_toggle_card(
+        self,
+        parent: QVBoxLayout,
+        title: str,
+        subtitle: str,
+        key: str,
+        default: bool,
+        *,
+        restart_hint: bool = False,
+        on_changed: Optional[Callable[[bool], None]] = None,
+    ) -> ToggleSwitch:
+        row = ClickableSettingRow()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(14)
+        text_box = QVBoxLayout()
+        text_box.setSpacing(4)
+        title_label = QLabel(title)
+        title_label.setObjectName("SectionTitle")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("SectionSub")
+        subtitle_label.setWordWrap(True)
+        key_label = QLabel(f"config: {key}")
+        key_label.setObjectName("SettingsKey")
+        text_box.addWidget(title_label)
+        text_box.addWidget(subtitle_label)
+        text_box.addWidget(key_label)
+        if restart_hint:
+            restart_label = QLabel("застосовується після перезапуску")
+            restart_label.setObjectName("SettingsRestart")
+            text_box.addWidget(restart_label)
+        layout.addLayout(text_box, 1)
+        switch = ToggleSwitch()
+        switch.setChecked(self.setting_bool(key, default))
+        switch.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        layout.addWidget(switch, 0, Qt.AlignVCenter)
+
+        def toggle_row() -> None:
+            if switch.isEnabled():
+                switch.setChecked(not switch.isChecked())
+
+        def apply_state(_state: int) -> None:
+            self.set_setting_bool(key, switch.isChecked())
+            if on_changed:
+                on_changed(switch.isChecked())
+            row.setProperty("changed", "true")
+            row.style().unpolish(row)
+            row.style().polish(row)
+            UiFx.fade_in(row, 100)
+            log_qa_event("settings_bool_changed", key=key, value=bool(switch.isChecked()))
+
+        row.clicked.connect(toggle_row)
+        switch.stateChanged.connect(apply_state)
+        parent.addWidget(row)
+        UiFx.fade_in(row, 130)
+        return switch
+
+    def settings_combo_card(
+        self,
+        parent: QVBoxLayout,
+        title: str,
+        subtitle: str,
+        key: str,
+        options: Sequence[Tuple[int, str]],
+        default: int,
+        *,
+        on_changed: Optional[Callable[[int], None]] = None,
+    ) -> QComboBox:
+        row = QFrame()
+        row.setObjectName("SettingsCard")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(14)
+        text_box = QVBoxLayout()
+        text_box.setSpacing(4)
+        title_label = QLabel(title)
+        title_label.setObjectName("SectionTitle")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("SectionSub")
+        subtitle_label.setWordWrap(True)
+        key_label = QLabel(f"config: {key}")
+        key_label.setObjectName("SettingsKey")
+        text_box.addWidget(title_label)
+        text_box.addWidget(subtitle_label)
+        text_box.addWidget(key_label)
+        layout.addLayout(text_box, 1)
+        combo = QComboBox()
+        combo.setMinimumWidth(220)
+        current_value = self.setting_int(key, default, minimum=min(v for v, _ in options), maximum=max(v for v, _ in options))
+        selected_index = 0
+        for idx, (value, label) in enumerate(options):
+            combo.addItem(label, int(value))
+            if int(value) == int(current_value):
+                selected_index = idx
+        combo.setCurrentIndex(selected_index)
+
+        def changed(index: int) -> None:
+            value = int(combo.itemData(index) or default)
+            self.set_setting_int(key, value)
+            if on_changed:
+                on_changed(value)
+            row.setProperty("changed", "true")
+            row.style().unpolish(row)
+            row.style().polish(row)
+            UiFx.fade_in(row, 100)
+            log_qa_event("settings_int_changed", key=key, value=value)
+
+        combo.currentIndexChanged.connect(changed)
+        layout.addWidget(combo, 0, Qt.AlignVCenter)
+        parent.addWidget(row)
+        UiFx.fade_in(row, 130)
+        return combo
 
     def settings_section_header(self, title: str, subtitle: str = "") -> QFrame:
         panel = QFrame()
@@ -2862,6 +3148,8 @@ class FreeCleanerQt(QMainWindow):
         if not line:
             return
         log_app(line)
+        if self.setting_bool("compact_event_log", True) and ("'run_args':" in line or '"command": [' in line):
+            return
         if hasattr(self, "log_box"):
             self.log_box.append(line)
         else:
@@ -2895,9 +3183,10 @@ class FreeCleanerQt(QMainWindow):
 
     def run_background_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         """Run lightweight background jobs without locking the cleaner UI."""
-        if len(getattr(self, "background_jobs", [])) >= 2:
+        limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
+        if len(getattr(self, "background_jobs", [])) >= limit:
             self.show_toast("Фонова діагностика вже виконується. Дочекайся завершення.", "warning")
-            log_qa_event("background_worker_limit_blocked", active=len(getattr(self, "background_jobs", [])))
+            log_qa_event("background_worker_limit_blocked", active=len(getattr(self, "background_jobs", [])), limit=limit)
             return
         thread = QThread()
         worker = Worker(fn)
@@ -3310,6 +3599,13 @@ class FreeCleanerQt(QMainWindow):
 
     def set_setting_bool(self, key: str, value: bool) -> None:
         self.config[key] = bool(value)
+        self.save_config()
+
+    def setting_int(self, key: str, default: int = 0, *, minimum: int = 0, maximum: int = 999999) -> int:
+        return self.setting_int_from_config(key, default, minimum=minimum, maximum=maximum)
+
+    def set_setting_int(self, key: str, value: int) -> None:
+        self.config[key] = int(value)
         self.save_config()
 
     def on_language_changed(self, index: int) -> None:

@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-37 — UI polish: Home dashboard blocks are fully clickable, lightweight fade animations were added for visible UI transitions, and side navigation icons are re-applied after minimize/restore.
+Current package: 0.2.1.0-build-38 — Settings UX upgrade: config/env-backed runtime options are now exposed in the Settings UI, with clickable setting cards, smoother lightweight animations and cleaner startup/background controls.
 
 
 
@@ -522,3 +522,14 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Kept `PySide6==6.11.1` but now installs it only on supported Python `>=3.10,<3.15` runtimes.
 - Switched dependency install commands to `python -m pip ...` so the workflow always uses the selected setup-python interpreter.
 - Updated release documentation to describe the current x64-only Windows build path.
+
+## 0.2.1.0 build-38 — Settings UX, config toggles and UI polish
+
+- Rebuilt Settings into clearer Interface, Startup, Safety, Notifications, Info and License tabs.
+- Added UI controls for settings that were previously only configurable through config keys or environment flags: UI animations, animation duration, startup status sync, startup update gate and background worker limit.
+- Kept existing controls for auto update checks, heavy-action confirmations, compact UI logs and notification behavior, but moved them into more logical sections.
+- Runtime flags now apply from config at startup and update live where safe.
+- Added clickable setting cards with hover/pressed states and lightweight fade-in polish.
+- Background diagnostics/update/registry job limit is now configurable from Settings instead of being hardcoded.
+- Compact event log mode now hides noisy helper command lines from the visible UI log while retaining full disk logs for QA.
+
