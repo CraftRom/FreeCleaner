@@ -3862,8 +3862,18 @@ def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> 
                 app.setStyleSheet(APP_QSS)
             except Exception:
                 pass
+            # Quiet handoff: map and polish the Qt main window while it is fully
+            # transparent, then close the Win32 splash and reveal the already
+            # painted window.  Showing the main window at normal opacity before
+            # the first paint produced the gray native frame behind the splash.
+            try:
+                window.setWindowOpacity(0.0)
+            except Exception:
+                pass
             window.show()
             try:
+                QApplication.processEvents()
+                window.repaint()
                 QApplication.processEvents()
             except Exception:
                 pass
@@ -3872,6 +3882,10 @@ def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> 
                     splash.close()
                 except Exception:
                     pass
+            try:
+                window.setWindowOpacity(1.0)
+            except Exception:
+                pass
             window.raise_()
             window.activateWindow()
         else:

@@ -306,7 +306,7 @@ class NativeWinSplash:
     def _rgb(self, r: int, g: int, b: int) -> int:
         return int(r) | (int(g) << 8) | (int(b) << 16)
 
-    def _draw_text(self, hdc: Any, text: str, rect_tuple: tuple[int, int, int, int], size: int, weight: int, color: tuple[int, int, int]) -> None:
+    def _draw_text(self, hdc: Any, text: str, rect_tuple: tuple[int, int, int, int], size: int, weight: int, color: tuple[int, int, int], *, center: bool = True) -> None:
         import ctypes
         from ctypes import wintypes
 
@@ -335,7 +335,10 @@ class NativeWinSplash:
         gdi32.SetBkMode(hdc, 1)  # TRANSPARENT
         left, top, right, bottom = rect_tuple
         rect = wintypes.RECT(left, top, right, bottom)
-        user32.DrawTextW(hdc, text, -1, ctypes.byref(rect), 0x00000020 | 0x00000004 | 0x00000400)  # SINGLELINE|VCENTER|END_ELLIPSIS
+        flags = 0x00000020 | 0x00000004 | 0x00000400  # SINGLELINE|VCENTER|END_ELLIPSIS
+        if center:
+            flags |= 0x00000001  # CENTER
+        user32.DrawTextW(hdc, text, -1, ctypes.byref(rect), flags)
         gdi32.SelectObject(hdc, old_font)
         gdi32.DeleteObject(font)
 
@@ -368,15 +371,14 @@ class NativeWinSplash:
             self._fill_rect(hdc, (0, self._height - 1, self._width, self._height), (48, 49, 48))
             self._fill_rect(hdc, (0, 0, 1, self._height), (48, 49, 48))
             self._fill_rect(hdc, (self._width - 1, 0, self._width, self._height), (48, 49, 48))
-            self._draw_text(hdc, self._app_name, (30, 24, 430, 60), 30, 900, (255, 255, 255))
-            self._draw_text(hdc, f"Версія {self._version}", (30, 64, 430, 86), 14, 500, (198, 198, 198))
-            self._fill_rect(hdc, (30, 104, 430, 107), (118, 185, 0))
-            self._draw_text(hdc, self._message, (30, 124, 430, 154), 17, 500, (219, 219, 219))
-            self._fill_rect(hdc, (30, 176, 430, 184), (48, 49, 48))
+            self._draw_text(hdc, self._app_name, (30, 92, 430, 126), 26, 900, (255, 255, 255), center=True)
+            self._fill_rect(hdc, (30, 132, 430, 135), (118, 185, 0))
+            self._draw_text(hdc, self._message, (30, 142, 430, 166), 14, 500, (219, 219, 219), center=True)
+            self._fill_rect(hdc, (30, 180, 430, 188), (48, 49, 48))
             progress_w = max(0, min(400, int(400 * self._progress / 100)))
             if progress_w:
-                self._fill_rect(hdc, (30, 176, 30 + progress_w, 184), (118, 185, 0))
-            self._draw_text(hdc, "Silent background Qt startup • no helper windows", (30, 208, 430, 230), 12, 400, (168, 168, 168))
+                self._fill_rect(hdc, (30, 180, 30 + progress_w, 188), (118, 185, 0))
+            self._draw_text(hdc, f"Версія {self._version}", (30, 206, 430, 228), 12, 500, (168, 168, 168), center=True)
         finally:
             user32.EndPaint(hwnd, ctypes.byref(ps))
 
@@ -474,36 +476,44 @@ def _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgre
             """)
             self.setObjectName("SplashRoot")
             layout = QVBoxLayout(self)
-            layout.setContentsMargins(30, 26, 30, 24)
-            layout.setSpacing(14)
-            brand = QHBoxLayout()
-            if icon_path:
-                icon = QLabel()
-                icon.setPixmap(QIcon(icon_path).pixmap(42, 42))
-                brand.addWidget(icon)
-            text = QVBoxLayout()
+            layout.setContentsMargins(30, 26, 30, 18)
+            layout.setSpacing(0)
+            layout.addSpacing(64)
             title = QLabel(_app_name_from_file())
             title.setObjectName("Title")
-            subtitle = QLabel(f"Версія {_version_from_file()}")
-            subtitle.setObjectName("Tiny")
-            text.addWidget(title)
-            text.addWidget(subtitle)
-            brand.addLayout(text, 1)
-            layout.addLayout(brand)
+            title.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            title.setFixedHeight(34)
+            title.setFont(QFont("Segoe UI", 18, 800))
+            title.setStyleSheet("color: #FFFFFF;")
+            layout.addWidget(title)
+            layout.addSpacing(10)
             accent = QFrame()
             accent.setObjectName("Accent")
+            accent.setFixedHeight(3)
             layout.addWidget(accent)
+            layout.addSpacing(10)
             self.message = QLabel("Підготовка запуску…")
             self.message.setObjectName("Muted")
+            self.message.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            self.message.setFixedHeight(22)
+            self.message.setFont(QFont("Segoe UI", 10, 500))
+            self.message.setStyleSheet("color: #DBDBDB;")
             layout.addWidget(self.message)
+            layout.addSpacing(14)
             self.progress = QProgressBar()
             self.progress.setRange(0, 100)
             self.progress.setValue(8)
+            self.progress.setFixedHeight(8)
             layout.addWidget(self.progress)
+            layout.addSpacing(16)
+            version = QLabel(f"Версія {_version_from_file()}")
+            version.setObjectName("Tiny")
+            version.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            version.setFixedHeight(18)
+            version.setFont(QFont("Segoe UI", 9, 500))
+            version.setStyleSheet("color: #A8A8A8;")
+            layout.addWidget(version)
             layout.addStretch(1)
-            footer = QLabel("Тихий фоновий запуск Qt • без допоміжних вікон")
-            footer.setObjectName("Tiny")
-            layout.addWidget(footer)
             self._fade_target = "show"
 
         def show_centered(self) -> None:
@@ -554,7 +564,7 @@ def main() -> int:
 
     log_startup("importing PySide6 for QApplication")
     from PySide6.QtCore import Qt, qInstallMessageHandler
-    from PySide6.QtGui import QIcon
+    from PySide6.QtGui import QFont, QIcon
     from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
     try:

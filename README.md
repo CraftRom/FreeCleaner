@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-42 — Native startup splash paint stability: shows the FreeCleaner name/version on the splash and fixes Win32 GDI handle typing so the splash stays visible during Qt module preparation.
+Current package: 0.2.1.0-build-45 — Splash handoff polish: keeps the native splash visible until the Qt main window is fully styled and painted, preventing the gray background window from flashing behind the splash.
 
 
 
@@ -525,7 +525,7 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 
 
 
-## 0.2.1.0 build-42 — Native splash name/version and paint stability
+## 0.2.1.0 build-45 — Native splash name/version and paint stability
 
 - Shows the application name and exact package version directly on the native startup splash.
 - Fixes Win32 GDI paint API prototypes so 64-bit HBRUSH/HFONT handles are not truncated during `WM_PAINT`.
