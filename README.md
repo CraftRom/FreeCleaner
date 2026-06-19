@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-41 — Native startup splash reliability: fixes the Python 3.13 Win32 handle alias issue that prevented the quiet splash from being created and forced the flickery Qt fallback.
+Current package: 0.2.1.0-build-42 — Native startup splash paint stability: shows the FreeCleaner name/version on the splash and fixes Win32 GDI handle typing so the splash stays visible during Qt module preparation.
 
 
 
@@ -523,6 +523,14 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Switched dependency install commands to `python -m pip ...` so the workflow always uses the selected setup-python interpreter.
 - Updated release documentation to describe the current x64-only Windows build path.
 
+
+
+## 0.2.1.0 build-42 — Native splash name/version and paint stability
+
+- Shows the application name and exact package version directly on the native startup splash.
+- Fixes Win32 GDI paint API prototypes so 64-bit HBRUSH/HFONT handles are not truncated during `WM_PAINT`.
+- Prevents repeated ctypes callback tracebacks from escaping splash painting.
+- Keeps the quiet native splash visible while PySide6 and Qt modules are prepared.
 
 ## 0.2.1.0 build-41 — Native splash Python 3.13 handle fix
 

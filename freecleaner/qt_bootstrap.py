@@ -26,21 +26,34 @@ os.environ.setdefault("QT_USE_NATIVE_WINDOWS", "0")
 os.environ.setdefault("QT_ENABLE_REGEXP_JIT", "0")
 
 
-def _version_from_file() -> str:
+def _meta_from_file() -> dict[str, str]:
     candidates = [
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "version_info.txt"),
         os.path.join(os.getcwd(), "version_info.txt"),
     ]
+    meta: dict[str, str] = {}
     for path in candidates:
         try:
             if os.path.isfile(path):
                 text = open(path, "r", encoding="utf-8", errors="ignore").read()
-                match = re.search(r"ProductVersion',\s*'([^']+)'", text)
-                if match:
-                    return match.group(1)
+                for key in ("ProductName", "ProductVersion", "FileVersion"):
+                    match = re.search(rf"{key}',\s*'([^']+)'", text)
+                    if match:
+                        meta[key] = match.group(1)
+                if meta:
+                    return meta
         except Exception:
             pass
-    return "Qt"
+    return meta
+
+
+def _app_name_from_file() -> str:
+    return _meta_from_file().get("ProductName") or "FreeCleaner"
+
+
+def _version_from_file() -> str:
+    meta = _meta_from_file()
+    return meta.get("ProductVersion") or meta.get("FileVersion") or "Qt"
 
 
 def _icon_path() -> Optional[str]:
@@ -71,10 +84,12 @@ class NativeWinSplash:
         self._class_name = "FreeCleanerQuietStartupSplash"
         self._progress = 6
         self._message = "Підготовка запуску…"
+        self._app_name = _app_name_from_file()
         self._version = _version_from_file()
         self._width = 460
         self._height = 250
         self._created = False
+        self._paint_failed_logged = False
         if os.name == "nt":
             try:
                 self._create()
@@ -176,8 +191,32 @@ class NativeWinSplash:
         user32.InvalidateRect.argtypes = [HWND, HANDLE, wintypes.BOOL]
         user32.DestroyWindow.argtypes = [HWND]
         user32.SetLayeredWindowAttributes.argtypes = [HWND, wintypes.DWORD, wintypes.BYTE, wintypes.DWORD]
+        HDC = getattr(wintypes, "HDC", HANDLE)
+        HFONT = HANDLE
+        HGDIOBJ = HANDLE
         gdi32.CreateSolidBrush.restype = HBRUSH
         gdi32.CreateSolidBrush.argtypes = [wintypes.DWORD]
+        # Pin GDI/User painting APIs too. Without these prototypes Python can try
+        # to squeeze 64-bit HBRUSH/HFONT handles into 32-bit C ints during
+        # WM_PAINT, producing callback OverflowError and leaving the splash blank
+        # or flickery exactly while Qt modules are loading.
+        user32.BeginPaint.restype = HDC
+        user32.BeginPaint.argtypes = [HWND, ctypes.POINTER(PAINTSTRUCT)]
+        user32.EndPaint.restype = wintypes.BOOL
+        user32.EndPaint.argtypes = [HWND, ctypes.POINTER(PAINTSTRUCT)]
+        user32.FillRect.restype = ctypes.c_int
+        user32.FillRect.argtypes = [HDC, ctypes.POINTER(wintypes.RECT), HBRUSH]
+        user32.DrawTextW.restype = ctypes.c_int
+        user32.DrawTextW.argtypes = [HDC, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(wintypes.RECT), wintypes.UINT]
+        gdi32.CreateFontW.restype = HFONT
+        gdi32.SelectObject.restype = HGDIOBJ
+        gdi32.SelectObject.argtypes = [HDC, HGDIOBJ]
+        gdi32.DeleteObject.restype = wintypes.BOOL
+        gdi32.DeleteObject.argtypes = [HGDIOBJ]
+        gdi32.SetTextColor.restype = wintypes.DWORD
+        gdi32.SetTextColor.argtypes = [HDC, wintypes.DWORD]
+        gdi32.SetBkMode.restype = ctypes.c_int
+        gdi32.SetBkMode.argtypes = [HDC, ctypes.c_int]
 
         self._WM_PAINT = 0x000F
         self._WM_DESTROY = 0x0002
@@ -251,7 +290,16 @@ class NativeWinSplash:
 
     def _wndproc(self, hwnd: Any, msg: int, wparam: Any, lparam: Any) -> int:
         if msg == getattr(self, "_WM_PAINT", 0x000F):
-            self._paint(hwnd)
+            try:
+                self._paint(hwnd)
+            except Exception as exc:
+                # Never let a ctypes callback exception escape: Windows will keep
+                # sending WM_PAINT and Python will log noisy "Exception ignored"
+                # tracebacks during startup. One precise warning is enough; the
+                # app can continue and the Qt UI will still load.
+                if not getattr(self, "_paint_failed_logged", False):
+                    self._paint_failed_logged = True
+                    log_startup(f"native splash paint failed: {exc}", level="WARNING")
             return 0
         return self._DefWindowProcW(hwnd, msg, wparam, lparam)
 
@@ -320,8 +368,8 @@ class NativeWinSplash:
             self._fill_rect(hdc, (0, self._height - 1, self._width, self._height), (48, 49, 48))
             self._fill_rect(hdc, (0, 0, 1, self._height), (48, 49, 48))
             self._fill_rect(hdc, (self._width - 1, 0, self._width, self._height), (48, 49, 48))
-            self._draw_text(hdc, "FreeCleaner", (30, 26, 430, 62), 30, 900, (255, 255, 255))
-            self._draw_text(hdc, f"{self._version} • тихий запуск", (30, 66, 430, 88), 14, 400, (168, 168, 168))
+            self._draw_text(hdc, self._app_name, (30, 24, 430, 60), 30, 900, (255, 255, 255))
+            self._draw_text(hdc, f"Версія {self._version}", (30, 64, 430, 86), 14, 500, (198, 198, 198))
             self._fill_rect(hdc, (30, 104, 430, 107), (118, 185, 0))
             self._draw_text(hdc, self._message, (30, 124, 430, 154), 17, 500, (219, 219, 219))
             self._fill_rect(hdc, (30, 176, 430, 184), (48, 49, 48))
@@ -434,9 +482,9 @@ def _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgre
                 icon.setPixmap(QIcon(icon_path).pixmap(42, 42))
                 brand.addWidget(icon)
             text = QVBoxLayout()
-            title = QLabel("FreeCleaner")
+            title = QLabel(_app_name_from_file())
             title.setObjectName("Title")
-            subtitle = QLabel(f"{_version_from_file()} • Qt")
+            subtitle = QLabel(f"Версія {_version_from_file()}")
             subtitle.setObjectName("Tiny")
             text.addWidget(title)
             text.addWidget(subtitle)
@@ -453,7 +501,7 @@ def _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgre
             self.progress.setValue(8)
             layout.addWidget(self.progress)
             layout.addStretch(1)
-            footer = QLabel("Splash first • No pre-start flicker")
+            footer = QLabel("Тихий фоновий запуск Qt • без допоміжних вікон")
             footer.setObjectName("Tiny")
             layout.addWidget(footer)
             self._fade_target = "show"
