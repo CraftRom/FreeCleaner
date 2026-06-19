@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-35 — CI/build compatibility fix: GitHub Actions now builds the Qt/PySide6 package on supported Python 3.13 x64 only, removes the unsupported win32 PySide6 build path, and installs dependencies with the active Python interpreter.
+Current package: 0.2.1.0-build-37 — UI polish: Home dashboard blocks are fully clickable, lightweight fade animations were added for visible UI transitions, and side navigation icons are re-applied after minimize/restore.
 
 
 
@@ -498,6 +498,22 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Admin-only optimizer toggles remain clickable and revert with a clear admin-required message instead of looking broken.
 - Improved power-plan recognition using `powercfg /GETACVALUEINDEX` for AC settings when available.
 
+
+
+## 0.2.1.0 build-37 — Home tiles, UI animations and nav icon stability
+
+- Made every Home dashboard block a full clickable navigation card instead of relying on a small text link.
+- Added lightweight fade-in/fade-out animations for page switches, toast notifications, Home cards and filtered task rows.
+- Added `FREECLEANER_DISABLE_UI_ANIMATIONS=1` as a fallback for problematic GPU/Qt environments.
+- Cached and re-applied side navigation icons after minimize/restore/application state changes to prevent missing icons.
+- Kept fallback glyphs for nav buttons if an SVG/PNG asset cannot be loaded.
+
+
+## 0.2.1.0 build-36 — Home header admin button cleanup
+
+- Removed the duplicate admin access status pill from the Home hero header.
+- Kept the administrator action button in the same header position.
+- Left other admin status indicators and settings controls unchanged.
 
 ## 0.2.1.0 build-35 — CI PySide6 packaging compatibility
 

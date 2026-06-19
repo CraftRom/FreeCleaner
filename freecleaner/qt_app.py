@@ -26,7 +26,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent
+from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QTabWidget,
     QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -304,6 +305,10 @@ QFrame#ActionTile:hover {
     background: #222322;
     border-color: #76B900;
 }
+QFrame#ActionTile[pressed="true"] {
+    background: #202A17;
+    border-color: #86D000;
+}
 QFrame#LegendStrip {
     background: #171817;
     border-top: 1px solid #2A2B2A;
@@ -354,17 +359,159 @@ QFrame#InlineNotice {
     border: 1px solid #303130;
     border-left: 3px solid #76B900;
 }
-QPushButton#TextLinkButton {
-    background: transparent;
-    border: 0;
+QLabel#TextLinkLabel {
     color: #DCE6F7;
-    text-align: left;
     padding: 7px 0px;
-    font-weight: 700;
+    font-weight: 800;
 }
-QPushButton#TextLinkButton:hover { color: #FFFFFF; text-decoration: underline; }
+QFrame#ActionTile:hover QLabel#TextLinkLabel { color: #FFFFFF; }
 
 """
+
+
+class UiFx:
+    """Small, safe UI animation helpers.
+
+    These animations intentionally use short opacity fades only. They avoid GPU-heavy
+    blur/slide effects and keep the Qt event loop responsive even on low-end systems.
+    """
+
+    enabled = os.environ.get("FREECLEANER_DISABLE_UI_ANIMATIONS") != "1"
+    duration_ms = 150
+
+    @classmethod
+    def fade_in(cls, widget: QWidget, duration: Optional[int] = None) -> None:
+        if widget is None:
+            return
+        if not cls.enabled:
+            widget.setVisible(True)
+            return
+        duration = int(duration or cls.duration_ms)
+        token = int(getattr(widget, "_fc_fx_token", 0) or 0) + 1
+        widget._fc_fx_token = token  # type: ignore[attr-defined]
+        try:
+            widget.setVisible(True)
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(0.0)
+            anim = QPropertyAnimation(effect, b"opacity", widget)
+            anim.setDuration(max(60, duration))
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.OutCubic)
+            def finish() -> None:
+                try:
+                    if getattr(widget, "_fc_fx_token", None) != token:
+                        return
+                    effect.setOpacity(1.0)
+                    # Remove the effect after show so text/icon rendering stays native.
+                    if widget.graphicsEffect() is effect:
+                        widget.setGraphicsEffect(None)
+                except Exception:
+                    pass
+            anim.finished.connect(finish)
+            widget._fc_fade_anim = anim  # type: ignore[attr-defined]
+            anim.start()
+        except Exception:
+            widget.setVisible(True)
+
+    @classmethod
+    def fade_out(cls, widget: QWidget, duration: Optional[int] = None) -> None:
+        if widget is None:
+            return
+        if not cls.enabled:
+            widget.setVisible(False)
+            return
+        duration = int(duration or cls.duration_ms)
+        token = int(getattr(widget, "_fc_fx_token", 0) or 0) + 1
+        widget._fc_fx_token = token  # type: ignore[attr-defined]
+        try:
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(1.0)
+            anim = QPropertyAnimation(effect, b"opacity", widget)
+            anim.setDuration(max(60, duration))
+            anim.setStartValue(1.0)
+            anim.setEndValue(0.0)
+            anim.setEasingCurve(QEasingCurve.OutCubic)
+            def finish() -> None:
+                try:
+                    if getattr(widget, "_fc_fx_token", None) != token:
+                        return
+                    widget.setVisible(False)
+                    if widget.graphicsEffect() is effect:
+                        widget.setGraphicsEffect(None)
+                except Exception:
+                    pass
+            anim.finished.connect(finish)
+            widget._fc_fade_anim = anim  # type: ignore[attr-defined]
+            anim.start()
+        except Exception:
+            widget.setVisible(False)
+
+    @classmethod
+    def set_visible(cls, widget: QWidget, visible: bool, *, animated: bool = True, duration: Optional[int] = None) -> None:
+        if visible:
+            if not widget.isVisible() and animated:
+                cls.fade_in(widget, duration)
+            else:
+                widget.setVisible(True)
+        else:
+            if widget.isVisible() and animated:
+                cls.fade_out(widget, duration)
+            else:
+                widget.setVisible(False)
+
+
+class ClickableTile(QFrame):
+    clicked = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setProperty("pressed", "false")
+        self.setAccessibleName("Home navigation tile")
+
+    def _set_pressed(self, value: bool) -> None:
+        prop = "true" if value else "false"
+        if self.property("pressed") == prop:
+            return
+        self.setProperty("pressed", prop)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.LeftButton:
+            self._set_pressed(True)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.LeftButton:
+            inside = self.rect().contains(event.position().toPoint()) if hasattr(event, "position") else self.rect().contains(event.pos())
+            self._set_pressed(False)
+            if inside:
+                self.clicked.emit()
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._set_pressed(False)
+        super().leaveEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class ToggleSwitch(QCheckBox):
@@ -824,14 +971,14 @@ class Toast(QFrame):
             x = max(18, parent.width() - self.width() - 24)
             y = 72
             self.move(x, y)
-        self.setVisible(True)
         self.raise_()
+        UiFx.fade_in(self, 130)
         QTimer.singleShot(2800, self.fade_out)
 
     def fade_out(self) -> None:
         if not self.isVisible():
             return
-        self.setVisible(False)
+        UiFx.fade_out(self, 180)
 
     def _on_fade_finished(self) -> None:
         if getattr(self, "_fade_target", "show") == "hide":
@@ -1072,6 +1219,8 @@ class FreeCleanerQt(QMainWindow):
         nav.setContentsMargins(0, 8, 0, 8)
         nav.setSpacing(2)
         self.nav_buttons: List[QToolButton] = []
+        self._nav_icon_specs: List[Tuple[QToolButton, str, str, str]] = []
+        self._nav_icon_cache: Dict[str, QIcon] = {}
         items = [
             ("home", "Головна" if self.lang_code == "uk" else "Home"),
             ("cleaner", "Клінер" if self.lang_code == "uk" else "Cleaner"),
@@ -1104,17 +1253,70 @@ class FreeCleanerQt(QMainWindow):
             group.addButton(btn, idx)
             nav.addWidget(btn, 0, Qt.AlignHCenter)
             self.nav_buttons.append(btn)
+            self._nav_icon_specs.append((btn, icon_name, label, text))
         nav.addStretch(1)
         parent.addWidget(rail)
+        self.repair_nav_icons()
 
     def set_page(self, index: int) -> None:
         if not hasattr(self, "stack"):
             return
         if hasattr(self, "nav_buttons") and 0 <= index < len(self.nav_buttons):
             self.nav_buttons[index].setChecked(True)
+        previous = self.stack.currentIndex()
+        if previous == index:
+            return
         self.stack.setCurrentIndex(index)
-        # Page switches must be constant-time. Opacity animations on stacked
-        # widgets have caused freezes on some Windows/PySide/GPU combinations.
+        page = self.stack.currentWidget()
+        if page is not None:
+            UiFx.fade_in(page, 140)
+        self.repair_nav_icons()
+
+    def repair_nav_icons(self) -> None:
+        """Re-apply side-nav icons after minimize/restore/theme/paint changes.
+
+        Some Windows/Qt/SVG combinations can lose QToolButton icon pixmaps after
+        the window is minimized, restored, or repolished. Re-applying the icon
+        from the stored asset path is cheap and keeps the rail stable.
+        """
+        specs = getattr(self, "_nav_icon_specs", [])
+        fallback_map = {"home": "⌂", "cleaner": "◫", "optimizer": "☑", "registry": "▣", "diagnostics": "◈", "settings": "⚙"}
+        for btn, icon_name, label, text in specs:
+            try:
+                icon_path = find_icon_path(os.path.join("nav", f"{icon_name}.svg")) or find_icon_path(os.path.join("nav", f"{icon_name}.png"))
+                if icon_path:
+                    icon = QIcon(icon_path)
+                    if not icon.isNull():
+                        self._nav_icon_cache[icon_name] = icon
+                        btn.setIcon(icon)
+                        btn.setIconSize(QSize(22, 22))
+                        btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                        btn.setText(label)
+                        btn.setToolTip(text)
+                        continue
+                fallback = fallback_map.get(icon_name, "•")
+                btn.setIcon(QIcon())
+                btn.setText(f"{fallback}\n{label}")
+                btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+                btn.setToolTip(text)
+            except Exception as exc:
+                log_qa_event("nav_icon_repair_failed", icon=icon_name, error=str(exc))
+
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        try:
+            if event.type() in (QEvent.WindowStateChange, QEvent.ApplicationStateChange):
+                QTimer.singleShot(50, self.repair_nav_icons)
+        except Exception:
+            pass
+        super().changeEvent(event)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+        try:
+            QTimer.singleShot(50, self.repair_nav_icons)
+            UiFx.fade_in(self.centralWidget(), 180)
+        except Exception:
+            pass
+        super().showEvent(event)
 
     def content_page(self, title: str, subtitle: str = "") -> Tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -1192,8 +1394,9 @@ class FreeCleanerQt(QMainWindow):
         text.addWidget(title)
         text.addWidget(subtitle)
         h.addLayout(text, 1)
-        self.home_admin_pill = Pill(self.tr("admin_access") if self.is_admin else self.tr("limited_mode"), "Green" if self.is_admin else "Amber")
-        h.addWidget(self.home_admin_pill)
+        # Keep the hero header clean: the administrator state is represented by
+        # the action button only.  A separate status pill here duplicated the
+        # same information and made the header visually noisy.
         admin = QPushButton("Адмін режим" if not self.is_admin else "Адмін активний")
         admin.setObjectName("PrimaryButton" if not self.is_admin else "GhostButton")
         admin.setEnabled(not self.is_admin)
@@ -1210,6 +1413,7 @@ class FreeCleanerQt(QMainWindow):
         self.home_diag_metric = self.home_tile("Діагностика", "OBS / Gaming / OneDrive", "Відкрити Diagnostics", lambda: self.set_page(4))
         for idx, tile in enumerate((self.home_selected_metric, self.home_optimizer_metric, self.home_backup_metric, self.home_diag_metric)):
             grid.addWidget(tile, idx // 2, idx % 2)
+            QTimer.singleShot(80 + idx * 45, lambda w=tile: UiFx.fade_in(w, 160))
         parent.addLayout(grid)
 
         notice = QFrame()
@@ -1224,8 +1428,10 @@ class FreeCleanerQt(QMainWindow):
         parent.addStretch(1)
 
     def home_tile(self, title: str, value: str, action_text: str, callback: Callable[[], None]) -> QFrame:
-        tile = QFrame()
+        tile = ClickableTile()
         tile.setObjectName("ActionTile")
+        tile.setToolTip(action_text)
+        tile.clicked.connect(callback)
         layout = QVBoxLayout(tile)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(7)
@@ -1233,14 +1439,17 @@ class FreeCleanerQt(QMainWindow):
         t.setObjectName("SectionTitle")
         v = QLabel(value)
         v.setObjectName("HeroMetric")
-        b = QPushButton(action_text)
-        b.setObjectName("TextLinkButton")
-        b.clicked.connect(callback)
+        hint = QLabel(f"{action_text}  →")
+        hint.setObjectName("TextLinkLabel")
+        hint.setWordWrap(True)
+        for child in (t, v, hint):
+            child.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(t)
         layout.addWidget(v)
         layout.addStretch(1)
-        layout.addWidget(b)
+        layout.addWidget(hint)
         tile.metric_label = v  # type: ignore[attr-defined]
+        tile.action_label = hint  # type: ignore[attr-defined]
         return tile
 
     def refresh_system_drive_status(self) -> None:
@@ -2596,9 +2805,9 @@ class FreeCleanerQt(QMainWindow):
             visible = False
             for row in section.rows:
                 match = row.matches(query)
-                row.setVisible(match)
+                UiFx.set_visible(row, match, animated=True, duration=120)
                 visible = visible or match
-            section.container.setVisible(visible or not query)
+            UiFx.set_visible(section.container, visible or not query, animated=True, duration=130)
 
     def _task_paths(self, task: CleanerTask) -> List[str]:
         paths: List[str] = []
