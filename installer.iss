@@ -269,16 +269,20 @@ end;
 
 function ReadLanguageFromConfigFile(Path: String): String;
 var
+  RawContent: AnsiString;
   Content: String;
 begin
   Result := '';
   if FileExists(Path) then
   begin
-    if LoadStringFromFile(Path, Content) then
+    if LoadStringFromFile(Path, RawContent) then
+    begin
+      Content := RawContent;
       Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'language'));
-    if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'app_language'));
-    if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'locale'));
-    if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'default_language'));
+      if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'app_language'));
+      if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'locale'));
+      if Result = '' then Result := NormalizeLanguagePreference(ExtractJsonStringValue(Content, 'default_language'));
+    end;
   end;
 end;
 
@@ -348,15 +352,19 @@ procedure SaveSelectedLanguageConfig();
 var
   ConfigDir: String;
   ConfigPath: String;
+  RawContent: AnsiString;
   Content: String;
 begin
   ConfigDir := ExpandConstant('{localappdata}\FreeCleaner');
   ConfigPath := AddBackslash(ConfigDir) + 'config.json';
   ForceDirectories(ConfigDir);
-  if not LoadStringFromFile(ConfigPath, Content) then
+  if LoadStringFromFile(ConfigPath, RawContent) then
+    Content := RawContent
+  else
     Content := '';
   Content := ReplaceOrAddJsonLanguage(Content, SelectedLanguagePreference);
-  SaveStringToFile(ConfigPath, Content, False);
+  RawContent := Content;
+  SaveStringToFile(ConfigPath, RawContent, False);
 end;
 
 procedure ApplyInstallerLanguageToWizard();
