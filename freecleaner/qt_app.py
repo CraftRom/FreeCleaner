@@ -1172,13 +1172,41 @@ def _program_norm(value: str) -> str:
 
 
 _PROGRAM_TOKEN_STOP = {
-    "app", "apps", "application", "setup", "installer", "update", "updater", "helper", "runtime",
-    "microsoft", "windows", "system", "package", "packages", "common", "files", "program", "programs",
-    "x64", "x86", "win64", "win32", "version", "freecleaner",
+    "app", "apps", "application", "setup", "installer", "install", "uninstall", "update", "updater",
+    "helper", "runtime", "service", "services", "launcher", "common", "files", "file", "program",
+    "programs", "package", "packages", "cache", "data", "local", "roaming", "locallow", "user",
+    "users", "x64", "x86", "win64", "win32", "version", "freecleaner",
 }
+
+# Never classify these AppData children as removed-program leftovers.  Many of
+# them are Windows shell/runtime stores or shared vendor roots used by several
+# still-installed apps.  The Programs tab is intentionally conservative: an
+# item is shown as a removed app only when it is a user-owned, app-like folder
+# and it is not protected, not active and not matched to any installed program.
 _APPDATA_SKIP_NAMES = {
-    "microsoft", "packages", "temp", "temporary internet files", "programs", "windows", "crashdumps",
-    "connecteddevicesplatform", "comms", "d3dscache", "nvidia", "amd", "intel", "freecleaner",
+    "microsoft", "windows", "packages", "package cache", "temp", "tmp", "temporary internet files",
+    "programs", "start menu", "templates", "sendto", "recent", "cookies", "history", "inetcache",
+    "inetcookies", "webcache", "crashdumps", "connecteddevicesplatform", "comms", "d3dscache",
+    "diagnostics", "credentials", "crypto", "protect", "network", "systemcertificates", "themes",
+    "explorer", "notifications", "tiledataLayer", "fontconfig", "speech", "inputpersonalization",
+    "nvidia", "nvidia corporation", "amd", "advanced micro devices", "intel", "google", "mozilla",
+    "apple computer", "apple", "adobe", "oracle", "java", "steam", "valve", "epicgameslauncher",
+    "epic games", "blizzard entertainment", "battle.net", "riot games", "obs-studio", "freecleaner",
+}
+_APPDATA_PROTECTED_TOKENS = {
+    "microsoft", "windows", "package", "packages", "system", "system32", "win32", "runtime", "driver",
+    "drivers", "shell", "explorer", "dwm", "edge", "webview", "defender", "security", "credential",
+    "credentials", "crypto", "protect", "certificates", "network", "notifications", "diagnostics",
+    "nvidia", "amd", "intel", "google", "mozilla", "adobe", "apple", "oracle", "java", "steam",
+    "valve", "epic", "blizzard", "battle", "riot", "obs", "freecleaner",
+}
+_APPDATA_ACTIVE_MARKER_NAMES = {
+    "update.exe", "squirrel.exe", "maintenanceservice.exe", "launcher.exe", "uninstall.exe", "unins000.exe",
+    "setup.exe", "install.exe", "python.exe", "node.exe", "java.exe",
+}
+_APPDATA_RESIDUE_MARKERS = {
+    "cache", "code cache", "gpucache", "logs", "log", "crashpad", "crashes", "blob_storage",
+    "indexeddb", "local storage", "session storage", "shadercache", "cachedata", "tmp", "temp",
 }
 
 
@@ -1195,6 +1223,93 @@ def _program_tokens(*values: str) -> set[str]:
             if len(token) >= 4 and token not in _PROGRAM_TOKEN_STOP:
                 tokens.add(token)
     return tokens
+
+
+def _appdata_name_is_protected(name: str) -> bool:
+    raw = str(name or "").strip().lower()
+    normalized = _program_norm(raw)
+    compact = normalized.replace(" ", "")
+    if not normalized or raw in _APPDATA_SKIP_NAMES or normalized in _APPDATA_SKIP_NAMES or compact in _APPDATA_SKIP_NAMES:
+        return True
+    tokens = _program_tokens(name)
+    if tokens & _APPDATA_PROTECTED_TOKENS:
+        return True
+    # Microsoft.WindowsStore-style package names and system/vendor roots are
+    # shared by Windows or multiple apps; never auto-delete them as leftovers.
+    if raw.startswith(("microsoft.", "windows.", "nvidia", "amd", "intel", "google", "mozilla", "adobe", "apple")):
+        return True
+    if "windows" in compact or "microsoft" in compact:
+        return True
+    return False
+
+
+def _has_active_runtime_marker(path: str, cancel_event: Optional[threading.Event] = None) -> bool:
+    """Return True when an AppData folder looks like an active app install.
+
+    Apps such as Discord, Spotify and launchers often live inside AppData.  If a
+    folder contains executable/runtime files, FreeCleaner must treat it as active
+    unless the app is positively known to be removed.  This is a guardrail for
+    the Programs tab cleanup button and the context-menu delete action.
+    """
+    if not path or not os.path.isdir(path):
+        return False
+    scanned = 0
+    try:
+        for root, dirs, files in os.walk(path):
+            if cancel_event is not None and cancel_event.is_set():
+                return True
+            rel = os.path.relpath(root, path)
+            depth = 0 if rel == "." else rel.count(os.sep) + 1
+            if depth > 2:
+                dirs[:] = []
+                continue
+            for name in files:
+                scanned += 1
+                low = name.lower()
+                if low in _APPDATA_ACTIVE_MARKER_NAMES or low.endswith((".exe", ".msi", ".com", ".bat", ".cmd", ".ps1", ".dll")):
+                    return True
+                if scanned > 900:
+                    return True
+    except Exception:
+        return True
+    return False
+
+
+def _has_residue_marker(path: str) -> bool:
+    if not path or not os.path.isdir(path):
+        return False
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                low = entry.name.strip().lower()
+                if low in _APPDATA_RESIDUE_MARKERS:
+                    return True
+    except Exception:
+        return False
+    return True  # non-system AppData child without runtime markers is still a conservative leftover candidate
+
+
+def _safe_removed_appdata_candidate(child: dict[str, Any], installed_programs: list[dict[str, Any]], cancel_event: Optional[threading.Event] = None) -> tuple[bool, str]:
+    path = str(child.get("path") or "")
+    name = str(child.get("name") or "")
+    if not path or not _safe_appdata_child(path):
+        return False, "outside_appdata"
+    if _appdata_name_is_protected(name):
+        return False, "protected_name"
+    if _has_active_runtime_marker(path, cancel_event):
+        return False, "active_runtime_marker"
+    if not _has_residue_marker(path):
+        return False, "no_residue_marker"
+    child_tokens = set(child.get("tokens") or set())
+    for program in installed_programs:
+        if _program_match_score(program, child) >= 8:
+            return False, "matches_installed_program"
+        installed_tokens = set(program.get("tokens") or set())
+        # If a folder name matches a publisher/product token from an installed
+        # app, treat it as shared app data, not a removed application.
+        if child_tokens and installed_tokens and child_tokens <= installed_tokens:
+            return False, "shared_installed_tokens"
+    return True, "safe_removed_candidate"
 
 
 def _path_drive(path: str) -> str:
@@ -1392,7 +1507,7 @@ def _scan_appdata_children(cancel_event: Optional[threading.Event] = None) -> li
                         if not entry.is_dir(follow_symlinks=False):
                             continue
                         name = entry.name.strip()
-                        if not name or name.lower() in _APPDATA_SKIP_NAMES:
+                        if not name or _appdata_name_is_protected(name):
                             continue
                         if SafeFS._entry_is_reparse_point(entry):
                             continue
@@ -1466,6 +1581,8 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             "leftover_paths": leftover_paths,
             "leftover_drive": ", ".join(leftover_drives) if leftover_drives else "—",
             "leftover_size": leftover_size,
+            "cleanup_allowed": False,
+            "safety_reason": "installed_program",
         })
 
     for cidx, child in enumerate(app_children):
@@ -1473,6 +1590,10 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             continue
         if cancel_event is not None and cancel_event.is_set():
             break
+        safe_candidate, safety_reason = _safe_removed_appdata_candidate(child, installed, cancel_event)
+        if not safe_candidate:
+            log_qa_event("program_leftover_candidate_skipped", name=str(child.get("name") or ""), path=str(child.get("path") or ""), reason=safety_reason)
+            continue
         path = str(child.get("path") or "")
         size = SafeFS.fast_size_limited(path, cancel_event, max_seconds=0.45, max_entries=2600) if path else 0
         entries.append({
@@ -1486,6 +1607,8 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             "leftover_paths": [path] if path else [],
             "leftover_drive": _path_drive(path),
             "leftover_size": size,
+            "cleanup_allowed": True,
+            "safety_reason": safety_reason,
         })
 
     entries.sort(key=lambda item: (0 if item.get("status") == "removed" else 1, str(item.get("name") or "").lower()))
@@ -1513,7 +1636,7 @@ def delete_program_leftover_paths(paths: list[str], cancel_event: Optional[threa
             break
         if not os.path.exists(path):
             continue
-        if not _safe_appdata_child(path):
+        if not _safe_appdata_child(path) or _appdata_name_is_protected(os.path.basename(path)) or _has_active_runtime_marker(path, cancel_event):
             log_security(f"blocked unsafe program leftover delete: {path}", level="WARNING")
             result["errors"] += 1
             continue
@@ -2617,7 +2740,7 @@ class FreeCleanerQt(QMainWindow):
         menu.addAction(loc_action)
         menu.addSeparator()
         del_action = QAction(self._context_icon("delete"), self.tr("programs_delete_leftovers"), menu)
-        del_action.setEnabled(bool(entry.get("leftover_paths")))
+        del_action.setEnabled(bool(entry.get("leftover_paths")) and bool(entry.get("cleanup_allowed")))
         del_action.triggered.connect(lambda: self.delete_selected_program_leftovers(entry))
         menu.addAction(del_action)
         menu.exec(self.program_tree.viewport().mapToGlobal(pos))
@@ -2659,6 +2782,9 @@ class FreeCleanerQt(QMainWindow):
 
     def delete_selected_program_leftovers(self, entry: Optional[Dict[str, Any]] = None) -> None:
         entry = entry or self.current_program_entry()
+        if not entry.get("cleanup_allowed"):
+            QMessageBox.information(self, "FreeCleaner", self.tr("programs_no_leftovers"))
+            return
         paths = [str(p) for p in (entry.get("leftover_paths") or []) if p]
         if not paths:
             QMessageBox.information(self, "FreeCleaner", self.tr("programs_no_leftovers"))
@@ -2670,7 +2796,7 @@ class FreeCleanerQt(QMainWindow):
         self._run_program_cleanup(paths)
 
     def clean_removed_program_leftovers(self) -> None:
-        removed = [e for e in self.program_entries if e.get("status") == "removed" and e.get("leftover_paths")]
+        removed = [e for e in self.program_entries if e.get("status") == "removed" and e.get("leftover_paths") and e.get("cleanup_allowed")]
         if not removed:
             QMessageBox.information(self, "FreeCleaner", self.tr("programs_no_leftovers"))
             return

@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-56 — Programs inventory and AppData leftovers: adds a Programs tab with installed app sizes, leftover AppData detection, removed-app markers, context actions and safe cleanup for leftovers from removed apps.
+Current package: 1.2.0.0-build-58 — Smart Programs safety: uses conservative removed-app detection, skips Windows/system/vendor AppData, blocks active runtimes, and cleans only verified removed-app leftovers.
 
 
 ## 1.2.0.0 build-52 — Installer update mode and recent release changelog
