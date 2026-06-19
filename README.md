@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-34 — optimizer interaction hardening: powercfg status parsing no longer reads numbers from GUIDs, power/boot toggle groups have a short stabilization lockout to prevent stacked system writes, and status refresh waits for power policy broadcasts before repainting.
+Current package: 0.2.1.0-build-35 — CI/build compatibility fix: GitHub Actions now builds the Qt/PySide6 package on supported Python 3.13 x64 only, removes the unsupported win32 PySide6 build path, and installs dependencies with the active Python interpreter.
 
 
 
@@ -359,7 +359,6 @@ See the `LICENSE` file for details.
 
 FreeCleaner supports both Windows x86 and x64 targets for Windows 10/11 compatibility:
 
-- `*-win32.exe` is built with 32-bit Python and is intended for 32-bit Windows 10/11 or compatibility fallback on 64-bit Windows.
 - `*-win64.exe` is built with 64-bit Python and is intended for 64-bit Windows 10/11.
 
 The application also detects whether it is running as a 32-bit process on 64-bit Windows (WOW64), so path discovery can correctly distinguish native x64, native x86, and WOW64 environments.
@@ -368,9 +367,7 @@ The application also detects whether it is running as a 32-bit process on 64-bit
 
 The release workflow now produces both portable EXE files and installable setup files:
 
-- `FreeCleaner-<version>-win32.exe` — portable 32-bit executable.
 - `FreeCleaner-<version>-win64.exe` — portable 64-bit executable.
-- `FreeCleaner-<version>-win32-setup.exe` — installer for 32-bit Windows and compatible 64-bit systems.
 - `FreeCleaner-<version>-win64-setup.exe` — installer for 64-bit Windows only.
 
 The installer is built with Inno Setup and includes:
@@ -408,9 +405,9 @@ This lets update downloads complete without administrator rights. Windows may st
 
 The in-app updater selects the installer by the current Windows architecture:
 
-- 32-bit Windows downloads `FreeCleaner-<version>-win32-setup.exe`.
+- 32-bit Windows is not supported by the PySide6/Qt build.
 - 64-bit Windows downloads `FreeCleaner-<version>-win64-setup.exe`.
-- If the native x64 installer is missing, 64-bit Windows can fall back to `FreeCleaner-<version>-win32-setup.exe` because the 32-bit installer is compatible.
+- 64-bit Windows downloads `FreeCleaner-<version>-win64-setup.exe`.
 
 The updater avoids downloading an incompatible `win64-setup.exe` on 32-bit Windows.
 
@@ -476,7 +473,7 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Restored visible app functions in the Qt interface: license, privacy policy, update check, admin relaunch, config folder, diagnostics, registry backup and registry restore.
 - Added visual status pills for available, admin-only, applied and unavailable actions.
 - Added animated switches and page fade transitions.
-- Updated runtime requirement to the PySide6 6.11.x line.
+- Updated runtime requirement to the PySide6 6.11.x line on Python 3.10+ x64/ARM64 supported wheels.
 
 
 ## Build 17 notes
@@ -500,3 +497,12 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Deferred registry/power status sync until controls are re-enabled.
 - Admin-only optimizer toggles remain clickable and revert with a clear admin-required message instead of looking broken.
 - Improved power-plan recognition using `powercfg /GETACVALUEINDEX` for AC settings when available.
+
+
+## 0.2.1.0 build-35 — CI PySide6 packaging compatibility
+
+- Fixed GitHub Actions dependency installation by moving release builds from Python 3.8 to Python 3.13.
+- Removed the unsupported Windows x86/win32 build matrix entry for the Qt/PySide6 package.
+- Kept `PySide6==6.11.1` but now installs it only on supported Python `>=3.10,<3.15` runtimes.
+- Switched dependency install commands to `python -m pip ...` so the workflow always uses the selected setup-python interpreter.
+- Updated release documentation to describe the current x64-only Windows build path.

@@ -84,10 +84,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: x86
-            python_arch: x86
-            asset_suffix: win32
-            original_filename: FreeCleaner-win32.exe
           - arch: x64
             python_arch: x64
             asset_suffix: win64
@@ -98,7 +94,7 @@ jobs:
       INTERNAL_NAME: FreeCleaner
       FILE_DESCRIPTION: FreeCleaner Windows cleaner, auto system language, and persistent language preference
       SPEC_FILE: FreeCleaner.spec
-      PYTHON_VERSION: '3.8'
+      PYTHON_VERSION: '3.13'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -115,8 +111,9 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade "pip<25"
-          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade wheel setuptools
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
 
       - name: Generate version_info.txt
         shell: pwsh
