@@ -554,9 +554,9 @@ begin
       InfoText := UiText('ready_new');
     InfoText := InfoText + #13#10 + UiText('language_title') + ': ' + LanguageName(SelectedLanguagePreference);
 
-    { Do not use parameterized {cm:...} constants here. Inno Setup treats
-      a pipe-delimited value as part of the message name and aborts the installer
-      with "Unknown custom message name" on the Ready page. }
+    { Keep this comment free of nested PascalScript braces. Inno Setup closes
+      brace comments at the first closing brace and then compiles the leftover
+      words as code, which broke CI with an Unknown identifier error. }
     WizardForm.ReadyMemo.Lines.Insert(0, '');
     WizardForm.ReadyMemo.Lines.Insert(0, InfoText);
   end;

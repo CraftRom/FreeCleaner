@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QEasingCurve, QPoint
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap, QPolygon
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -2501,7 +2501,7 @@ class FreeCleanerQt(QMainWindow):
         if kind == "run":
             painter.setPen(QPen(QColor("#76B900"), 2))
             painter.setBrush(QColor("#76B900"))
-            painter.drawPolygon(QPolygon([pix.rect().center() + QPoint(-3, -6), pix.rect().center() + QPoint(-3, 6), pix.rect().center() + QPoint(6, 0)]))
+            painter.drawPolygon([pix.rect().center() + QPoint(-3, -6), pix.rect().center() + QPoint(-3, 6), pix.rect().center() + QPoint(6, 0)])
         elif kind == "folder":
             painter.setPen(QPen(QColor("#D8B45A"), 2))
             painter.setBrush(QColor("#4A3715"))
