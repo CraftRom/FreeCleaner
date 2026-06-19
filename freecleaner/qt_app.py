@@ -26,7 +26,7 @@ try:
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, QPropertyAnimation, QEasingCurve, Property, QEvent
+from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
@@ -51,7 +51,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTextEdit,
     QTabWidget,
-    QGraphicsOpacityEffect,
     QGraphicsDropShadowEffect,
     QToolButton,
     QVBoxLayout,
@@ -386,10 +385,6 @@ class ToggleSwitch(QCheckBox):
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._position = 1.0 if self.isChecked() else 0.0
         self._pressed_inside = False
-        self._animation = QPropertyAnimation(self, b"position", self)
-        self._animation.setDuration(130)
-        self._animation.setEasingCurve(QEasingCurve.OutCubic)
-        self.toggled.connect(self._animate_to_state)
 
     def get_position(self) -> float:
         return float(self._position)
@@ -401,18 +396,13 @@ class ToggleSwitch(QCheckBox):
     position = Property(float, get_position, set_position)
 
     def _animate_to_state(self, *_: Any) -> None:
-        self._animation.stop()
-        self._animation.setStartValue(self._position)
-        self._animation.setEndValue(1.0 if self.isChecked() else 0.0)
-        self._animation.start()
+        self._position = 1.0 if self.isChecked() else 0.0
+        self.update()
 
     def setChecked(self, value: bool) -> None:  # noqa: N802 - Qt API
-        old = self.isChecked()
         super().setChecked(bool(value))
-        if old == bool(value) or self.signalsBlocked() or not self.isVisible():
-            self._animation.stop()
-            self._position = 1.0 if bool(value) else 0.0
-            self.update()
+        self._position = 1.0 if bool(value) else 0.0
+        self.update()
 
     def nextCheckState(self) -> None:  # noqa: N802 - Qt override
         self.setChecked(not self.isChecked())
@@ -532,28 +522,15 @@ class SplashWindow(QWidget):
         footer = QLabel("Safe cleanup • Registry backup • Gaming tweaks")
         footer.setObjectName("Tiny")
         layout.addWidget(footer)
-        self.effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self.effect)
-        self.fade = QPropertyAnimation(self.effect, b"opacity", self)
-        self.fade.setDuration(180)
-        self.fade.setStartValue(0.0)
-        self.fade.setEndValue(1.0)
-        self.fade.setEasingCurve(QEasingCurve.OutCubic)
         self._fade_target = "show"
-        self.fade.finished.connect(self._on_fade_finished)
 
     def show_centered(self) -> None:
         screen = QApplication.primaryScreen()
         if screen:
             geo = screen.availableGeometry()
             self.move(geo.center() - self.rect().center())
-        self.effect.setOpacity(0.0)
         self.show()
-        self.fade.stop()
         self._fade_target = "show"
-        self.fade.setStartValue(0.0)
-        self.fade.setEndValue(1.0)
-        self.fade.start()
 
     def set_progress(self, value: int, message: str = "") -> None:
         self.progress.setValue(max(0, min(100, int(value))))
@@ -561,11 +538,8 @@ class SplashWindow(QWidget):
             self.message.setText(message)
 
     def fade_out(self) -> None:
-        self.fade.stop()
         self._fade_target = "hide"
-        self.fade.setStartValue(float(self.effect.opacity()))
-        self.fade.setEndValue(0.0)
-        self.fade.start()
+        self.close()
 
     def _on_fade_finished(self) -> None:
         if getattr(self, "_fade_target", "show") == "hide":
@@ -599,7 +573,14 @@ class Worker(QObject):
 
 
 class EstimateBridge(QObject):
-    finished = Signal(int, int)
+    # Use object for byte totals: Qt int is 32-bit and overflows above ~2 GB,
+    # which produced negative MB values in the UI.
+    finished = Signal(int, object)
+
+
+class StatusBridge(QObject):
+    finished = Signal(int, dict)
+    failed = Signal(int, str)
 
 
 class WorkerBridge(QObject):
@@ -707,7 +688,10 @@ class TaskRow(QFrame):
         self.changed.emit()
 
     def set_selected_property(self, value: bool) -> None:
-        self.setProperty("selected", "true" if value else "false")
+        new_value = "true" if value else "false"
+        if self.property("selected") == new_value:
+            return
+        self.setProperty("selected", new_value)
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -726,8 +710,15 @@ class TaskRow(QFrame):
         return bool(self.control.isChecked()) and self.control.isEnabled()
 
     def set_selected(self, value: bool) -> None:
-        if self.control.isEnabled():
-            self.control.setChecked(bool(value))
+        # Programmatic selection changes must never trigger cleaner/toggle actions.
+        # Older builds emitted stateChanged while Reset/Clear Selection iterated rows,
+        # which could start multiple optimizer workers and make the UI appear frozen.
+        was_blocked = self.control.blockSignals(True)
+        try:
+            if self.control.isEnabled():
+                self.control.setChecked(bool(value))
+        finally:
+            self.control.blockSignals(was_blocked)
         self.set_selected_property(bool(value) and self.control.isEnabled())
 
     def matches(self, query: str) -> bool:
@@ -737,6 +728,9 @@ class TaskRow(QFrame):
         return query.casefold() in text
 
     def set_availability(self, value: str) -> None:
+        value = str(value or "ready")
+        if self.property("availability") == value:
+            return
         self.setProperty("availability", value)
         self.style().unpolish(self)
         self.style().polish(self)
@@ -811,13 +805,7 @@ class Toast(QFrame):
         self.label.setObjectName("ToastText")
         self.label.setWordWrap(True)
         layout.addWidget(self.label, 1)
-        self.effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self.effect)
-        self.fade = QPropertyAnimation(self.effect, b"opacity", self)
-        self.fade.setDuration(160)
-        self.fade.setEasingCurve(QEasingCurve.OutCubic)
         self._fade_target = "show"
-        self.fade.finished.connect(self._on_fade_finished)
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(24)
         shadow.setOffset(0, 10)
@@ -836,24 +824,14 @@ class Toast(QFrame):
             x = max(18, parent.width() - self.width() - 24)
             y = 72
             self.move(x, y)
-        self.effect.setOpacity(0.0)
         self.setVisible(True)
         self.raise_()
-        self.fade.stop()
-        self._fade_target = "show"
-        self.fade.setStartValue(0.0)
-        self.fade.setEndValue(1.0)
-        self.fade.start()
         QTimer.singleShot(2800, self.fade_out)
 
     def fade_out(self) -> None:
         if not self.isVisible():
             return
-        self.fade.stop()
-        self._fade_target = "hide"
-        self.fade.setStartValue(float(self.effect.opacity()))
-        self.fade.setEndValue(0.0)
-        self.fade.start()
+        self.setVisible(False)
 
     def _on_fade_finished(self) -> None:
         if getattr(self, "_fade_target", "show") == "hide":
@@ -867,6 +845,9 @@ class UiTaskSection:
     rows: List[TaskRow]
     container: QWidget
     layout: QVBoxLayout
+
+
+_MAIN_WINDOW_REF: Optional["FreeCleanerQt"] = None
 
 
 class FreeCleanerQt(QMainWindow):
@@ -894,11 +875,19 @@ class FreeCleanerQt(QMainWindow):
         self.revert_commands: Dict[str, Callable[[], Any]] = {}
         self._programmatic_change = False
         self._estimate_token = 0
+        self._estimate_cancel_event = threading.Event()
+        self._estimate_active = False
         self.estimate_bridge = EstimateBridge(self)
         self.estimate_bridge.finished.connect(self.on_selection_estimate_ready, Qt.QueuedConnection)
         self.estimate_timer = QTimer(self)
         self.estimate_timer.setSingleShot(True)
         self.estimate_timer.timeout.connect(self.start_selection_estimate)
+        self.status_bridge = StatusBridge(self)
+        self.status_bridge.finished.connect(self.on_status_sync_ready, Qt.QueuedConnection)
+        self.status_bridge.failed.connect(self.on_status_sync_failed, Qt.QueuedConnection)
+        self._status_sync_token = 0
+        self._status_sync_worker_active = False
+        self._status_applied_cache: Dict[str, Optional[bool]] = {}
         self._active_power_scheme_cache: Optional[str] = None
         self._active_power_scheme_guid_cache: Optional[str] = None
         self._dynamic_tick_cache: Optional[bool] = None
@@ -906,13 +895,23 @@ class FreeCleanerQt(QMainWindow):
         self._status_sync_pending = False
         self._last_status_sync_started_at = 0.0
         self._powercfg_value_cache: Dict[Tuple[str, str], Optional[int]] = {}
+        self._last_ui_heartbeat_monotonic = time.monotonic()
+        self._last_ui_heartbeat_logged = 0.0
+        self._ui_watchdog_stop = threading.Event()
+        self._auto_status_sync_enabled = os.environ.get("FREECLEANER_AUTO_STATUS_SYNC") == "1"
+        self._auto_update_check_enabled = os.environ.get("FREECLEANER_AUTO_UPDATE_CHECK") == "1"
         self.worker_bridge = WorkerBridge(self)
         self.worker_bridge.toggle_progress.connect(self.on_toggle_progress, Qt.QueuedConnection)
         self.worker_bridge.toggle_finished.connect(self.on_toggle_finished, Qt.QueuedConnection)
         self.worker_bridge.toggle_failed.connect(self.on_toggle_failed, Qt.QueuedConnection)
-        self.worker_bridge.background_progress.connect(lambda _percent, text: self.log(text) if text else None, Qt.QueuedConnection)
+        self.worker_bridge.background_progress.connect(self.on_background_progress, Qt.QueuedConnection)
         self.worker_bridge.background_finished.connect(self.on_background_worker_finished, Qt.QueuedConnection)
         self.worker_bridge.background_failed.connect(self.on_background_worker_failed, Qt.QueuedConnection)
+        self.ui_watchdog = QTimer(self)
+        self.ui_watchdog.setInterval(1000)
+        self.ui_watchdog.timeout.connect(self.on_ui_heartbeat)
+        self.ui_watchdog.start()
+        threading.Thread(target=self._ui_freeze_watchdog_loop, name="FreeCleanerUiFreezeWatchdog", daemon=True).start()
 
         self.setWindowTitle(f"FreeCleaner {APP_VERSION_RAW}")
         icon = find_icon_path("app.ico") or find_icon_path("app.png")
@@ -949,11 +948,16 @@ class FreeCleanerQt(QMainWindow):
         # Heavy registry/powercfg status checks are deferred until after the
         # window is visible.  This keeps splash startup clean and avoids bursts
         # of hidden helper processes during UI construction.
-        QTimer.singleShot(650, lambda: self.defer_status_sync(0))
+        if self._auto_status_sync_enabled:
+            QTimer.singleShot(1500, lambda: self.defer_status_sync(0))
+        else:
+            log_qa_event("startup_auto_status_sync_disabled")
         log_startup("FreeCleanerQt.__init__ complete")
         log_qa_event("qt_window_init_complete", tasks=len(self.tasks), rows=len(self.rows), thread=threading.current_thread().name)
-        if self.setting_bool("auto_check_updates", True):
-            QTimer.singleShot(1800, self.check_updates)
+        if self._auto_update_check_enabled and self.setting_bool("auto_check_updates", False):
+            QTimer.singleShot(8000, self.check_updates)
+        else:
+            log_qa_event("startup_auto_update_check_disabled")
 
     # ------------------------- config / i18n -------------------------
     def load_config(self) -> Dict[str, Any]:
@@ -1107,17 +1111,8 @@ class FreeCleanerQt(QMainWindow):
         if hasattr(self, "nav_buttons") and 0 <= index < len(self.nav_buttons):
             self.nav_buttons[index].setChecked(True)
         self.stack.setCurrentIndex(index)
-        page = self.stack.currentWidget()
-        if page is not None:
-            effect = QGraphicsOpacityEffect(page)
-            page.setGraphicsEffect(effect)
-            anim = QPropertyAnimation(effect, b"opacity", page)
-            anim.setDuration(120)
-            anim.setStartValue(0.78)
-            anim.setEndValue(1.0)
-            anim.setEasingCurve(QEasingCurve.OutCubic)
-            anim.finished.connect(lambda p=page: p.setGraphicsEffect(None))
-            anim.start(QPropertyAnimation.DeleteWhenStopped)
+        # Page switches must be constant-time. Opacity animations on stacked
+        # widgets have caused freezes on some Windows/PySide/GPU combinations.
 
     def content_page(self, title: str, subtitle: str = "") -> Tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -1392,6 +1387,10 @@ class FreeCleanerQt(QMainWindow):
         parent.addWidget(log_head)
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
+        try:
+            self.log_box.document().setMaximumBlockCount(450)
+        except Exception:
+            pass
         parent.addWidget(self.log_box, 1)
 
     def build_settings_page(self, parent: QVBoxLayout) -> None:
@@ -1614,9 +1613,11 @@ class FreeCleanerQt(QMainWindow):
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
-        self.progress_anim = QPropertyAnimation(self.progress, b"value", self)
-        self.progress_anim.setDuration(170)
-        self.progress_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.progress_anim = None
+        self._progress_target_value = 0
+        self._progress_anim_timer = QTimer(self)
+        self._progress_anim_timer.setInterval(24)
+        self._progress_anim_timer.timeout.connect(self._tick_progress_animation)
         layout.addWidget(self.result_label)
         layout.addWidget(self.progress)
         actions = QHBoxLayout()
@@ -1672,6 +1673,48 @@ class FreeCleanerQt(QMainWindow):
                 seen.add(key)
                 keys.append(key)
         return keys
+
+    def on_ui_heartbeat(self) -> None:
+        # Tiny GUI-thread heartbeat. A daemon watchdog thread checks this value;
+        # if it stops changing, the Qt event loop is blocked. Log only every few
+        # seconds to avoid making logging itself part of the problem.
+        try:
+            now = time.monotonic()
+            self._last_ui_heartbeat_monotonic = now
+            if now - float(getattr(self, "_last_ui_heartbeat_logged", 0.0)) >= 5.0:
+                self._last_ui_heartbeat_logged = now
+                log_qa_event(
+                    "ui_heartbeat",
+                    thread=threading.current_thread().name,
+                    status_worker=bool(getattr(self, "_status_sync_worker_active", False)),
+                    toggle_jobs=list(getattr(self, "toggle_jobs", {}).keys()),
+                    main_worker=bool(getattr(self, "thread", None) is not None),
+                    estimate_active=bool(getattr(self, "_estimate_active", False)),
+                )
+        except Exception:
+            pass
+
+    def _ui_freeze_watchdog_loop(self) -> None:
+        # Runs outside Qt. It does not touch widgets; it only reports a frozen
+        # event loop for QA logs when heartbeat stops.
+        last_report = 0.0
+        while not getattr(self, "_ui_watchdog_stop", threading.Event()).is_set():
+            try:
+                time.sleep(2.0)
+                last = float(getattr(self, "_last_ui_heartbeat_monotonic", 0.0) or 0.0)
+                delta = time.monotonic() - last
+                if last > 0 and delta >= 6.0 and (time.monotonic() - last_report) >= 6.0:
+                    last_report = time.monotonic()
+                    log_qa_event(
+                        "ui_event_loop_stalled",
+                        seconds=round(delta, 2),
+                        status_worker=bool(getattr(self, "_status_sync_worker_active", False)),
+                        toggle_jobs=list(getattr(self, "toggle_jobs", {}).keys()),
+                        main_worker=bool(getattr(self, "thread", None) is not None),
+                        estimate_active=bool(getattr(self, "_estimate_active", False)),
+                    )
+            except Exception:
+                pass
 
     def register_tasks(self) -> None:
         self.section(self.cleaner_inner_layout, "clean_basic", "Системне очищення")
@@ -1895,9 +1938,12 @@ class FreeCleanerQt(QMainWindow):
                 # the main source of stale/overwritten visual switch states.
                 QTimer.singleShot(180, run)
                 return
+            if getattr(self, "_status_sync_worker_active", False):
+                QTimer.singleShot(180, run)
+                return
             self._status_sync_pending = False
             self._last_status_sync_started_at = time.monotonic()
-            self.sync_registry_toggle_states()
+            self.start_status_sync_worker()
 
         QTimer.singleShot(max(0, int(delay_ms)), run)
 
@@ -1907,102 +1953,97 @@ class FreeCleanerQt(QMainWindow):
         self._dynamic_tick_cache = None
         self._powercfg_value_cache = {}
 
-    def active_power_scheme_guid_cached(self, *, refresh: bool = False) -> Optional[str]:
-        if refresh or self._active_power_scheme_guid_cache is None:
-            self._active_power_scheme_guid_cache = WindowsOps.active_power_scheme_guid() if IS_WINDOWS else None
-        return self._active_power_scheme_guid_cache
+    @staticmethod
+    def _is_high_power_text(text: str) -> bool:
+        folded = str(text or "").casefold()
+        return ("scheme_min" in folded) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in folded) or ("high performance" in folded)
 
-    def powercfg_ac_value_cached(self, subgroup: str, setting: str) -> Optional[int]:
-        scheme = self.active_power_scheme_guid_cached() or "SCHEME_CURRENT"
-        key = (str(scheme).lower(), str(subgroup), str(setting))
-        if key not in self._powercfg_value_cache:
-            self._powercfg_value_cache[key] = WindowsOps.powercfg_get_ac_value(subgroup, setting, scheme=scheme)
-        return self._powercfg_value_cache.get(key)
+    @staticmethod
+    def _is_ultimate_power_text(text: str) -> bool:
+        folded = str(text or "").casefold()
+        return ("e9a42b02-d5df-448d-aa00-03f14749eb61" in folded) or ("ultimate performance" in folded)
 
-    def active_power_scheme_text(self, *, refresh: bool = False) -> str:
-        if refresh or self._active_power_scheme_cache is None:
-            text = ""
-            if IS_WINDOWS:
-                rc, output = WindowsOps.run_command_capture(
-                    WindowsOps.powercfg_args("/getactivescheme"),
-                    timeout=30,
-                    log_failure=False,
-                    context={"feature": "qt_status_active_power_scheme", "optional": True},
-                )
-                if rc == 0 and output:
-                    text = " ".join(output.strip().split()).casefold()
-                    parsed_guid = WindowsOps.parse_active_power_scheme_guid(output)
-                    if parsed_guid:
-                        self._active_power_scheme_guid_cache = parsed_guid
-            self._active_power_scheme_cache = text
-        return self._active_power_scheme_cache or ""
-
-    def dynamic_tick_disabled_state(self, *, refresh: bool = False) -> Optional[bool]:
-        if refresh or self._dynamic_tick_cache is None:
-            value: Optional[bool] = None
-            if IS_WINDOWS and WindowsOps.supports_dynamic_tick_toggle():
-                value = WindowsOps.dynamic_tick_disabled_status()
-            self._dynamic_tick_cache = value
-        return self._dynamic_tick_cache
-
-    def command_task_applied(self, task: CleanerTask) -> Optional[bool]:
-        key = task.key
-        if task.instant_action:
-            return False
+    @staticmethod
+    def _command_status_from_values(key: str, active_text: str, values: Dict[Tuple[str, str], Optional[int]], dynamic_tick: Optional[bool]) -> Optional[bool]:
         if key == "high_perf_plan":
-            text = self.active_power_scheme_text()
-            if not text:
-                return None
-            return ("scheme_min" in text) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in text) or ("high performance" in text)
+            return FreeCleanerQt._is_high_power_text(active_text) if active_text else None
         if key == "safe_gaming_power_profile":
-            text = self.active_power_scheme_text()
-            if not text:
+            if not active_text:
                 return None
-            high = ("scheme_min" in text) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in text) or ("high performance" in text)
-            epp = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFEPP")
-            aspm = self.powercfg_ac_value_cached("SUB_PCIEXPRESS", "ASPM")
-            boost = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFBOOSTMODE")
-            known = [value for value in (epp, aspm, boost) if value is not None]
-            if not known:
-                # If the OEM/current plan hides every optional setting, do not
-                # mark this advanced profile as applied only because the machine
-                # is on High Performance. That made several distinct switches
-                # look active at once.
+            high = FreeCleanerQt._is_high_power_text(active_text)
+            epp = values.get(("SUB_PROCESSOR", "PERFEPP"))
+            aspm = values.get(("SUB_PCIEXPRESS", "ASPM"))
+            boost = values.get(("SUB_PROCESSOR", "PERFBOOSTMODE"))
+            # ASPM alone is not enough to prove the CPU profile is applied.
+            processor_known = [value for value in (epp, boost) if value is not None]
+            if not processor_known:
                 return None if high else False
             return high and (epp in (0, None)) and (aspm in (0, None)) and (boost in (1, 2, None))
         if key == "cpu_latency_power_profile":
-            text = self.active_power_scheme_text()
-            if not text:
+            if not active_text:
                 return None
-            high = ("scheme_min" in text) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in text) or ("high performance" in text)
-            epp = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFEPP")
-            aspm = self.powercfg_ac_value_cached("SUB_PCIEXPRESS", "ASPM")
-            boost = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFBOOSTMODE")
-            min_cores = self.powercfg_ac_value_cached("SUB_PROCESSOR", "CPMINCORES")
-            known = [value for value in (epp, aspm, boost, min_cores) if value is not None]
-            if not known:
+            high = FreeCleanerQt._is_high_power_text(active_text)
+            epp = values.get(("SUB_PROCESSOR", "PERFEPP"))
+            aspm = values.get(("SUB_PCIEXPRESS", "ASPM"))
+            boost = values.get(("SUB_PROCESSOR", "PERFBOOSTMODE"))
+            min_cores = values.get(("SUB_PROCESSOR", "CPMINCORES"))
+            processor_known = [value for value in (epp, boost, min_cores) if value is not None]
+            if not processor_known:
                 return None if high else False
             return high and (epp in (0, None)) and (aspm in (0, None)) and (boost in (2, None)) and (min_cores in (100, None))
         if key == "ultimate_perf_plan":
-            text = self.active_power_scheme_text()
-            if not text:
-                return None
-            return ("e9a42b02-d5df-448d-aa00-03f14749eb61" in text) or ("ultimate performance" in text)
+            return FreeCleanerQt._is_ultimate_power_text(active_text) if active_text else None
         if key == "disable_dynamic_tick_latency":
-            return self.dynamic_tick_disabled_state()
+            return dynamic_tick
+        if key == "purge_standby_ram":
+            return False
+        return None
+
+    def active_power_scheme_guid_cached(self, *, refresh: bool = False) -> Optional[str]:
+        # Non-blocking cache accessor.  The async status worker refreshes this.
+        return self._active_power_scheme_guid_cache
+
+    def powercfg_ac_value_cached(self, subgroup: str, setting: str) -> Optional[int]:
+        # Non-blocking cache accessor.  The async status worker refreshes this.
+        scheme = (self._active_power_scheme_guid_cache or "").lower()
+        return self._powercfg_value_cache.get((scheme, str(subgroup), str(setting)))
+
+    def active_power_scheme_text(self, *, refresh: bool = False) -> str:
+        # Non-blocking cache accessor.  Status worker refreshes the value.
+        return self._active_power_scheme_cache or ""
+
+    def dynamic_tick_disabled_state(self, *, refresh: bool = False) -> Optional[bool]:
+        # Non-blocking cache accessor.  Status worker refreshes the value.
+        return self._dynamic_tick_cache
+
+    def command_task_applied(self, task: CleanerTask) -> Optional[bool]:
+        # GUI code must not synchronously run powercfg/BCDEdit.  The async
+        # status worker fills _status_applied_cache and this method only reads
+        # that cached result.  This prevents short UI freezes when the user
+        # clicks or navigates while Windows command probes are running.
+        if task.instant_action:
+            return False
+        if task.requires_admin and not self.is_admin and task.key == "disable_dynamic_tick_latency":
+            return None
+        if task.key in getattr(self, "_status_applied_cache", {}):
+            return self._status_applied_cache.get(task.key)
         return None
 
     def status_for_task(self, task: CleanerTask) -> str:
+        # This method is called from paint/update paths.  Never run registry,
+        # powercfg or BCDEdit probes here; the async status worker owns them.
         if task.requires_admin and not self.is_admin:
             return self.tr("registry_status_admin_only")
         if task.state == "disabled":
             return self.tr("registry_status_unavailable") if task.registry_values else "disabled"
-        if task.registry_values:
-            statuses = WindowsOps.registry_statuses(task.registry_values)
-            if statuses and all(s.get("matches") for s in statuses):
+        if task.category == "optimizer" and task.control == "switch":
+            applied = self.command_task_applied(task)
+            if applied is True:
                 return self.tr("registry_status_done")
-            if any(s.get("status") == "access_denied" for s in statuses):
-                return self.tr("registry_status_access_denied")
+            if applied is False:
+                return self.tr("registry_status_change_needed")
+            return "checking"
+        if task.registry_values:
             return self.tr("registry_status_change_needed")
         if task.category == "optimizer" and task.kind != "directory":
             applied = self.command_task_applied(task)
@@ -2015,46 +2056,176 @@ class FreeCleanerQt(QMainWindow):
             return "clean"
         return "action"
 
-    def sync_registry_toggle_states(self) -> None:
-        log_action("status_sync_start")
-        log_qa_event("status_sync_start", active_toggles=list(getattr(self, "toggle_jobs", {}).keys()))
-        self.invalidate_system_status_cache()
+    def _snapshot_status_tasks(self) -> List[Dict[str, Any]]:
+        snapshot: List[Dict[str, Any]] = []
+        busy = set(getattr(self, "toggle_jobs", {}).keys())
         for task in self.tasks.values():
             if task.category != "optimizer" or task.control != "switch":
                 continue
-            row = self.rows.get(task.key)
-            if not row:
-                continue
-            if task.key in getattr(self, "toggle_jobs", {}):
+            if task.key in busy:
                 log_qa_event("status_sync_skip_busy_toggle", key=task.key)
                 continue
-            row.control.setEnabled(self.row_base_enabled(row))
-            applied: Optional[bool]
+            snapshot.append({
+                "key": task.key,
+                "state": task.state,
+                "requires_admin": bool(task.requires_admin),
+                "instant_action": bool(task.instant_action),
+                "registry_values": list(task.registry_values or []),
+            })
+        return snapshot
+
+    def start_status_sync_worker(self) -> None:
+        if getattr(self, "_status_sync_worker_active", False):
+            self._status_sync_pending = True
+            log_qa_event("status_sync_worker_coalesced")
+            return
+        token = int(getattr(self, "_status_sync_token", 0)) + 1
+        self._status_sync_token = token
+        self._status_sync_worker_active = True
+        snapshot = self._snapshot_status_tasks()
+        is_admin = bool(self.is_admin)
+        log_action("status_sync_start")
+        log_qa_event("status_sync_start", token=token, active_toggles=list(getattr(self, "toggle_jobs", {}).keys()), tasks=len(snapshot), async_worker=True)
+
+        def worker() -> None:
+            started = time.monotonic()
+            result: Dict[str, Any] = {"token": token, "items": {}, "elapsed_ms": 0}
             try:
-                if task.registry_values:
-                    statuses = WindowsOps.registry_statuses(task.registry_values)
-                    applied = bool(statuses) and all(s.get("matches") for s in statuses)
-                    log_qa_event("status_sync_registry", key=task.key, applied=applied, statuses=statuses)
-                else:
-                    applied = self.command_task_applied(task)
-                    log_qa_event("status_sync_command", key=task.key, applied=applied)
+                active_text = ""
+                active_guid: Optional[str] = None
+                power_values: Dict[Tuple[str, str], Optional[int]] = {}
+
+                needs_power = any(item["key"] in {"high_perf_plan", "safe_gaming_power_profile", "cpu_latency_power_profile", "ultimate_perf_plan"} for item in snapshot)
+                if IS_WINDOWS and needs_power:
+                    rc, output = WindowsOps.run_command_capture(
+                        WindowsOps.powercfg_args("/getactivescheme"),
+                        timeout=30,
+                        log_failure=False,
+                        context={"feature": "qt_status_active_power_scheme", "optional": True},
+                    )
+                    if rc == 0 and output:
+                        active_text = " ".join(output.strip().split()).casefold()
+                        active_guid = WindowsOps.parse_active_power_scheme_guid(output)
+
+                def get_power_value(subgroup: str, setting: str) -> Optional[int]:
+                    key_tuple = (str(subgroup), str(setting))
+                    if key_tuple not in power_values:
+                        power_values[key_tuple] = WindowsOps.powercfg_get_ac_value(subgroup, setting, scheme=active_guid or "SCHEME_CURRENT") if IS_WINDOWS else None
+                    return power_values.get(key_tuple)
+
+                dynamic_tick: Optional[bool] = None
+                for item in snapshot:
+                    key = str(item.get("key") or "")
+                    registry_values = item.get("registry_values") or []
+                    try:
+                        if registry_values:
+                            statuses = WindowsOps.registry_statuses(registry_values)
+                            applied = bool(statuses) and all(s.get("matches") for s in statuses)
+                            result["items"][key] = {"kind": "registry", "applied": applied, "statuses": statuses}
+                            log_qa_event("status_sync_registry", key=key, applied=applied, statuses=statuses)
+                            continue
+
+                        if item.get("instant_action"):
+                            result["items"][key] = {"kind": "command", "applied": False}
+                            log_qa_event("status_sync_command", key=key, applied=False)
+                            continue
+
+                        if key == "disable_dynamic_tick_latency":
+                            # BCDEdit can return Access denied or stall depending on BCD store
+                            # policy. Do not probe it during passive status sync; only the
+                            # explicit toggle worker may run BCDEdit. This keeps UI clicks safe.
+                            result["items"][key] = {"kind": "command", "applied": None, "boot_status_probe_skipped": True}
+                            log_qa_event("status_sync_command_skipped_boot_probe", key=key, admin=is_admin)
+                            continue
+
+                        if key in {"safe_gaming_power_profile", "cpu_latency_power_profile"}:
+                            get_power_value("SUB_PROCESSOR", "PERFEPP")
+                            get_power_value("SUB_PCIEXPRESS", "ASPM")
+                            get_power_value("SUB_PROCESSOR", "PERFBOOSTMODE")
+                            if key == "cpu_latency_power_profile":
+                                get_power_value("SUB_PROCESSOR", "CPMINCORES")
+
+                        applied = FreeCleanerQt._command_status_from_values(key, active_text, power_values, dynamic_tick)
+                        result["items"][key] = {"kind": "command", "applied": applied}
+                        log_qa_event("status_sync_command", key=key, applied=applied)
+                    except Exception as exc:
+                        result["items"][key] = {"kind": "error", "applied": None, "error": str(exc)}
+                        log_error(f"status sync failed for {key}: {exc}")
+                result["active_text"] = active_text
+                result["active_guid"] = active_guid
+                result["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+                self.status_bridge.finished.emit(token, result)
             except Exception as exc:
-                applied = None
-                log_error(f"status sync failed for {task.key}: {exc}")
-            if applied is not None:
-                row.control.blockSignals(True)
-                row.control.setChecked(bool(applied))
-                row.control.blockSignals(False)
-                row.set_selected_property(bool(applied) and row.control.isEnabled())
-                row.update_status(self.tr("registry_status_done") if applied else self.tr("registry_status_change_needed"))
-            else:
-                row.update_status(self.status_for_task(task))
-                row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
-            row.control.update()
+                import traceback
+                detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                log_error(detail)
+                self.status_bridge.failed.emit(token, detail or str(exc))
+
+        threading.Thread(target=worker, name="FreeCleanerStatusSync", daemon=True).start()
+
+    def sync_registry_toggle_states(self) -> None:
+        """Public refresh entry point: run status probes off the GUI thread."""
+        self.defer_status_sync(0)
+
+    def on_status_sync_failed(self, token: int, error: str) -> None:
+        if token != getattr(self, "_status_sync_token", token):
+            return
+        self._status_sync_worker_active = False
+        log_error(f"status sync worker failed: {error}")
+        log_action("status_sync_complete")
+        log_qa_event("status_sync_complete", token=token, failed=True)
+        if getattr(self, "_status_sync_pending", False):
+            self._status_sync_pending = False
+            self.defer_status_sync(350)
+
+    def on_status_sync_ready(self, token: int, result: Dict[str, Any]) -> None:
+        if token != getattr(self, "_status_sync_token", token):
+            log_qa_event("status_sync_stale_result_ignored", token=token, current=getattr(self, "_status_sync_token", None))
+            return
+        self._status_sync_worker_active = False
+        self._active_power_scheme_cache = str(result.get("active_text") or "")
+        self._active_power_scheme_guid_cache = result.get("active_guid") or self._active_power_scheme_guid_cache
+        items = result.get("items") or {}
+        try:
+            for task in self.tasks.values():
+                if task.category != "optimizer" or task.control != "switch":
+                    continue
+                row = self.rows.get(task.key)
+                if not row or task.key in getattr(self, "toggle_jobs", {}):
+                    continue
+                row.control.setEnabled(self.row_base_enabled(row))
+                item = items.get(task.key) or {}
+                applied = item.get("applied") if isinstance(item, dict) else None
+                self._status_applied_cache[task.key] = applied if applied is None else bool(applied)
+                if applied is not None:
+                    was_blocked = row.control.blockSignals(True)
+                    try:
+                        row.control.setChecked(bool(applied))
+                    finally:
+                        row.control.blockSignals(was_blocked)
+                    row.set_selected_property(bool(applied) and row.control.isEnabled())
+                    row.update_status(self.tr("registry_status_done") if applied else self.tr("registry_status_change_needed"))
+                else:
+                    if task.requires_admin and not self.is_admin:
+                        status = self.tr("registry_status_admin_only")
+                    elif task.state == "disabled":
+                        status = self.tr("registry_status_unavailable") if task.registry_values else "disabled"
+                    elif isinstance(item, dict) and any((s.get("status") == "access_denied") for s in (item.get("statuses") or [])):
+                        status = self.tr("registry_status_access_denied")
+                    else:
+                        status = "action" if not task.registry_values else self.tr("registry_status_change_needed")
+                    row.update_status(status)
+                    row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
+                row.control.update()
+        finally:
+            pass
         self.refresh_task_counts()
         self.log(self.tr("registry_status_refresh_ok"))
         log_action("status_sync_complete")
-        log_qa_event("status_sync_complete")
+        log_qa_event("status_sync_complete", token=token, elapsed_ms=result.get("elapsed_ms"), async_worker=True)
+        if getattr(self, "_status_sync_pending", False):
+            self._status_sync_pending = False
+            self.defer_status_sync(350)
 
     def selected_tasks(self, *, include_optimizer: bool = True) -> List[CleanerTask]:
         selected = []
@@ -2065,8 +2236,18 @@ class FreeCleanerQt(QMainWindow):
         return selected
 
     def clear_selection(self) -> None:
-        for row in self.rows.values():
-            row.set_selected(False)
+        self._programmatic_change = True
+        self.setUpdatesEnabled(False)
+        try:
+            for row in self.rows.values():
+                row.set_selected(False)
+        finally:
+            self.setUpdatesEnabled(True)
+            self._programmatic_change = False
+        try:
+            self._estimate_cancel_event.set()
+        except Exception:
+            pass
         self.refresh_task_counts()
         self.log(self.tr("selected_reset_hint") if self.tr("selected_reset_hint") != "selected_reset_hint" else "Selection cleared.")
 
@@ -2081,6 +2262,8 @@ class FreeCleanerQt(QMainWindow):
             self.home_optimizer_metric.metric_label.setText(f"{selected_tweaks} selected")  # type: ignore[attr-defined]
 
     def on_task_row_changed(self, key: str) -> None:
+        if getattr(self, "_programmatic_change", False):
+            return
         self.refresh_task_counts()
         task = self.tasks.get(key)
         row = self.rows.get(key)
@@ -2094,39 +2277,52 @@ class FreeCleanerQt(QMainWindow):
     def schedule_selection_estimate(self) -> None:
         if getattr(self, "thread", None) is not None:
             return
+        try:
+            self._estimate_cancel_event.set()
+        except Exception:
+            pass
+        self._estimate_cancel_event = threading.Event()
         self._estimate_token += 1
-        self.estimate_timer.start(260)
+        self.estimate_timer.start(600)
 
     def start_selection_estimate(self) -> None:
         token = int(self._estimate_token)
+        cancel_event = self._estimate_cancel_event
         tasks = [t for t in self.selected_tasks(include_optimizer=False) if t.kind == "directory" and self._task_paths(t)]
         if not tasks:
             self.estimate_bridge.finished.emit(token, 0)
             return
         def worker() -> None:
             total = 0
-            local_cancel = threading.Event()
+            self._estimate_active = True
             try:
-                workers = get_adaptive_workers("scan", SCAN_WORKERS)
+                workers = min(2, get_adaptive_workers("scan", len(tasks)))
+                log_qa_event("estimate_worker_start", token=token, tasks=len(tasks), workers=workers)
                 with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = [executor.submit(SafeFS.fast_size_many, self._task_paths(task), local_cancel) for task in tasks]
+                    futures = [executor.submit(SafeFS.fast_size_many_limited, self._task_paths(task), cancel_event, 2.5, 12000) for task in tasks]
                     for fut in concurrent.futures.as_completed(futures):
+                        if cancel_event.is_set():
+                            break
                         try:
                             total += int(fut.result() or 0)
                         except Exception:
                             pass
             finally:
-                self.estimate_bridge.finished.emit(token, int(total))
+                self._estimate_active = False
+                if not cancel_event.is_set():
+                    self.estimate_bridge.finished.emit(token, int(total))
+                log_qa_event("estimate_worker_finish", token=token, cancelled=cancel_event.is_set(), total=int(total))
         threading.Thread(target=worker, name="FreeCleanerSelectionEstimate", daemon=True).start()
 
-    def on_selection_estimate_ready(self, token: int, total: int) -> None:
+    def on_selection_estimate_ready(self, token: int, total: object) -> None:
         if token != self._estimate_token:
             return
-        self.analysis_total = int(total or 0)
+        safe_total = self.safe_byte_count(total)
+        self.analysis_total = safe_total
         if hasattr(self, "card_junk"):
-            self.card_junk.set_value(self.human_mb(total) if total else "—")
+            self.card_junk.set_value(self.human_mb(safe_total) if safe_total else "—")
         if hasattr(self, "result_label"):
-            self.result_label.setText(f"Обрано до очищення: {self.human_mb(total)}" if total else (self.tr("freed_zero") if self.tr("freed_zero") != "freed_zero" else "Звільнено: 0.00 MB"))
+            self.result_label.setText(f"Обрано до очищення: {self.human_mb(safe_total)}" if safe_total else (self.tr("freed_zero") if self.tr("freed_zero") != "freed_zero" else "Звільнено: 0.00 MB"))
 
     def row_base_enabled(self, row: TaskRow) -> bool:
         task = row.task
@@ -2170,15 +2366,49 @@ class FreeCleanerQt(QMainWindow):
         worker.moveToThread(thread)
         self.toggle_jobs[key] = (thread, worker)
         thread.started.connect(worker.run)
-        worker.progress.connect(lambda percent, text, toggle_key=key: self.worker_bridge.toggle_progress.emit(toggle_key, int(percent), str(text or "")))
-        worker.finished.connect(lambda result, toggle_key=key, th=thread, wk=worker: self.worker_bridge.toggle_finished.emit(toggle_key, result or {}, th, wk))
-        worker.failed.connect(lambda error, toggle_key=key, th=thread, wk=worker: self.worker_bridge.toggle_failed.emit(toggle_key, str(error or ""), th, wk))
+        worker._fc_kind = "toggle"
+        worker._fc_key = key
+        worker._fc_thread = thread
+        worker.progress.connect(self.on_toggle_worker_progress_router, Qt.QueuedConnection)
+        worker.finished.connect(self.on_toggle_worker_finished_router, Qt.QueuedConnection)
+        worker.failed.connect(self.on_toggle_worker_failed_router, Qt.QueuedConnection)
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
         thread.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.start()
         log_qa_event("toggle_worker_started", key=key, thread_object=str(thread))
+
+
+    def on_toggle_worker_progress_router(self, percent: int, text: str) -> None:
+        worker = self.sender()
+        key = str(getattr(worker, "_fc_key", "") or "")
+        self.worker_bridge.toggle_progress.emit(key, int(percent), str(text or ""))
+
+    def on_toggle_worker_finished_router(self, result: Dict[str, Any]) -> None:
+        worker = self.sender()
+        key = str(getattr(worker, "_fc_key", "") or "")
+        thread = getattr(worker, "_fc_thread", None)
+        self.worker_bridge.toggle_finished.emit(key, result or {}, thread, worker)
+
+    def on_toggle_worker_failed_router(self, error: str) -> None:
+        worker = self.sender()
+        key = str(getattr(worker, "_fc_key", "") or "")
+        thread = getattr(worker, "_fc_thread", None)
+        self.worker_bridge.toggle_failed.emit(key, str(error or ""), thread, worker)
+
+    def on_background_worker_progress_router(self, percent: int, text: str) -> None:
+        self.worker_bridge.background_progress.emit(int(percent), str(text or ""))
+
+    def on_background_worker_finished_router(self, result: Dict[str, Any]) -> None:
+        worker = self.sender()
+        thread = getattr(worker, "_fc_thread", None)
+        self.worker_bridge.background_finished.emit(result or {}, thread, worker)
+
+    def on_background_worker_failed_router(self, error: str) -> None:
+        worker = self.sender()
+        thread = getattr(worker, "_fc_thread", None)
+        self.worker_bridge.background_failed.emit(str(error or ""), thread, worker)
 
     def on_toggle_progress(self, key: str, percent: int, text: str) -> None:
         row = self.rows.get(key)
@@ -2203,19 +2433,11 @@ class FreeCleanerQt(QMainWindow):
             row.set_running(False)
             row.control.setEnabled(self.row_base_enabled(row))
             if ok and not task.instant_action:
-                # Read the real Windows state after the operation so the visual
-                # switch cannot disagree with the status pill (old builds could
-                # show "applied" with an off switch after BCDEdit/powercfg lag).
+                # Do not run any registry/powercfg/BCDEdit verification on the GUI
+                # thread.  The async status worker will verify and repaint shortly
+                # after.  This keeps the click handler constant-time.
                 self.invalidate_system_status_cache()
-                try:
-                    if task.registry_values:
-                        statuses = WindowsOps.registry_statuses(task.registry_values)
-                        verified_state = bool(statuses) and all(s.get("matches") for s in statuses)
-                    elif task.category == "optimizer":
-                        verified_state = self.command_task_applied(task)
-                except Exception as exc:
-                    log_error(f"toggle verify failed for {key}: {exc}")
-                    verified_state = None
+                verified_state = None
             row.control.blockSignals(True)
             if task.instant_action:
                 row.control.setChecked(False)
@@ -2349,23 +2571,44 @@ class FreeCleanerQt(QMainWindow):
         return PathFinder.unique_existing(paths)
 
     @staticmethod
-    def human_mb(value: int) -> str:
-        return f"{value / (1024 * 1024):.2f} MB"
+    def safe_byte_count(value: object) -> int:
+        try:
+            parsed = int(value or 0)
+        except Exception:
+            return 0
+        return max(0, parsed)
+
+    @classmethod
+    def human_mb(cls, value: object) -> str:
+        safe_value = cls.safe_byte_count(value)
+        return f"{safe_value / (1024 * 1024):.2f} MB"
+
+    def _tick_progress_animation(self) -> None:
+        if not hasattr(self, "progress"):
+            return
+        target = max(0, min(100, int(getattr(self, "_progress_target_value", self.progress.value()))))
+        current = int(self.progress.value())
+        if current == target:
+            try:
+                self._progress_anim_timer.stop()
+            except Exception:
+                pass
+            return
+        diff = target - current
+        step = max(1, abs(diff) // 4)
+        self.progress.setValue(current + (step if diff > 0 else -step))
 
     def set_progress_value(self, value: int, *, animated: bool = True) -> None:
         if not hasattr(self, "progress"):
             return
-        value = max(0, min(100, int(value)))
-        if not animated or not hasattr(self, "progress_anim"):
-            self.progress.setValue(value)
+        target = max(0, min(100, int(value)))
+        if not animated or not hasattr(self, "_progress_anim_timer"):
+            self._progress_target_value = target
+            self.progress.setValue(target)
             return
-        try:
-            self.progress_anim.stop()
-            self.progress_anim.setStartValue(int(self.progress.value()))
-            self.progress_anim.setEndValue(value)
-            self.progress_anim.start()
-        except Exception:
-            self.progress.setValue(value)
+        self._progress_target_value = target
+        if not self._progress_anim_timer.isActive():
+            self._progress_anim_timer.start()
 
     def log(self, text: str) -> None:
         line = str(text or "").strip()
@@ -2398,16 +2641,26 @@ class FreeCleanerQt(QMainWindow):
                 if row.task.category == "optimizer" and row.task.key not in getattr(self, "toggle_jobs", {}):
                     row.update_status(self.status_for_task(row.task))
 
+    def on_background_progress(self, _percent: int, text: str) -> None:
+        if text:
+            self.log(str(text))
+
     def run_background_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         """Run lightweight background jobs without locking the cleaner UI."""
+        if len(getattr(self, "background_jobs", [])) >= 2:
+            self.show_toast("Фонова діагностика вже виконується. Дочекайся завершення.", "warning")
+            log_qa_event("background_worker_limit_blocked", active=len(getattr(self, "background_jobs", [])))
+            return
         thread = QThread()
         worker = Worker(fn)
         worker.moveToThread(thread)
         self.background_jobs.append((thread, worker))
         thread.started.connect(worker.run)
-        worker.progress.connect(lambda percent, text: self.worker_bridge.background_progress.emit(int(percent), str(text or "")))
-        worker.finished.connect(lambda result, th=thread, wk=worker: self.worker_bridge.background_finished.emit(result or {}, th, wk))
-        worker.failed.connect(lambda error, th=thread, wk=worker: self.worker_bridge.background_failed.emit(str(error or ""), th, wk))
+        worker._fc_kind = "background"
+        worker._fc_thread = thread
+        worker.progress.connect(self.on_background_worker_progress_router, Qt.QueuedConnection)
+        worker.finished.connect(self.on_background_worker_finished_router, Qt.QueuedConnection)
+        worker.failed.connect(self.on_background_worker_failed_router, Qt.QueuedConnection)
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
         thread.finished.connect(worker.deleteLater)
@@ -2420,11 +2673,44 @@ class FreeCleanerQt(QMainWindow):
                 self.background_jobs.remove((thread, worker))
         except Exception:
             pass
-        if str(result.get("op") or "") == "update" and self.setting_bool("notify_on_finish", True):
+        op = str(result.get("op") or "")
+        if op == "update" and self.setting_bool("notify_on_finish", True):
             if result.get("available"):
                 self.show_toast(f"Доступне оновлення: {result.get('latest')}", "info")
             else:
                 self.show_toast("FreeCleaner актуальний", "info")
+        elif op == "registry_backup":
+            path = str(result.get("path") or "")
+            if path:
+                self.log(self.trf("manual_registry_backup_ok", path=path))
+                self.refresh_backup_state()
+                self.show_toast("Registry backup створено", "success")
+            else:
+                self.show_toast(self.tr("manual_registry_backup_fail"), "error")
+        elif op == "registry_restore":
+            ok = bool(result.get("ok"))
+            name = str(result.get("name") or "backup")
+            self.log(self.trf("registry_restore_ok" if ok else "registry_restore_fail", name=name))
+            self.refresh_backup_state()
+            self.sync_registry_toggle_states()
+            self.show_toast("Registry restore завершено" if ok else "Registry restore не вдався", "success" if ok else "error")
+        elif op == "diagnostic_report":
+            title = str(result.get("title") or "Diagnostic report")
+            report = result.get("report") or {}
+            self.log(f"{title}:")
+            if isinstance(report, dict):
+                for key, value in report.items():
+                    self.log(f"  {key}: {value}")
+            else:
+                self.log(str(report))
+            card = result.get("card")
+            try:
+                if hasattr(self, "diagnostic_cards") and card is not None:
+                    self.diagnostic_cards[int(card)].set_status("done", "Blue")
+            except Exception:
+                pass
+            toast = str(result.get("toast") or "Діагностику завершено")
+            self.show_toast(toast, "info")
 
     def on_background_worker_failed(self, error: str, thread: QThread, worker: Worker) -> None:
         try:
@@ -2450,12 +2736,19 @@ class FreeCleanerQt(QMainWindow):
         self.worker.failed.connect(self.on_worker_failed, Qt.QueuedConnection)
         self.worker.finished.connect(self.thread.quit)
         self.worker.failed.connect(self.thread.quit)
+        self.thread.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
-        self.thread.finished.connect(lambda: setattr(self, "thread", None), Qt.QueuedConnection)
-        self.thread.finished.connect(lambda: setattr(self, "worker", None), Qt.QueuedConnection)
-        self.thread.finished.connect(lambda: self.set_busy(False), Qt.QueuedConnection)
-        self.thread.finished.connect(lambda: self.defer_status_sync(0), Qt.QueuedConnection)
+        self.thread.finished.connect(self.on_main_worker_thread_finished, Qt.QueuedConnection)
         self.thread.start()
+
+    def on_main_worker_thread_finished(self) -> None:
+        # This slot belongs to the QMainWindow, so Qt queues it to the GUI thread.
+        # Avoid Python lambdas connected to QThread.finished because PySide can run
+        # them on the wrong side in edge cases.
+        self.thread = None
+        self.worker = None
+        self.set_busy(False)
+        self.defer_status_sync(0)
 
     def on_worker_progress(self, percent: int, text: str) -> None:
         self.set_progress_value(percent, animated=True)
@@ -2464,7 +2757,7 @@ class FreeCleanerQt(QMainWindow):
 
     def on_worker_finished(self, result: Dict[str, Any]) -> None:
         op = str(result.get("op") or "")
-        total = int(result.get("total", self.analysis_total) or 0)
+        total = self.safe_byte_count(result.get("total", self.analysis_total))
         if op == "toggle":
             key = str(result.get("toggle_key") or "")
             row = self.rows.get(key)
@@ -2480,8 +2773,9 @@ class FreeCleanerQt(QMainWindow):
             if hasattr(self, "card_junk"):
                 self.card_junk.set_value(self.human_mb(total) if total else "—")
             if "freed" in result:
-                self.freed_bytes = int(result.get("freed") or 0)
-                self.result_label.setText(f"Звільнено: {self.human_mb(self.freed_bytes)}")
+                self.freed_bytes = self.safe_byte_count(result.get("freed"))
+                selected_before = self.safe_byte_count(result.get("selected_before", total))
+                self.result_label.setText(f"Звільнено: {self.human_mb(self.freed_bytes)} • Було обрано: {self.human_mb(selected_before)}")
             else:
                 self.result_label.setText(f"Знайдено: {self.human_mb(total)}")
         self.set_progress_value(100, animated=True)
@@ -2489,6 +2783,7 @@ class FreeCleanerQt(QMainWindow):
             row = self.rows.get(key)
             if row:
                 row.update_status(self.status_for_task(row.task))
+        self.restore_cleaning_selection()
         self._cleaning_keys = []
         if hasattr(self, "toast") and self.setting_bool("notify_on_finish", True):
             if op == "update":
@@ -2511,11 +2806,35 @@ class FreeCleanerQt(QMainWindow):
             row = self.rows.get(key)
             if row:
                 row.update_status(self.status_for_task(row.task))
+        self.restore_cleaning_selection()
         self._cleaning_keys = []
         self.set_progress_value(0, animated=True)
         if hasattr(self, "toast"):
             self.show_toast("Помилка виконання. Деталі у Diagnostics.", "error")
         self.defer_status_sync(0)
+
+
+    def restore_cleaning_selection(self) -> None:
+        keys = set(getattr(self, "_pre_clean_selected_keys", set()) or set())
+        if not keys:
+            return
+        self._programmatic_change = True
+        self.setUpdatesEnabled(False)
+        try:
+            for key in keys:
+                row = self.rows.get(key)
+                if not row:
+                    continue
+                row.set_running(False)
+                if row.control.isEnabled():
+                    row.control.blockSignals(True)
+                    row.control.setChecked(True)
+                    row.control.blockSignals(False)
+                row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
+        finally:
+            self.setUpdatesEnabled(True)
+            self._programmatic_change = False
+        self.refresh_task_counts()
 
     def start_analysis(self) -> None:
         tasks = [t for t in self.selected_tasks(include_optimizer=False) if t.kind == "directory" and self._task_paths(t)]
@@ -2549,14 +2868,17 @@ class FreeCleanerQt(QMainWindow):
             if QMessageBox.question(self, self.tr("confirm_heavy_title"), self.tr("confirm_heavy_message")) != QMessageBox.Yes:
                 return
         self._cleaning_keys = [t.key for t in tasks]
+        self._pre_clean_selected_keys = set(self._cleaning_keys)
+        self._pre_clean_selected_bytes = self.safe_byte_count(getattr(self, "analysis_total", 0))
         for task in tasks:
             row = self.rows.get(task.key)
             if row:
-                row.control.blockSignals(True)
-                row.control.setChecked(False)
-                row.control.blockSignals(False)
-                row.set_selected_property(False)
+                # Keep the user's selected checkboxes as-is.  Running state is a
+                # visual overlay only; selection must survive the cleanup pass.
+                row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
                 row.set_running(True)
+        if hasattr(self, "result_label"):
+            self.result_label.setText(f"Очищення... Обрано: {self.human_mb(self._pre_clean_selected_bytes)}")
         self.refresh_task_counts()
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
             total_before = 0
@@ -2565,13 +2887,17 @@ class FreeCleanerQt(QMainWindow):
             cmd_tasks = [t for t in tasks if t.kind != "directory"]
             workers = get_adaptive_workers("scan", SCAN_WORKERS)
             emit(1, f"Аналіз: {len(dir_tasks)} modules")
+            task_sizes: Dict[str, int] = {}
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
                 future_map = {executor.submit(SafeFS.fast_size_many, self._task_paths(task), self.cancel_event): task for task in dir_tasks}
                 for fut in concurrent.futures.as_completed(future_map):
+                    task = future_map[fut]
                     try:
-                        total_before += int(fut.result() or 0)
+                        size = self.safe_byte_count(fut.result())
                     except Exception:
-                        pass
+                        size = 0
+                    task_sizes[task.key] = size
+                    total_before += size
             if total_before:
                 emit(12, f"Знайдено: {self.human_mb(total_before)}")
             # backup registry before optimizer registry tweaks
@@ -2584,22 +2910,40 @@ class FreeCleanerQt(QMainWindow):
                 backup = WindowsOps.backup_registry_keys(reg_keys)
                 emit(15, self.trf("registry_backup_created", path=backup) if backup else self.tr("registry_backup_failed"))
                 if not backup:
-                    return {"total": total_before, "freed": 0, "op": "clean"}
+                    return {"total": total_before, "freed": 0, "selected_before": getattr(self, "_pre_clean_selected_bytes", total_before), "op": "clean"}
             clean_workers = get_adaptive_workers("clean", CLEAN_WORKERS)
             step_base = 20
             count = max(1, len(dir_tasks))
             for idx, task in enumerate(dir_tasks, start=1):
                 paths = self._task_paths(task)
                 title, _ = self.task_text(task)
-                result = SafeFS.clean_many(paths, lambda b: None, self.cancel_event)
-                removed = int(result.get("removed_bytes", 0) or 0)
+                task_before = self.safe_byte_count(task_sizes.get(task.key, 0))
+                task_removed_live = 0
+                last_emit = 0.0
+                start_percent = step_base + int((idx - 1) / count * 58)
+                end_percent = step_base + int(idx / count * 58)
+
+                def on_removed(chunk: int, *, _title: str = title, _before: int = task_before, _start: int = start_percent, _end: int = end_percent) -> None:
+                    nonlocal task_removed_live, last_emit
+                    task_removed_live += self.safe_byte_count(chunk)
+                    now = time.monotonic()
+                    if now - last_emit < 0.16 and task_removed_live < _before:
+                        return
+                    last_emit = now
+                    if _before > 0:
+                        ratio = min(1.0, task_removed_live / max(1, _before))
+                        percent = _start + int((_end - _start) * ratio)
+                        emit(percent, f"{_title}: {self.human_mb(task_removed_live)} / {self.human_mb(_before)}")
+
+                result = SafeFS.clean_many(paths, on_removed, self.cancel_event)
+                removed = self.safe_byte_count(result.get("removed_bytes", 0))
                 freed += removed
                 skipped = int(result.get("skipped_busy", 0) or 0)
                 scheduled = int(result.get("scheduled_reboot", 0) or 0)
                 suffix = ""
                 if skipped or scheduled:
                     suffix = f" • skipped busy: {skipped}" + (f" • reboot: {scheduled}" if scheduled else "")
-                emit(step_base + int(idx / count * 58), f"{title}: {self.human_mb(removed)}{suffix}")
+                emit(end_percent, f"{title}: {self.human_mb(removed)}{suffix}")
             for idx, task in enumerate(cmd_tasks, start=1):
                 title, _ = self.task_text(task)
                 ok = True
@@ -2614,7 +2958,7 @@ class FreeCleanerQt(QMainWindow):
                     res = task.command()
                     ok = bool(res) if isinstance(res, bool) else True
                 emit(80 + int(idx / max(1, len(cmd_tasks)) * 18), f"{title}: {'OK' if ok else 'FAIL'}")
-            return {"total": total_before, "freed": freed, "op": "clean"}
+            return {"total": total_before, "freed": max(0, int(freed or 0)), "selected_before": getattr(self, "_pre_clean_selected_bytes", total_before), "op": "clean"}
         self.run_worker(job)
 
     def start_apply_tweaks(self) -> None:
@@ -2669,13 +3013,13 @@ class FreeCleanerQt(QMainWindow):
         if not keys:
             QMessageBox.information(self, "FreeCleaner", self.tr("manual_registry_backup_empty"))
             return
-        path = WindowsOps.backup_registry_keys(keys)
-        if path:
-            self.log(self.trf("manual_registry_backup_ok", path=path))
-            self.refresh_backup_state()
-            self.show_toast("Registry backup створено", "success")
-        else:
-            QMessageBox.warning(self, "FreeCleaner", self.tr("manual_registry_backup_fail"))
+        self.log("Registry backup: creating...")
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, "Registry backup: creating...")
+            path = WindowsOps.backup_registry_keys(keys)
+            emit(100, "Registry backup: done" if path else "Registry backup: failed")
+            return {"op": "registry_backup", "path": path or ""}
+        self.run_background_worker(job)
 
     def refresh_backup_state(self) -> None:
         if not hasattr(self, "backup_list"):
@@ -2700,9 +3044,15 @@ class FreeCleanerQt(QMainWindow):
             return
         if QMessageBox.question(self, "FreeCleaner", f"Restore backup?\n{backup.get('name')}") != QMessageBox.Yes:
             return
-        ok = WindowsOps.restore_registry_backup_dir(str(backup.get("path") or ""))
-        self.log(self.trf("registry_restore_ok" if ok else "registry_restore_fail", name=backup.get("name", "backup")))
-        self.sync_registry_toggle_states()
+        backup_path = str(backup.get("path") or "")
+        backup_name = str(backup.get("name") or "backup")
+        self.log(f"Registry restore: {backup_name}...")
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, f"Registry restore: {backup_name}...")
+            ok = WindowsOps.restore_registry_backup_dir(backup_path)
+            emit(100, "Registry restore: done" if ok else "Registry restore: failed")
+            return {"op": "registry_restore", "ok": bool(ok), "name": backup_name}
+        self.run_background_worker(job)
 
     def setting_bool(self, key: str, default: bool = False) -> bool:
         value = self.config.get(key, default)
@@ -2806,8 +3156,29 @@ class FreeCleanerQt(QMainWindow):
             return
         if QMessageBox.question(self, "FreeCleaner", "Перезапустити FreeCleaner від адміністратора?") != QMessageBox.Yes:
             return
-        WindowsOps.run_as_admin()
-        QApplication.quit()
+        ok, message, pid = WindowsOps.run_as_admin()
+        if not ok:
+            self.log(f"Не вдалося перезапустити від адміністратора: {message}", "error")
+            QMessageBox.warning(self, "FreeCleaner", f"Не вдалося запустити FreeCleaner від адміністратора.\n\n{message}")
+            return
+        self.log(self.tr("relaunching_admin"))
+        try:
+            self.show_toast("FreeCleaner", "Запущено запит UAC. Поточне вікно закриється після старту нового процесу.", "info")
+        except Exception:
+            pass
+        # Do not quit immediately: the elevated copy needs a moment to pass UAC
+        # and skip the single-instance mutex through --elevated-relaunch.
+        QTimer.singleShot(1200, QApplication.quit)
+
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        try:
+            self._ui_watchdog_stop.set()
+            self._estimate_cancel_event.set()
+            self.cancel_event.set()
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     def check_updates(self) -> None:
         self.log(self.tr("checking_updates"))
@@ -2821,55 +3192,60 @@ class FreeCleanerQt(QMainWindow):
         self.run_background_worker(job)
 
     def run_system_report(self) -> None:
-        report = {
-            "mode": "administrator" if self.is_admin else "restricted",
-            "registered_tasks": len(self.tasks),
-            "cleaner_tasks": len([t for t in self.tasks.values() if t.category != "optimizer"]),
-            "optimizer_toggles": len([t for t in self.tasks.values() if t.category == "optimizer"]),
-            "registry_backups": len(WindowsOps.list_registry_backups()),
-            "scan_workers": get_adaptive_workers("scan", SCAN_WORKERS),
-            "clean_workers": get_adaptive_workers("clean", CLEAN_WORKERS),
-            "system_drive": get_system_drive_info(),
-            "config_path": CONFIG_PATH,
-            "logs_dir": get_logs_dir(create=True),
-            "log_files": all_log_paths(),
-        }
-        self.log("System check:")
-        for key, value in report.items():
-            self.log(f"  {key}: {value}")
-        if hasattr(self, "diagnostic_cards"):
-            self.diagnostic_cards[0].set_status("done", "Blue")
-        self.show_toast("Системну перевірку завершено", "info")
+        self.log("System check: collecting...")
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, "System check: collecting...")
+            report = {
+                "mode": "administrator" if self.is_admin else "restricted",
+                "registered_tasks": len(self.tasks),
+                "cleaner_tasks": len([t for t in self.tasks.values() if t.category != "optimizer"]),
+                "optimizer_toggles": len([t for t in self.tasks.values() if t.category == "optimizer"]),
+                "registry_backups": len(WindowsOps.list_registry_backups()),
+                "scan_workers": get_adaptive_workers("scan", SCAN_WORKERS),
+                "clean_workers": get_adaptive_workers("clean", CLEAN_WORKERS),
+                "system_drive": get_system_drive_info(),
+                "config_path": CONFIG_PATH,
+                "logs_dir": get_logs_dir(create=True),
+                "log_files": all_log_paths(),
+            }
+            emit(100, "System check: done")
+            return {"op": "diagnostic_report", "title": "System check", "report": report, "card": 0, "toast": "Системну перевірку завершено"}
+        self.run_background_worker(job)
 
     def run_streaming_report(self) -> None:
-        report = WindowsOps.collect_streaming_diagnostics()
-        self.log("OBS/Streaming report:")
-        for key, value in report.items():
-            self.log(f"  {key}: {value}")
-        if hasattr(self, "diagnostic_cards"):
-            self.diagnostic_cards[2].set_status("done", "Blue")
-        self.show_toast("Streaming diagnostics зібрано", "info")
+        self.log("OBS/Streaming report: collecting...")
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, "OBS/Streaming report: collecting...")
+            report = WindowsOps.collect_streaming_diagnostics()
+            emit(100, "OBS/Streaming report: done")
+            return {"op": "diagnostic_report", "title": "OBS/Streaming report", "report": report, "card": 2, "toast": "Streaming diagnostics зібрано"}
+        self.run_background_worker(job)
 
     def run_gaming_report(self) -> None:
-        report = WindowsOps.collect_gaming_compat_report()
-        self.log("Gaming compatibility report:")
-        for key, value in report.items():
-            self.log(f"  {key}: {value}")
-        if hasattr(self, "diagnostic_cards"):
-            self.diagnostic_cards[1].set_status("done", "Blue")
-        self.show_toast("Gaming report зібрано", "info")
+        self.log("Gaming compatibility report: collecting...")
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, "Gaming compatibility report: collecting...")
+            report = WindowsOps.collect_gaming_compat_report()
+            emit(100, "Gaming compatibility report: done")
+            return {"op": "diagnostic_report", "title": "Gaming compatibility report", "report": report, "card": 1, "toast": "Gaming report зібрано"}
+        self.run_background_worker(job)
 
     def run_onedrive_report(self) -> None:
-        report = WindowsOps.collect_onedrive_report()
-        self.log("OneDrive report:")
-        for key, value in report.items():
-            self.log(f"  {key}: {value}")
-        if hasattr(self, "diagnostic_cards"):
-            self.diagnostic_cards[3].set_status("done", "Blue")
-        self.show_toast("OneDrive report зібрано", "info")
+        self.log("OneDrive report: collecting...")
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, "OneDrive report: collecting...")
+            report = WindowsOps.collect_onedrive_report()
+            emit(100, "OneDrive report: done")
+            return {"op": "diagnostic_report", "title": "OneDrive report", "report": report, "card": 3, "toast": "OneDrive report зібрано"}
+        self.run_background_worker(job)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
         self.cancel_event.set()
+        try:
+            self._estimate_cancel_event.set()
+        except Exception:
+            pass
+        self._status_sync_pending = False
         super().closeEvent(event)
 
 
@@ -2893,6 +3269,7 @@ def _prepare_qapplication(app: QApplication) -> Optional[str]:
 
 
 def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> int:
+    global _MAIN_WINDOW_REF
     if IS_WINDOWS:
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FreeCleaner.Qt")
@@ -2905,12 +3282,14 @@ def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> 
         splash.show_centered()
     if hasattr(splash, "set_progress"):
         splash.set_progress(72, "Завантаження Qt інтерфейсу…")  # type: ignore[attr-defined]
-    app.processEvents()
     window = FreeCleanerQt()
+    _MAIN_WINDOW_REF = window
+    try:
+        app._freecleaner_main_window = window  # keep PySide wrapper alive
+    except Exception:
+        pass
     if hasattr(splash, "set_progress"):
         splash.set_progress(100, "Запуск інтерфейсу…")  # type: ignore[attr-defined]
-    app.processEvents()
-
     def show_main_window() -> None:
         # Show the main window only after the splash is gone.  No startup
         # windowOpacity animation here: on some Windows GPU drivers it creates

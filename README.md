@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-28 — QA cleanup/powercfg stabilization: safe literal-path cleanup fallback without `$args[0]`, locked temp files stay out of errors.log, active power scheme TTL cache, skipped noisy `/GETACVALUEINDEX` probes for unsupported OEM settings, dynamic tick no-op detection.
+Current package: 0.2.1.0-build-33 — cleanup UI accounting fix: byte totals no longer overflow into negative MB, selected cleaner modules remain selected after cleanup, progress updates animate smoothly during long cleanup passes, and bulk cleanup no longer starts powershell.exe per locked temp file.
 
 
 

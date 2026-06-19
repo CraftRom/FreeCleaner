@@ -13,6 +13,13 @@ import sys
 from pathlib import Path
 
 
+_INTERNAL_RELAUNCH_FLAGS = {"--elevated-relaunch", "--freecleaner-elevated-relaunch"}
+_WAS_ELEVATED_RELAUNCH = any(arg in _INTERNAL_RELAUNCH_FLAGS for arg in sys.argv[1:])
+if _WAS_ELEVATED_RELAUNCH:
+    os.environ["FREECLEANER_ELEVATED_RELAUNCH"] = "1"
+    sys.argv[:] = [sys.argv[0], *[arg for arg in sys.argv[1:] if arg not in _INTERNAL_RELAUNCH_FLAGS]]
+
+
 def _hidden_creationflags() -> int:
     if os.name != "nt":
         return 0
@@ -77,7 +84,12 @@ _MUTEX_HANDLE = None
 def _acquire_single_instance() -> bool:
     """Return False when another FreeCleaner GUI process is already running."""
     global _MUTEX_HANDLE
-    if os.name != "nt" or os.environ.get("FREECLEANER_ALLOW_MULTI_INSTANCE") == "1":
+    if (
+        os.name != "nt"
+        or os.environ.get("FREECLEANER_ALLOW_MULTI_INSTANCE") == "1"
+        or os.environ.get("FREECLEANER_ELEVATED_RELAUNCH") == "1"
+        or _WAS_ELEVATED_RELAUNCH
+    ):
         return True
     try:
         import ctypes

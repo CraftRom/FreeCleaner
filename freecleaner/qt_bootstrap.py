@@ -19,12 +19,12 @@ os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 os.environ.setdefault("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough")
 os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, qInstallMessageHandler
+from PySide6.QtCore import Qt, qInstallMessageHandler
 from PySide6.QtGui import QIcon
 
 # Do not call the direct Qt DPI rounding setter here. Environment variables
 # above are the warning-free Qt 6 path and avoid visible startup noise.
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget, QGraphicsOpacityEffect
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 
 def _qt_message_handler(mode, context, message):
@@ -134,14 +134,7 @@ class EarlySplash(QWidget):
         footer = QLabel("Splash first • No pre-start flicker")
         footer.setObjectName("Tiny")
         layout.addWidget(footer)
-        self.effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self.effect)
-        self.effect.setOpacity(0.0)
-        self.fade = QPropertyAnimation(self.effect, b"opacity", self)
-        self.fade.setDuration(120)
-        self.fade.setEasingCurve(QEasingCurve.OutCubic)
         self._fade_target = "show"
-        self.fade.finished.connect(self._on_fade_finished)
 
     def show_centered(self) -> None:
         screen = QApplication.primaryScreen()
@@ -149,24 +142,17 @@ class EarlySplash(QWidget):
             geo = screen.availableGeometry()
             self.move(geo.center() - self.rect().center())
         self.show()
-        self.fade.stop()
         self._fade_target = "show"
-        self.fade.setStartValue(0.0)
-        self.fade.setEndValue(1.0)
-        self.fade.start()
 
     def set_progress(self, value: int, message: str = "") -> None:
         self.progress.setValue(max(0, min(100, int(value))))
         if message:
             self.message.setText(message)
-        QApplication.processEvents()
+        # Avoid nested processEvents from splash updates; Qt event loop owns repaint.
 
     def fade_out(self) -> None:
-        self.fade.stop()
         self._fade_target = "hide"
-        self.fade.setStartValue(float(self.effect.opacity()))
-        self.fade.setEndValue(0.0)
-        self.fade.start()
+        self.close()
 
     def _on_fade_finished(self) -> None:
         if self._fade_target == "hide":
@@ -191,7 +177,6 @@ def main() -> int:
     log_startup("showing early splash")
     splash.show_centered()
     log_qa_event("early_splash_shown")
-    app.processEvents()
     splash.set_progress(28, "Завантаження ядра FreeCleaner…")
     log_startup("importing full qt_app")
     from . import qt_app

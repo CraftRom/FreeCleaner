@@ -776,7 +776,7 @@ def _powershell_literal(value: str) -> str:
     return "'" + (value or "").replace("'", "''") + "'"
 
 
-def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str = "open") -> Tuple[bool, str, Optional[int]]:
+def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str = "open", working_dir: Optional[str] = None) -> Tuple[bool, str, Optional[int]]:
     if not IS_WINDOWS:
         return False, "ShellExecute is available only on Windows.", None
 
@@ -810,12 +810,12 @@ def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str 
         sei.lpVerb = verb
         sei.lpFile = file_path
         sei.lpParameters = parameters or None
-        sei.lpDirectory = os.path.dirname(file_path) or None
+        sei.lpDirectory = working_dir or os.path.dirname(file_path) or None
         sei.nShow = SW_SHOWNORMAL
 
         if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)):
             err = ctypes.get_last_error()
-            log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb}, returncode=f"failed:{err}", stderr=f"ShellExecuteEx failed ({err})", context={"visible": True}, level="WARNING")
+            log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb, "cwd": working_dir}, returncode=f"failed:{err}", stderr=f"ShellExecuteEx failed ({err})", context={"visible": True}, level="WARNING")
             return False, f"ShellExecuteEx failed ({err}).", None
 
         pid: Optional[int] = None
@@ -830,10 +830,10 @@ def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str 
                 ctypes.windll.kernel32.CloseHandle(handle)
             except Exception:
                 pass
-        log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb}, returncode="started", stdout={"pid": pid}, context={"visible": True})
-        return True, "Installer started.", pid
+        log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb, "cwd": working_dir}, returncode="started", stdout={"pid": pid}, context={"visible": True})
+        return True, "Process started.", pid
     except Exception as exc:
-        log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb}, returncode="exception", stderr=str(exc), context={"visible": True}, level="ERROR")
+        log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb, "cwd": working_dir}, returncode="exception", stderr=str(exc), context={"visible": True}, level="ERROR")
         return False, str(exc) or "Failed to start installer.", None
 
 
@@ -1765,22 +1765,61 @@ class WindowsOps:
         return kwargs
 
     @staticmethod
-    def run_as_admin() -> None:
+    def _admin_relaunch_target() -> Tuple[str, str, str]:
+        """Return executable, parameters and working directory for UAC relaunch.
+
+        Build 31 could close the current window while the elevated copy exited
+        immediately because the single-instance mutex was still held by the old
+        process.  The internal --elevated-relaunch flag lets the new copy skip
+        only that startup mutex check while the old copy is shutting down.
+        """
+        cwd = os.path.abspath(get_runtime_base_dir())
+        internal_flag = "--elevated-relaunch"
+        args = [arg for arg in sys.argv[1:] if arg not in {internal_flag, "--freecleaner-elevated-relaunch"}]
+        if getattr(sys, "frozen", False):
+            file_path = os.path.abspath(sys.executable)
+            params = subprocess.list2cmdline([internal_flag, *args])
+            return file_path, params, os.path.dirname(file_path) or cwd
+
+        current_script = os.path.abspath(sys.argv[0]) if sys.argv else ""
+        if not current_script or not os.path.exists(current_script):
+            current_script = os.path.join(cwd, "app.pyw")
+        # Prefer the windowed launcher for source runs so the elevated copy does
+        # not open a console.  If the current script is app.py, hand off to app.pyw.
+        if os.path.basename(current_script).lower() == "app.py":
+            pyw_script = os.path.join(os.path.dirname(current_script), "app.pyw")
+            if os.path.exists(pyw_script):
+                current_script = pyw_script
+
+        exe = os.path.abspath(sys.executable)
+        if os.path.basename(exe).lower() in {"python.exe", "python3.exe"}:
+            pythonw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+            if os.path.exists(pythonw):
+                exe = pythonw
+        params = subprocess.list2cmdline([current_script, internal_flag, *args])
+        return exe, params, os.path.dirname(current_script) or cwd
+
+    @staticmethod
+    def run_as_admin() -> Tuple[bool, str, Optional[int]]:
         if not IS_WINDOWS:
-            return
+            return False, "Administrator relaunch is available only on Windows.", None
         try:
-            # Frozen apps should not pass their own .exe path as the first
-            # argument again. Source runs still need the script path after
-            # python.exe. This prevents broken elevation relaunches such as
-            # FreeCleaner.exe FreeCleaner.exe.
-            if getattr(sys, "frozen", False):
-                argv = sys.argv[1:]
-            else:
-                argv = sys.argv
-            args = subprocess.list2cmdline(argv)
-            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, args, None, 1)
-        except Exception:
-            pass
+            file_path, parameters, working_dir = WindowsOps._admin_relaunch_target()
+            log_action({"admin_relaunch_start": {"file": file_path, "parameters": parameters, "cwd": working_dir}})
+            ok, message, pid = _shell_execute_with_process(file_path, parameters=parameters, verb="runas", working_dir=working_dir)
+            log_system_response(
+                "admin_relaunch",
+                command={"file": file_path, "parameters": parameters, "cwd": working_dir},
+                returncode="started" if ok else "failed",
+                stdout=message,
+                context={"pid": pid, "frozen": bool(getattr(sys, "frozen", False))},
+                level="INFO" if ok else "WARNING",
+            )
+            return ok, message, pid
+        except Exception as exc:
+            log_error(f"admin relaunch failed: {exc}")
+            log_system_response("admin_relaunch", command="runas", returncode="exception", stderr=str(exc), level="ERROR")
+            return False, str(exc), None
 
     @staticmethod
     def run_command(cmd: str, timeout: int = 180, noisy: bool = False) -> bool:
@@ -4154,14 +4193,13 @@ class SafeFS:
 
     @staticmethod
     def _remove_file_shell(path: str) -> bool:
-        """Compatibility wrapper for the safe literal-path fallback.
+        """No per-file external fallback during bulk cleanup.
 
-        It is intentionally skipped for locked/in-use files and never uses
-        `$args[0]`, so it cannot recreate the old null LiteralPath error spam.
+        Starting powershell.exe for hundreds of temp files made cleanup look
+        frozen and spammed logs.  Native deletion plus delete-on-reboot is the
+        safe path for locked/system files.
         """
-        if SafeFS._is_obviously_locked(path):
-            return False
-        return SafeFS._remove_file_powershell_literal(path)
+        return False
 
     @staticmethod
     def _remove_dir_shell(path: str) -> bool:
@@ -4258,7 +4296,7 @@ class SafeFS:
                             if SafeFS._entry_is_reparse_point(entry):
                                 continue
                             if entry.is_file(follow_symlinks=False):
-                                total += entry.stat(follow_symlinks=False).st_size
+                                total += max(0, int(entry.stat(follow_symlinks=False).st_size or 0))
                             elif entry.is_dir(follow_symlinks=False):
                                 stack.append(entry.path)
                         except (PermissionError, FileNotFoundError, OSError):
@@ -4266,7 +4304,7 @@ class SafeFS:
             except (PermissionError, FileNotFoundError, NotADirectoryError, OSError):
                 try:
                     if not SafeFS._is_reparse_point(current):
-                        total += os.path.getsize(current)
+                        total += max(0, int(os.path.getsize(current) or 0))
                 except OSError:
                     pass
         return total
@@ -4277,7 +4315,83 @@ class SafeFS:
         for path in PathFinder.unique_existing(paths):
             if cancel_event is not None and cancel_event.is_set():
                 break
-            total += SafeFS.fast_size(path, cancel_event)
+            total += max(0, SafeFS.fast_size(path, cancel_event))
+        return total
+
+    @staticmethod
+    def fast_size_limited(
+        path: str,
+        cancel_event: Optional[threading.Event] = None,
+        max_seconds: float = 2.5,
+        max_entries: int = 12000,
+    ) -> int:
+        """Bounded estimator for live UI selection previews.
+
+        Exact analysis/cleanup still uses fast_size_many().  This capped variant
+        prevents a click on a huge cache tree from spawning long disk scans that
+        make the whole system feel frozen, especially when the system drive is
+        almost full.
+        """
+        if not path or not os.path.exists(path):
+            return 0
+        deadline = time.monotonic() + max(0.15, float(max_seconds or 0.0))
+        entries_seen = 0
+        total = 0
+        stack = [path]
+        seen: Set[str] = set()
+        while stack:
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            if entries_seen >= max_entries or time.monotonic() >= deadline:
+                break
+            current = stack.pop()
+            norm = SafeFS._norm_abs(current)
+            if norm in seen:
+                continue
+            seen.add(norm)
+            try:
+                if SafeFS._is_reparse_point(current):
+                    continue
+                with os.scandir(current) as it:
+                    for entry in it:
+                        if cancel_event is not None and cancel_event.is_set():
+                            break
+                        entries_seen += 1
+                        if entries_seen >= max_entries or time.monotonic() >= deadline:
+                            break
+                        try:
+                            if SafeFS._entry_is_reparse_point(entry):
+                                continue
+                            if entry.is_file(follow_symlinks=False):
+                                total += max(0, int(entry.stat(follow_symlinks=False).st_size or 0))
+                            elif entry.is_dir(follow_symlinks=False):
+                                stack.append(entry.path)
+                        except (PermissionError, FileNotFoundError, OSError):
+                            continue
+            except (PermissionError, FileNotFoundError, NotADirectoryError, OSError):
+                try:
+                    if not SafeFS._is_reparse_point(current):
+                        total += max(0, int(os.path.getsize(current) or 0))
+                except OSError:
+                    pass
+        return total
+
+    @staticmethod
+    def fast_size_many_limited(
+        paths: List[str],
+        cancel_event: Optional[threading.Event] = None,
+        max_seconds: float = 2.5,
+        max_entries: int = 12000,
+    ) -> int:
+        total = 0
+        started = time.monotonic()
+        for path in PathFinder.unique_existing(paths):
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            remaining = max(0.1, float(max_seconds or 0.0) - (time.monotonic() - started))
+            if remaining <= 0.1:
+                break
+            total += max(0, SafeFS.fast_size_limited(path, cancel_event, remaining, max_entries))
         return total
 
     @staticmethod
