@@ -1,16 +1,17 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-47 — Registry backup restore UX: the toolbar restore button restores the newest backup, double-click restores a selected backup after confirmation, and right-click opens a Windows-like context menu with restore, open-location and delete actions.
+Current package: 1.2.0.0-build-48 — Modern update window: replaces the blocking update message box with a FreeCleaner-styled update dialog, live download progress, speed/ETA, cancellation, release notes and safer installer handoff.
 
 
-## 1.2.0.0 build-47 — Update/version system rebuild
+## 1.2.0.0 build-48 — Modern update window and download progress
 
-- Moved update checks to the official CraftRom/FreeCleaner GitHub release feed.
-- Fixed version comparison for `v1.2`, `1.2.0.0-build-N` and release asset names.
-- Update checks now compare both base version and build number.
-- Release title version metadata is preferred over short tags when build metadata is present.
-- Installer selection now prefers the compatible `win64-setup.exe` asset and falls back to opening the release page when no installer asset is available.
-- Downloads are saved only to the per-user FreeCleaner updates folder and are launched through the existing safe installer launcher.
+- Replaced the old QMessageBox update prompt with a non-blocking FreeCleaner-styled update window.
+- Added version comparison cards, installer asset details, release notes and the exact local update path.
+- Added live download progress with percentage, downloaded/total size, speed and estimated time remaining.
+- Added cancellation support for active update downloads.
+- Kept GitHub Release open action available directly from the update window.
+- The installer is launched only after the download finishes and the UI clearly shows the handoff state.
+- Failed/cancelled downloads can be retried from the same window.
 
 
 ## Build 27 highlights

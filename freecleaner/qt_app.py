@@ -330,6 +330,43 @@ QScrollBar:vertical { background: #151615; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: #555655; min-height: 36px; }
 QScrollBar::handle:vertical:hover { background: #6B6C6B; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+QDialog#UpdateDialog {
+    background: #151615;
+    color: #F4F4F4;
+}
+QFrame#UpdateHero {
+    background: #1D1E1D;
+    border: 1px solid #2F302F;
+    border-left: 4px solid #76B900;
+}
+QFrame#UpdateVersionCard {
+    background: #1A1B1A;
+    border: 1px solid #2C2D2C;
+}
+QFrame#UpdateStepCard {
+    background: #191A19;
+    border: 1px solid #2B2C2B;
+}
+QLabel#UpdateHeroTitle {
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: 900;
+}
+QLabel#UpdateVersionValue {
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 900;
+}
+QLabel#UpdateStatusText {
+    color: #F4F4F4;
+    font-weight: 800;
+}
+QLabel#UpdateMetaText {
+    color: #A8A8A8;
+    font-size: 12px;
+}
+
 QWidget#SplashRoot { background: #151615; border: 1px solid #303130; }
 
 QFrame#HomeHero {
@@ -1095,6 +1132,240 @@ class UiTaskSection:
 
 
 _MAIN_WINDOW_REF: Optional["FreeCleanerQt"] = None
+UPDATE_PROGRESS_PREFIX = "FC_UPDATE_PROGRESS|"
+
+
+def _format_bytes(value: object) -> str:
+    try:
+        size = float(value or 0)
+    except Exception:
+        size = 0.0
+    units = ("B", "KB", "MB", "GB")
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024.0
+        idx += 1
+    if idx == 0:
+        return f"{int(size)} {units[idx]}"
+    return f"{size:.1f} {units[idx]}"
+
+
+def _format_eta(seconds: object) -> str:
+    try:
+        sec = max(0, int(float(seconds or 0)))
+    except Exception:
+        sec = 0
+    if sec <= 0:
+        return "—"
+    mins, rem = divmod(sec, 60)
+    if mins <= 0:
+        return f"{rem}s"
+    return f"{mins}m {rem:02d}s"
+
+
+class UpdateDialog(QDialog):
+    """Modern in-app update window with live download/install progress."""
+
+    download_requested = Signal()
+    release_requested = Signal(str)
+    cancel_requested = Signal()
+
+    def __init__(self, parent: QWidget, result: Dict[str, Any]) -> None:
+        super().__init__(parent)
+        self.result = dict(result or {})
+        self._downloading = False
+        self.setObjectName("UpdateDialog")
+        self.setWindowTitle("FreeCleaner • Оновлення")
+        self.setModal(False)
+        self.setMinimumSize(680, 520)
+        self.resize(760, 580)
+
+        latest = str(self.result.get("latest") or self.result.get("latest_name") or "latest")
+        current = str(self.result.get("current_display") or APP_VERSION)
+        asset_name = str(self.result.get("asset_name") or "")
+        published = str(self.result.get("published_at") or "")
+        body = str(self.result.get("body") or "").strip()
+        release_url = str(self.result.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(14)
+
+        hero = QFrame()
+        hero.setObjectName("UpdateHero")
+        hero_l = QVBoxLayout(hero)
+        hero_l.setContentsMargins(16, 14, 16, 14)
+        hero_l.setSpacing(8)
+        title = QLabel("Доступне оновлення FreeCleaner")
+        title.setObjectName("UpdateHeroTitle")
+        hero_l.addWidget(title)
+        subtitle = QLabel("Перевірено GitHub release. Нижче — версія, файл інсталятора та хід оновлення.")
+        subtitle.setObjectName("SectionSub")
+        subtitle.setWordWrap(True)
+        hero_l.addWidget(subtitle)
+        root.addWidget(hero)
+
+        versions = QHBoxLayout()
+        versions.setSpacing(12)
+        versions.addWidget(self._version_card("Поточна версія", current), 1)
+        versions.addWidget(self._version_card("Нова версія", latest), 1)
+        root.addLayout(versions)
+
+        meta_card = QFrame()
+        meta_card.setObjectName("UpdateStepCard")
+        meta_l = QVBoxLayout(meta_card)
+        meta_l.setContentsMargins(14, 12, 14, 12)
+        meta_l.setSpacing(6)
+        self.asset_label = QLabel(f"Файл: {asset_name or 'installer asset не знайдено'}")
+        self.asset_label.setObjectName("UpdateMetaText")
+        self.asset_label.setWordWrap(True)
+        meta_l.addWidget(self.asset_label)
+        self.folder_label = QLabel(f"Папка оновлень: {get_updates_dir(create=True)}")
+        self.folder_label.setObjectName("UpdateMetaText")
+        self.folder_label.setWordWrap(True)
+        meta_l.addWidget(self.folder_label)
+        if published:
+            published_label = QLabel(f"Опубліковано: {published}")
+            published_label.setObjectName("UpdateMetaText")
+            meta_l.addWidget(published_label)
+        root.addWidget(meta_card)
+
+        progress_card = QFrame()
+        progress_card.setObjectName("UpdateStepCard")
+        progress_l = QVBoxLayout(progress_card)
+        progress_l.setContentsMargins(14, 12, 14, 12)
+        progress_l.setSpacing(8)
+        self.status_label = QLabel("Готово до завантаження. Інсталятор буде збережено в локальну папку FreeCleaner.")
+        self.status_label.setObjectName("UpdateStatusText")
+        self.status_label.setWordWrap(True)
+        progress_l.addWidget(self.status_label)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setTextVisible(False)
+        progress_l.addWidget(self.progress)
+        self.progress_meta = QLabel("Очікування запуску завантаження")
+        self.progress_meta.setObjectName("UpdateMetaText")
+        progress_l.addWidget(self.progress_meta)
+        root.addWidget(progress_card)
+
+        notes_title = QLabel("Що змінилося")
+        notes_title.setObjectName("SectionTitle")
+        root.addWidget(notes_title)
+        self.notes = QTextEdit()
+        self.notes.setReadOnly(True)
+        self.notes.setMinimumHeight(130)
+        self.notes.setPlainText(body or "Для цього релізу не вказано список змін.")
+        root.addWidget(self.notes, 1)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(10)
+        self.release_btn = QPushButton("Відкрити GitHub Release")
+        self.release_btn.setObjectName("GhostButton")
+        self.release_btn.setIcon(self.style().standardIcon(QStyle.SP_DirLinkIcon))
+        self.release_btn.clicked.connect(lambda: self.release_requested.emit(release_url))
+        buttons.addWidget(self.release_btn)
+        buttons.addStretch(1)
+        self.cancel_btn = QPushButton("Пізніше")
+        self.cancel_btn.setObjectName("GhostButton")
+        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
+        buttons.addWidget(self.cancel_btn)
+        self.download_btn = QPushButton("Завантажити та встановити")
+        self.download_btn.setObjectName("PrimaryButton")
+        self.download_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown))
+        self.download_btn.clicked.connect(self._on_download_clicked)
+        buttons.addWidget(self.download_btn)
+        root.addLayout(buttons)
+
+    def _version_card(self, title: str, value: str) -> QWidget:
+        card = QFrame()
+        card.setObjectName("UpdateVersionCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
+        small = QLabel(title)
+        small.setObjectName("Tiny")
+        layout.addWidget(small)
+        val = QLabel(value or "—")
+        val.setObjectName("UpdateVersionValue")
+        val.setWordWrap(True)
+        layout.addWidget(val)
+        return card
+
+    def _on_download_clicked(self) -> None:
+        if self._downloading:
+            return
+        self.download_requested.emit()
+
+    def _on_cancel_clicked(self) -> None:
+        if self._downloading:
+            self.cancel_btn.setEnabled(False)
+            self.status_label.setText("Скасовую завантаження…")
+            self.cancel_requested.emit()
+            return
+        self.close()
+
+    def set_downloading(self, version: str, filename: str, dest_path: str) -> None:
+        self._downloading = True
+        self.download_btn.setEnabled(False)
+        self.download_btn.setText("Завантаження…")
+        self.cancel_btn.setText("Скасувати")
+        self.cancel_btn.setEnabled(True)
+        if filename:
+            self.asset_label.setText(f"Файл: {filename}")
+        if dest_path:
+            self.folder_label.setText(f"Збереження: {dest_path}")
+        self.status_label.setText(f"Завантаження FreeCleaner {version}…")
+        self.progress.setValue(1)
+        self.progress_meta.setText("Починаю завантаження")
+        self.raise_()
+        self.show()
+
+    def update_progress_payload(self, payload: Dict[str, Any]) -> None:
+        stage = str(payload.get("stage") or "downloading")
+        percent = int(payload.get("percent") or 0)
+        self.progress.setValue(max(0, min(100, percent)))
+        if stage == "downloading":
+            downloaded = payload.get("downloaded") or 0
+            total = payload.get("total") or 0
+            speed = payload.get("speed") or 0
+            eta = payload.get("eta") or 0
+            if total:
+                self.status_label.setText(f"Завантаження: {percent}%")
+                self.progress_meta.setText(f"{_format_bytes(downloaded)} / {_format_bytes(total)} • {_format_bytes(speed)}/s • залишилось {_format_eta(eta)}")
+            else:
+                self.status_label.setText("Завантаження файлу оновлення…")
+                self.progress_meta.setText(f"Завантажено {_format_bytes(downloaded)} • {_format_bytes(speed)}/s")
+        elif stage == "verifying":
+            self.status_label.setText("Завантаження завершено. Перевіряю файл…")
+            self.progress_meta.setText(str(payload.get("path") or ""))
+        elif stage == "installing":
+            self.status_label.setText("Запускаю інсталятор оновлення…")
+            self.progress_meta.setText(str(payload.get("path") or ""))
+        elif stage == "cancelled":
+            self.set_failed("Завантаження скасовано.")
+        elif stage == "failed":
+            self.set_failed(str(payload.get("message") or "Не вдалося завантажити оновлення."))
+
+    def set_failed(self, message: str) -> None:
+        self._downloading = False
+        self.progress.setValue(0)
+        self.status_label.setText(message or "Не вдалося завантажити оновлення.")
+        self.progress_meta.setText("Можна повторити спробу або відкрити сторінку релізу.")
+        self.download_btn.setEnabled(True)
+        self.download_btn.setText("Повторити")
+        self.cancel_btn.setEnabled(True)
+        self.cancel_btn.setText("Закрити")
+
+    def set_done(self, path: str) -> None:
+        self._downloading = False
+        self.progress.setValue(100)
+        self.status_label.setText("Інсталятор запущено. FreeCleaner закриється для встановлення оновлення.")
+        self.progress_meta.setText(path or "")
+        self.download_btn.setEnabled(False)
+        self.download_btn.setText("Інсталятор запущено")
+        self.cancel_btn.setEnabled(True)
+        self.cancel_btn.setText("Закрити")
 
 
 class FreeCleanerQt(QMainWindow):
@@ -1151,6 +1422,9 @@ class FreeCleanerQt(QMainWindow):
         self._auto_update_check_enabled = False
         self._update_check_running = False
         self._update_download_running = False
+        self._update_dialog: Optional[UpdateDialog] = None
+        self._update_progress_dialog: Optional[UpdateDialog] = None
+        self._update_download_cancel_event: Optional[threading.Event] = None
         self._max_background_jobs = 2
         self.apply_runtime_config_flags()
         self.worker_bridge = WorkerBridge(self)
@@ -3209,8 +3483,36 @@ class FreeCleanerQt(QMainWindow):
                     row.update_status(self.status_for_task(row.task))
 
     def on_background_progress(self, _percent: int, text: str) -> None:
+        payload_text = str(text or "")
+        if payload_text.startswith(UPDATE_PROGRESS_PREFIX):
+            self.handle_update_progress_payload(payload_text[len(UPDATE_PROGRESS_PREFIX):])
+            return
         if text:
-            self.log(str(text))
+            self.log(payload_text)
+
+    def handle_update_progress_payload(self, payload_text: str) -> None:
+        try:
+            payload = json.loads(payload_text or "{}")
+        except Exception:
+            return
+        dlg = getattr(self, "_update_progress_dialog", None) or getattr(self, "_update_dialog", None)
+        if dlg is not None:
+            try:
+                dlg.update_progress_payload(payload)
+            except Exception as exc:
+                log_qa_event("update_dialog_progress_failed", error=str(exc))
+        try:
+            stage = str(payload.get("stage") or "")
+            if stage and stage not in {"downloading"}:
+                self.log(str(payload.get("message") or stage))
+        except Exception:
+            pass
+
+    def cancel_update_download(self) -> None:
+        event = getattr(self, "_update_download_cancel_event", None)
+        if event is not None:
+            event.set()
+            self.log("Скасування завантаження оновлення…")
 
     def run_background_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         """Run lightweight background jobs without locking the cleaner UI."""
@@ -3263,17 +3565,26 @@ class FreeCleanerQt(QMainWindow):
                     self.show_toast(text, "info")
         elif op == "update_download":
             self._update_download_running = False
+            self._update_download_cancel_event = None
             ok = bool(result.get("ok"))
             path = str(result.get("path") or "")
             message = str(result.get("message") or "")
+            dlg = getattr(self, "_update_progress_dialog", None)
             if ok:
+                if dlg is not None:
+                    dlg.set_done(path)
                 self.log(self.trf("update_install_started", path=path))
                 self.show_toast(self.tr("update_install_started_button"), "success")
                 if IS_WINDOWS:
-                    QTimer.singleShot(1500, QApplication.quit)
+                    QTimer.singleShot(1800, QApplication.quit)
             else:
+                if dlg is not None:
+                    if result.get("cancelled"):
+                        dlg.set_failed("Завантаження оновлення скасовано.")
+                    else:
+                        dlg.set_failed(self.trf("update_download_failed_reason", reason=message))
                 self.log(self.trf("update_download_failed_reason", reason=message))
-                self.show_toast(self.tr("update_download_failed"), "error")
+                self.show_toast("Завантаження скасовано" if result.get("cancelled") else self.tr("update_download_failed"), "warning" if result.get("cancelled") else "error")
         elif op == "registry_backup":
             path = str(result.get("path") or "")
             if path:
@@ -3315,6 +3626,9 @@ class FreeCleanerQt(QMainWindow):
             pass
         self._update_check_running = False
         self._update_download_running = False
+        self._update_dialog: Optional[UpdateDialog] = None
+        self._update_progress_dialog: Optional[UpdateDialog] = None
+        self._update_download_cancel_event: Optional[threading.Event] = None
         self.log(f"Background job failed: {error}")
         if hasattr(self, "toast"):
             self.show_toast("Фонова дія завершилася з помилкою. Деталі в логах.", "error")
@@ -3966,46 +4280,35 @@ class FreeCleanerQt(QMainWindow):
         self.run_background_worker(job)
 
     def show_update_dialog(self, result: Dict[str, Any]) -> None:
-        latest = str(result.get("latest") or result.get("latest_name") or "")
-        current = str(result.get("current_display") or APP_VERSION)
-        release_url = str(result.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL)
-        body = str(result.get("body") or "").strip()
-        asset_name = str(result.get("asset_name") or "").strip()
-        published = str(result.get("published_at") or "").strip()
+        try:
+            old = getattr(self, "_update_dialog", None)
+            if old is not None and old.isVisible():
+                old.raise_()
+                old.activateWindow()
+                return
+        except Exception:
+            pass
+        dlg = UpdateDialog(self, result)
+        self._update_dialog = dlg
+        dlg.download_requested.connect(lambda: self.download_update_and_install(result, dlg), Qt.QueuedConnection)
+        dlg.release_requested.connect(lambda url: webbrowser.open(str(url or APP_UPDATE_LATEST_RELEASE_URL)), Qt.QueuedConnection)
+        dlg.cancel_requested.connect(self.cancel_update_download, Qt.QueuedConnection)
+        dlg.destroyed.connect(lambda _=None, ref=dlg: self._clear_update_dialog_ref(ref), Qt.QueuedConnection)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
 
-        dlg = QMessageBox(self)
-        dlg.setIcon(QMessageBox.Information)
-        dlg.setWindowTitle(self.tr("update_dialog_title"))
-        dlg.setText(self.trf("update_available_body", current=current, latest=latest or "latest"))
-        details = []
-        if published:
-            details.append(self.trf("update_published_at", date=published))
-        if asset_name:
-            details.append(f"Asset: {asset_name}")
-        if release_url:
-            details.append(f"Release: {release_url}")
-        if body:
-            details.append("\n" + body[:5000])
-        dlg.setDetailedText("\n".join(details) if details else self.tr("update_no_changelog"))
-        download_btn = dlg.addButton(self.tr("update_download"), QMessageBox.AcceptRole)
-        open_btn = dlg.addButton("GitHub Release", QMessageBox.ActionRole)
-        later_btn = dlg.addButton(self.tr("update_later"), QMessageBox.RejectRole)
-        dlg.setDefaultButton(download_btn)
-        dlg.exec()
-        clicked = dlg.clickedButton()
-        if clicked == download_btn:
-            self.download_update_and_install(result)
-        elif clicked == open_btn:
-            try:
-                webbrowser.open(release_url)
-            except Exception as exc:
-                self.log(f"Could not open release page: {exc}")
-        else:
-            _ = later_btn
+    def _clear_update_dialog_ref(self, ref: QWidget) -> None:
+        if getattr(self, "_update_dialog", None) is ref:
+            self._update_dialog = None
+        if getattr(self, "_update_progress_dialog", None) is ref:
+            self._update_progress_dialog = None
 
-    def download_update_and_install(self, update: Dict[str, Any]) -> None:
+    def download_update_and_install(self, update: Dict[str, Any], dialog: Optional[UpdateDialog] = None) -> None:
         if getattr(self, "_update_download_running", False):
             self.show_toast(self.tr("update_download_busy"), "warning")
+            if dialog is not None:
+                dialog.set_failed(self.tr("update_download_busy"))
             return
         download_url = str(update.get("download_url") or "").strip()
         release_url = str(update.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL).strip()
@@ -4014,9 +4317,13 @@ class FreeCleanerQt(QMainWindow):
 
         if not download_url or not download_url.lower().startswith("https://"):
             self.show_toast(self.tr("update_download_failed"), "error")
+            if dialog is not None:
+                dialog.set_failed("Не знайдено безпечне HTTPS-посилання на інсталятор.")
             return
         if not asset_name or not download_url.lower().endswith((".exe", ".msi")):
             self.log("Update asset not found; opening release page instead.")
+            if dialog is not None:
+                dialog.set_failed("Installer asset не знайдено. Відкриваю сторінку релізу GitHub.")
             try:
                 webbrowser.open(release_url or download_url)
                 self.show_toast("Відкрито сторінку релізу GitHub", "info")
@@ -4027,10 +4334,16 @@ class FreeCleanerQt(QMainWindow):
         limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
         if len(getattr(self, "background_jobs", [])) >= limit:
             self.show_toast("Фонові задачі зайняті. Повтори завантаження після завершення поточної дії.", "warning")
+            if dialog is not None:
+                dialog.set_failed("Фонові задачі зайняті. Повтори завантаження після завершення поточної дії.")
             return
         self._update_download_running = True
         filename = asset_name or guess_download_filename(download_url, fallback="FreeCleaner-update.exe")
         dest_path = get_update_download_path(filename, fallback="FreeCleaner-update.exe")
+        self._update_download_cancel_event = threading.Event()
+        if dialog is not None:
+            self._update_progress_dialog = dialog
+            dialog.set_downloading(latest, filename, dest_path)
         keep = {dest_path}
         try:
             removed = cleanup_old_update_files(keep)
@@ -4042,21 +4355,36 @@ class FreeCleanerQt(QMainWindow):
         self.log(self.trf("update_download_location", path=get_updates_dir(create=True)))
 
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            started = time.perf_counter()
+            cancel_event = getattr(self, "_update_download_cancel_event", None)
+
+            def emit_payload(percent: int, **payload: Any) -> None:
+                payload["percent"] = max(0, min(100, int(percent)))
+                try:
+                    emit(payload["percent"], UPDATE_PROGRESS_PREFIX + json.dumps(payload, ensure_ascii=False))
+                except Exception:
+                    emit(payload["percent"], str(payload.get("message") or ""))
+
             def on_progress(downloaded: int, total: Optional[int]) -> None:
+                elapsed = max(0.001, time.perf_counter() - started)
+                speed = max(0.0, float(downloaded) / elapsed)
                 if total and total > 0:
-                    percent = max(1, min(92, int(downloaded * 92 / total)))
-                    text = f"{self.tr('update_downloading')} {percent}%"
+                    percent = max(1, min(94, int(downloaded * 94 / total)))
+                    eta = max(0.0, float(total - downloaded) / speed) if speed > 0 else 0.0
                 else:
-                    percent = 25
-                    text = f"{self.tr('update_downloading')} {downloaded // 1024} KB"
-                emit(percent, text)
+                    percent = min(90, max(5, int((downloaded / max(downloaded + 1024 * 1024, 1)) * 90)))
+                    eta = 0.0
+                emit_payload(percent, stage="downloading", downloaded=downloaded, total=total or 0, speed=int(speed), eta=int(eta), message=f"{self.tr('update_downloading')} {percent}%")
 
-            ok, message = download_url_to_file(download_url, dest_path, progress_cb=on_progress)
+            emit_payload(2, stage="downloading", downloaded=0, total=0, speed=0, eta=0, message=self.trf("update_download_started", version=latest))
+            ok, message = download_url_to_file(download_url, dest_path, progress_cb=on_progress, cancel_event=cancel_event)
             if not ok:
-                emit(100, self.trf("update_download_failed_reason", reason=message))
-                return {"op": "update_download", "ok": False, "message": message, "path": dest_path}
+                stage = "cancelled" if "cancel" in str(message).casefold() else "failed"
+                emit_payload(100, stage=stage, message=message)
+                return {"op": "update_download", "ok": False, "message": message, "path": dest_path, "cancelled": stage == "cancelled"}
 
-            emit(96, self.trf("update_download_saved", path=dest_path))
+            emit_payload(96, stage="verifying", path=dest_path, message=self.trf("update_download_saved", path=dest_path))
+            emit_payload(98, stage="installing", path=dest_path, message=self.trf("update_install_starting", path=dest_path))
             install_ok, install_message, pid = launch_update_installer(dest_path)
             result = {
                 "op": "update_download",
@@ -4067,9 +4395,9 @@ class FreeCleanerQt(QMainWindow):
             }
             if install_ok:
                 schedule_update_cleanup_after_install(pid)
-                emit(100, self.tr("update_install_started_button"))
+                emit_payload(100, stage="installing", path=dest_path, message=self.tr("update_install_started_button"))
             else:
-                emit(100, self.trf("update_install_failed_reason", reason=install_message))
+                emit_payload(100, stage="failed", message=self.trf("update_install_failed_reason", reason=install_message))
             return result
 
         self.run_background_worker(job)
