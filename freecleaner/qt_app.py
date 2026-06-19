@@ -1,0 +1,2952 @@
+"""Qt application layer for FreeCleaner.
+
+Full PySide6 frontend for the Windows cleanup, diagnostics and registry logic.
+The interface uses a modern dark navigation rail, NVIDIA-App-like settings
+structure, startup splash, animated toggles, availability states and explicit
+administrator-mode entry points.
+"""
+
+from __future__ import annotations
+
+import concurrent.futures
+import ctypes
+import json
+import locale
+import os
+import re
+import sys
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+
+try:
+    import winreg  # type: ignore
+except Exception:  # pragma: no cover
+    winreg = None  # type: ignore
+
+from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, QPropertyAnimation, QEasingCurve, Property, QEvent
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
+from PySide6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QProgressBar,
+    QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
+    QTextEdit,
+    QTabWidget,
+    QGraphicsOpacityEffect,
+    QGraphicsDropShadowEffect,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .logic import (
+    APP_VERSION,
+    APP_VERSION_RAW,
+    CONFIG_PATH,
+    LEGACY_CONFIG_PATH,
+    CLEAN_WORKERS,
+    SCAN_WORKERS,
+    IS_WINDOWS,
+    LANG_PACKS,
+    LANG_PACK_SOURCES,
+    CleanerTask,
+    PathFinder,
+    RegistryValueSpec,
+    SafeFS,
+    WindowsOps,
+    compare_versions,
+    fetch_latest_github_release,
+    find_icon_path,
+    get_adaptive_workers,
+    get_user_data_dir,
+    get_logs_dir,
+    get_system_drive_info,
+    language_display_name,
+)
+from .runtime_logging import log_app, log_startup, log_error, log_action, log_security, log_qa_event, log_system_response, all_log_paths, app_log_path, startup_log_path
+
+APP_QSS = r"""
+* {
+    font-family: "Segoe UI", "Inter", "Arial";
+    font-size: 13px;
+}
+QMainWindow, QWidget#Root {
+    background: #151615;
+    color: #F4F4F4;
+}
+QFrame#TopBar {
+    background: #242524;
+    border-bottom: 1px solid #303130;
+}
+QFrame#NavRail {
+    background: #101110;
+    border-right: 1px solid #2A2B2A;
+}
+QToolButton#NavButton {
+    color: #BEBEBE;
+    background: transparent;
+    border: 0;
+    border-left: 3px solid transparent;
+    padding: 6px 0px 6px 0px;
+    margin: 0px;
+    text-align: center;
+    font-size: 11px;
+    min-width: 78px;
+    max-width: 78px;
+}
+QToolButton#NavButton:hover {
+    background: #202120;
+    color: #FFFFFF;
+}
+QToolButton#NavButton:checked {
+    background: #1D2417;
+    border-left: 3px solid #76B900;
+    color: #FFFFFF;
+}
+QToolButton#WindowIconButton {
+    background: transparent;
+    border: 0;
+    color: #CFCFCF;
+    padding: 6px;
+    font-size: 15px;
+}
+QToolButton#WindowIconButton:hover { background: #323332; color: #FFFFFF; }
+QLabel#BrandTitle {
+    color: #FFFFFF;
+    font-size: 16px;
+    font-weight: 800;
+}
+QLabel#VersionText, QLabel#Tiny {
+    color: #A8A8A8;
+    font-size: 11px;
+}
+QLabel#PageTitle {
+    color: #FFFFFF;
+    font-size: 21px;
+    font-weight: 800;
+}
+QLabel#PageSubtitle, QLabel#Muted, QLabel#SectionSub {
+    color: #BDBDBD;
+}
+QLabel#SectionTitle {
+    color: #FFFFFF;
+    font-size: 14px;
+    font-weight: 800;
+}
+QFrame#Panel, QFrame#StatusCard, QFrame#TaskRow, QFrame#RegistryPanel, QFrame#SettingsSection {
+    background: #1A1B1A;
+    border: 1px solid #2C2D2C;
+    border-radius: 0px;
+}
+QFrame#TaskRow:hover, QFrame#StatusCard:hover {
+    background: #202120;
+    border-color: #3A3B3A;
+}
+QFrame#TaskRow[availability="admin"] {
+    border-left: 3px solid #F59E0B;
+}
+QFrame#TaskRow[availability="disabled"] {
+    border-left: 3px solid #5D5D5D;
+    background: #171817;
+}
+QFrame#TaskRow[availability="ready"] {
+    border-left: 3px solid #76B900;
+}
+QFrame#TaskRow[availability="applied"] {
+    border-left: 3px solid #76B900;
+}
+QFrame#TaskRow[availability="running"] {
+    border-left: 3px solid #76B900;
+    background: #202120;
+}
+QFrame#TaskRow[selected="true"] {
+    border-color: #76B900;
+}
+QFrame#TaskRow[selected="true"] QLabel#SectionTitle {
+    color: #FFFFFF;
+}
+QFrame#AccentGreen, QFrame#StatusAccentGreen { background: #76B900; }
+QFrame#AccentBlue, QFrame#StatusAccentBlue { background: #4C8DFF; }
+QFrame#AccentAmber, QFrame#StatusAccentAmber { background: #F59E0B; }
+QFrame#AccentRed, QFrame#StatusAccentRed { background: #EF4444; }
+QFrame#ThinSeparator { background: #2C2D2C; min-height: 1px; max-height: 1px; }
+QLabel#PillGreen, QLabel#PillBlue, QLabel#PillAmber, QLabel#PillRed, QLabel#PillGrey {
+    padding: 4px 10px;
+    border-radius: 0px;
+    font-size: 11px;
+    font-weight: 800;
+}
+QLabel#PillGreen { color: #091100; background: #76B900; }
+QLabel#PillBlue { color: #061226; background: #4C8DFF; }
+QLabel#PillAmber { color: #1B1000; background: #F59E0B; }
+QLabel#PillRed { color: #220707; background: #EF4444; }
+QLabel#PillGrey { color: #D7D7D7; background: #333433; }
+QPushButton, QToolButton#PlainButton {
+    background: #2A2B2A;
+    border: 1px solid #3A3B3A;
+    border-radius: 0px;
+    color: #F5F5F5;
+    padding: 9px 14px;
+    font-weight: 700;
+}
+QPushButton:hover, QToolButton#PlainButton:hover {
+    background: #343534;
+    border-color: #4B4C4B;
+}
+QPushButton:pressed, QToolButton#PlainButton:pressed { background: #232423; }
+QPushButton#PrimaryButton {
+    background: #76B900;
+    color: #071100;
+    border: 1px solid #76B900;
+    font-weight: 900;
+}
+QPushButton#PrimaryButton:hover { background: #86D000; }
+QPushButton#DangerButton {
+    background: #401818;
+    color: #FCA5A5;
+    border: 1px solid #7F1D1D;
+}
+QPushButton#WarningButton {
+    background: #3A2600;
+    color: #FFD166;
+    border: 1px solid #8A5B00;
+}
+QPushButton#GhostButton {
+    background: transparent;
+    border: 1px solid #3A3B3A;
+    color: #E5E7EB;
+}
+QPushButton:disabled, QToolButton:disabled {
+    color: #777777;
+    background: #191A19;
+    border-color: #252625;
+}
+QLineEdit, QComboBox, QTextEdit, QListWidget {
+    background: #202120;
+    color: #F7F7F7;
+    border: 1px solid #343534;
+    border-radius: 0px;
+    selection-background-color: #76B900;
+    selection-color: #101110;
+}
+QLineEdit { padding: 9px 10px; }
+QComboBox { padding: 8px 10px; }
+QComboBox::drop-down { border: 0; width: 28px; }
+QCheckBox { color: #F5F5F5; spacing: 10px; }
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #A7A7A7;
+    background: #151615;
+}
+QCheckBox::indicator:hover { border-color: #FFFFFF; background: #202120; }
+QCheckBox::indicator:checked { background: #76B900; border: 2px solid #76B900; }
+QCheckBox::indicator:checked:hover { background: #86D000; border-color: #86D000; }
+QCheckBox::indicator:disabled { background: #262726; border-color: #555655; }
+QCheckBox::indicator:checked:disabled { background: #76B900; border-color: #76B900; }
+QCheckBox:disabled { color: #777777; }
+QTabWidget::pane { border: 0; background: transparent; }
+QTabBar::tab {
+    background: transparent;
+    color: #CFCFCF;
+    padding: 11px 20px 9px 20px;
+    border-bottom: 3px solid transparent;
+    font-weight: 700;
+}
+QTabBar::tab:hover { color: #FFFFFF; }
+QTabBar::tab:selected { color: #FFFFFF; border-bottom: 3px solid #76B900; }
+QProgressBar {
+    background: #303130;
+    border: 0;
+    border-radius: 0px;
+    height: 8px;
+    text-align: center;
+    color: transparent;
+}
+QProgressBar::chunk { background: #76B900; }
+QScrollArea { border: 0; background: transparent; }
+QScrollBar:vertical { background: #151615; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #555655; min-height: 36px; }
+QScrollBar::handle:vertical:hover { background: #6B6C6B; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QWidget#SplashRoot { background: #151615; border: 1px solid #303130; }
+
+QFrame#HomeHero {
+    background: #1D1E1D;
+    border: 1px solid #2F302F;
+    border-left: 4px solid #76B900;
+    border-radius: 0px;
+}
+QFrame#ActionTile {
+    background: #1A1B1A;
+    border: 1px solid #2C2D2C;
+    border-radius: 0px;
+}
+QFrame#ActionTile:hover {
+    background: #222322;
+    border-color: #76B900;
+}
+QFrame#LegendStrip {
+    background: #171817;
+    border-top: 1px solid #2A2B2A;
+    border-bottom: 1px solid #2A2B2A;
+}
+QLabel#HeroTitle {
+    color: #FFFFFF;
+    font-size: 25px;
+    font-weight: 900;
+}
+QLabel#HeroMetric {
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: 900;
+}
+QLabel#NavHint {
+    color: #9DA0A4;
+    font-size: 10px;
+}
+QFrame#Toast {
+    background: #242524;
+    border: 1px solid #393A39;
+    border-left: 4px solid #76B900;
+}
+QFrame#Toast[tone="warning"] { border-left-color: #F59E0B; }
+QFrame#Toast[tone="error"] { border-left-color: #EF4444; }
+QFrame#Toast[tone="info"] { border-left-color: #4C8DFF; }
+QLabel#ToastText {
+    color: #FFFFFF;
+    font-weight: 700;
+}
+QFrame#DiagnosticCard {
+    background: #1A1B1A;
+    border: 1px solid #2D2E2D;
+    border-left: 3px solid #76B900;
+}
+QFrame#DiagnosticCard:hover {
+    background: #202120;
+    border-color: #76B900;
+}
+QLabel#DiagnosticValue {
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 900;
+}
+QFrame#InlineNotice {
+    background: #191A19;
+    border: 1px solid #303130;
+    border-left: 3px solid #76B900;
+}
+QPushButton#TextLinkButton {
+    background: transparent;
+    border: 0;
+    color: #DCE6F7;
+    text-align: left;
+    padding: 7px 0px;
+    font-weight: 700;
+}
+QPushButton#TextLinkButton:hover { color: #FFFFFF; text-decoration: underline; }
+
+"""
+
+
+class ToggleSwitch(QCheckBox):
+    """Animated Qt switch used for settings and registry tweaks.
+
+    This widget does not rely on the platform checkbox indicator.  It toggles
+    from the full switch rectangle on mouse release and from Space/Enter, then
+    emits the normal Qt stateChanged/toggled signals.
+    """
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None) -> None:
+        super().__init__(text, parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCheckable(True)
+        self.setMinimumSize(QSize(52, 28))
+        self.setMaximumSize(QSize(52, 28))
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._position = 1.0 if self.isChecked() else 0.0
+        self._pressed_inside = False
+        self._animation = QPropertyAnimation(self, b"position", self)
+        self._animation.setDuration(130)
+        self._animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.toggled.connect(self._animate_to_state)
+
+    def get_position(self) -> float:
+        return float(self._position)
+
+    def set_position(self, value: float) -> None:
+        self._position = max(0.0, min(1.0, float(value)))
+        self.update()
+
+    position = Property(float, get_position, set_position)
+
+    def _animate_to_state(self, *_: Any) -> None:
+        self._animation.stop()
+        self._animation.setStartValue(self._position)
+        self._animation.setEndValue(1.0 if self.isChecked() else 0.0)
+        self._animation.start()
+
+    def setChecked(self, value: bool) -> None:  # noqa: N802 - Qt API
+        old = self.isChecked()
+        super().setChecked(bool(value))
+        if old == bool(value) or self.signalsBlocked() or not self.isVisible():
+            self._animation.stop()
+            self._position = 1.0 if bool(value) else 0.0
+            self.update()
+
+    def nextCheckState(self) -> None:  # noqa: N802 - Qt override
+        self.setChecked(not self.isChecked())
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self.isEnabled() and event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+            self._pressed_inside = True
+            event.accept()
+            return
+        self._pressed_inside = False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self._pressed_inside:
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self.isEnabled() and event.button() == Qt.LeftButton and self._pressed_inside:
+            self._pressed_inside = False
+            if self.rect().contains(event.pos()):
+                self.nextCheckState()
+            event.accept()
+            return
+        self._pressed_inside = False
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self.isEnabled() and event.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+            self.nextCheckState()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def hitButton(self, pos) -> bool:  # noqa: N802 - Qt override
+        return self.rect().contains(pos)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        track = self.rect().adjusted(2, 5, -2, -5)
+        radius = track.height() / 2
+        if self.isChecked():
+            bg = QColor("#76B900")
+            knob = QColor("#0F120C" if self.isEnabled() else "#DDEBC9")
+        elif not self.isEnabled():
+            bg = QColor("#333433")
+            knob = QColor("#797A79")
+        else:
+            bg = QColor("#3F403F")
+            knob = QColor("#BFC0BF")
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawRoundedRect(track, radius, radius)
+        d = track.height() - 6
+        x_off = (track.width() - d - 6) * self._position
+        x = track.left() + 3 + x_off
+        y = track.top() + 3
+        painter.setBrush(knob)
+        painter.drawEllipse(int(x), int(y), int(d), int(d))
+        painter.end()
+
+
+class Pill(QLabel):
+    def __init__(self, text: str = "", tone: str = "Grey") -> None:
+        super().__init__(text)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumWidth(104)
+        self.set_tone(tone)
+
+    def set_tone(self, tone: str) -> None:
+        tone = tone if tone in {"Green", "Blue", "Amber", "Red", "Grey"} else "Grey"
+        self.setObjectName(f"Pill{tone}")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def set_status(self, text: str, tone: str = "Grey") -> None:
+        self.setText(text)
+        self.set_tone(tone)
+
+
+class SplashWindow(QWidget):
+    def __init__(self, icon_path: Optional[str] = None) -> None:
+        super().__init__(None, Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setObjectName("SplashRoot")
+        self.setFixedSize(460, 260)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 26, 30, 26)
+        layout.setSpacing(14)
+        brand = QHBoxLayout()
+        if icon_path:
+            icon = QLabel()
+            icon.setPixmap(QIcon(icon_path).pixmap(42, 42))
+            brand.addWidget(icon, 0, Qt.AlignLeft)
+        text = QVBoxLayout()
+        title = QLabel("FreeCleaner")
+        title.setStyleSheet("font-size: 28px; font-weight: 900; color: #FFFFFF;")
+        subtitle = QLabel(f"{APP_VERSION} • Qt")
+        subtitle.setObjectName("VersionText")
+        text.addWidget(title)
+        text.addWidget(subtitle)
+        brand.addLayout(text, 1)
+        layout.addLayout(brand)
+        line = QFrame()
+        line.setObjectName("AccentGreen")
+        line.setFixedHeight(3)
+        layout.addWidget(line)
+        self.message = QLabel("Підготовка модулів очищення…")
+        self.message.setObjectName("Muted")
+        layout.addWidget(self.message)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(12)
+        layout.addWidget(self.progress)
+        layout.addStretch(1)
+        footer = QLabel("Safe cleanup • Registry backup • Gaming tweaks")
+        footer.setObjectName("Tiny")
+        layout.addWidget(footer)
+        self.effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.effect)
+        self.fade = QPropertyAnimation(self.effect, b"opacity", self)
+        self.fade.setDuration(180)
+        self.fade.setStartValue(0.0)
+        self.fade.setEndValue(1.0)
+        self.fade.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade_target = "show"
+        self.fade.finished.connect(self._on_fade_finished)
+
+    def show_centered(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            self.move(geo.center() - self.rect().center())
+        self.effect.setOpacity(0.0)
+        self.show()
+        self.fade.stop()
+        self._fade_target = "show"
+        self.fade.setStartValue(0.0)
+        self.fade.setEndValue(1.0)
+        self.fade.start()
+
+    def set_progress(self, value: int, message: str = "") -> None:
+        self.progress.setValue(max(0, min(100, int(value))))
+        if message:
+            self.message.setText(message)
+
+    def fade_out(self) -> None:
+        self.fade.stop()
+        self._fade_target = "hide"
+        self.fade.setStartValue(float(self.effect.opacity()))
+        self.fade.setEndValue(0.0)
+        self.fade.start()
+
+    def _on_fade_finished(self) -> None:
+        if getattr(self, "_fade_target", "show") == "hide":
+            self.close()
+
+
+class Worker(QObject):
+    progress = Signal(int, str)
+    finished = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
+        super().__init__()
+        self.fn = fn
+
+    def run(self) -> None:
+        started = datetime.now()
+        try:
+            log_qa_event("worker_run_start", worker=str(self), thread=threading.current_thread().name, started=str(started))
+            def emit(percent: int, text: str = "") -> None:
+                self.progress.emit(max(0, min(100, int(percent))), text)
+            result = self.fn(emit) or {}
+            log_qa_event("worker_run_finished", worker=str(self), thread=threading.current_thread().name, result=result)
+            self.finished.emit(result)
+        except Exception as exc:  # pragma: no cover - worker safety
+            import traceback
+            detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            log_error(detail)
+            log_qa_event("worker_run_failed", worker=str(self), thread=threading.current_thread().name, error=detail)
+            self.failed.emit(detail or str(exc))
+
+
+class EstimateBridge(QObject):
+    finished = Signal(int, int)
+
+
+class WorkerBridge(QObject):
+    """Main-thread bridge for signals emitted by workers.
+
+    PySide can execute Python lambdas connected to worker-owned signals on the
+    worker side depending on binding details. Emitting into this QObject first
+    guarantees that all QWidget updates happen back on the GUI thread.
+    """
+
+    toggle_progress = Signal(str, int, str)
+    toggle_finished = Signal(str, dict, object, object)
+    toggle_failed = Signal(str, str, object, object)
+    background_progress = Signal(int, str)
+    background_finished = Signal(dict, object, object)
+    background_failed = Signal(str, object, object)
+
+
+class DiagnosticCard(QFrame):
+    def __init__(self, title: str, desc: str, button_text: str, callback: Callable[[], None], accent: str = "#76B900") -> None:
+        super().__init__()
+        self.setObjectName("DiagnosticCard")
+        self.setMinimumHeight(128)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+        header = QHBoxLayout()
+        self.indicator = QLabel("●")
+        self.indicator.setStyleSheet(f"color: {accent}; font-size: 16px; font-weight: 900;")
+        header.addWidget(self.indicator)
+        title_label = QLabel(title)
+        title_label.setObjectName("SectionTitle")
+        header.addWidget(title_label, 1)
+        layout.addLayout(header)
+        desc_label = QLabel(desc)
+        desc_label.setObjectName("SectionSub")
+        desc_label.setWordWrap(True)
+        layout.addWidget(desc_label, 1)
+        bottom = QHBoxLayout()
+        self.status = Pill("ready", "Green")
+        bottom.addWidget(self.status)
+        bottom.addStretch(1)
+        btn = QPushButton(button_text)
+        btn.clicked.connect(callback)
+        bottom.addWidget(btn)
+        layout.addLayout(bottom)
+
+    def set_status(self, text: str, tone: str = "Green") -> None:
+        self.status.set_status(text, tone)
+
+
+class TaskRow(QFrame):
+    changed = Signal()
+
+    def __init__(self, task: CleanerTask, title: str, desc: str, *, switch: bool, status: str, enabled: bool) -> None:
+        super().__init__()
+        self.task = task
+        self.switch_mode = bool(switch)
+        self.setObjectName("TaskRow")
+        self.setMinimumHeight(78 if switch else 84)
+        self.setVisible(True)
+        self.control = ToggleSwitch() if switch else QCheckBox()
+        self.control.setEnabled(enabled)
+        self.control.setChecked(bool(task.default))
+        self.control.stateChanged.connect(lambda _=None: self._on_control_changed())
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(14)
+
+        if not switch:
+            root.addWidget(self.control, 0, Qt.AlignVCenter)
+
+        text_box = QVBoxLayout()
+        text_box.setSpacing(5)
+        head = QHBoxLayout()
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("SectionTitle")
+        self.title_label.setWordWrap(True)
+        head.addWidget(self.title_label, 1)
+        self.reboot_label = QLabel("restart")
+        self.reboot_label.setObjectName("Tiny")
+        self.reboot_label.setVisible(bool(task.reboot_required))
+        head.addWidget(self.reboot_label, 0, Qt.AlignRight)
+        text_box.addLayout(head)
+        self.desc_label = QLabel(desc)
+        self.desc_label.setObjectName("SectionSub")
+        self.desc_label.setWordWrap(True)
+        text_box.addWidget(self.desc_label)
+        root.addLayout(text_box, 1)
+
+        self.status_label = Pill(status, "Grey")
+        root.addWidget(self.status_label, 0, Qt.AlignVCenter)
+        if switch:
+            root.addWidget(self.control, 0, Qt.AlignVCenter)
+        self.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
+        for widget in (self, self.title_label, self.desc_label, self.status_label, self.reboot_label):
+            widget.installEventFilter(self)
+        self.set_availability("ready" if enabled else ("admin" if task.requires_admin else "disabled"))
+        self.set_selected_property(bool(task.default) and enabled)
+        self.update_status(status)
+
+    def _on_control_changed(self) -> None:
+        self.set_selected_property(self.control.isChecked() and self.control.isEnabled())
+        self.changed.emit()
+
+    def set_selected_property(self, value: bool) -> None:
+        self.setProperty("selected", "true" if value else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
+        if event.type() == QEvent.MouseButtonRelease and self.control.isEnabled():
+            try:
+                if event.button() == Qt.LeftButton:
+                    self.control.setChecked(not self.control.isChecked())
+                    event.accept()
+                    return True
+            except Exception:
+                pass
+        return super().eventFilter(watched, event)
+
+    def selected(self) -> bool:
+        return bool(self.control.isChecked()) and self.control.isEnabled()
+
+    def set_selected(self, value: bool) -> None:
+        if self.control.isEnabled():
+            self.control.setChecked(bool(value))
+        self.set_selected_property(bool(value) and self.control.isEnabled())
+
+    def matches(self, query: str) -> bool:
+        if not query:
+            return True
+        text = f"{self.title_label.text()} {self.desc_label.text()} {self.task.key}".casefold()
+        return query.casefold() in text
+
+    def set_availability(self, value: str) -> None:
+        self.setProperty("availability", value)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def set_running(self, running: bool) -> None:
+        self.set_availability("running" if running else "ready")
+        if running:
+            self.status_label.set_status("running", "Green")
+
+    def update_status(self, status: str) -> None:
+        text = status or ""
+        low = text.casefold()
+        if any(x in low for x in ("done", "застос", "applied", "готово", "вже змінено")):
+            tone = "Green"
+            self.set_availability("applied")
+        elif any(x in low for x in ("admin", "адмін", "administrator")):
+            tone = "Amber"
+            self.set_availability("admin")
+        elif any(x in low for x in ("unavailable", "недоступ", "disabled")):
+            tone = "Grey"
+            self.set_availability("disabled")
+        elif any(x in low for x in ("change", "потріб", "needed")):
+            tone = "Green"
+            self.set_availability("ready")
+        else:
+            tone = "Grey"
+            if self.task.state == "disabled":
+                self.set_availability("disabled")
+            elif self.task.requires_admin and not WindowsOps.is_admin():
+                self.set_availability("admin")
+            else:
+                self.set_availability("ready")
+        self.status_label.set_status(text, tone)
+
+
+
+class StatusCard(QFrame):
+    def __init__(self, title: str, value: str, accent_name: str = "Green") -> None:
+        super().__init__()
+        self.setObjectName("StatusCard")
+        self.setMinimumHeight(74)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 12)
+        layout.setSpacing(3)
+        accent = QFrame()
+        accent.setObjectName(f"StatusAccent{accent_name}")
+        accent.setFixedHeight(3)
+        layout.addWidget(accent)
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("Tiny")
+        self.value_label = QLabel(value)
+        self.value_label.setStyleSheet("font-size: 20px; font-weight: 700; color: #FFFFFF;")
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.value_label)
+
+    def set_value(self, value: str) -> None:
+        self.value_label.setText(value)
+
+
+class Toast(QFrame):
+    """Small animated in-app notification used instead of blocking dialogs for status."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("Toast")
+        self.setProperty("tone", "success")
+        self.setVisible(False)
+        self.setMinimumWidth(360)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        self.label = QLabel("")
+        self.label.setObjectName("ToastText")
+        self.label.setWordWrap(True)
+        layout.addWidget(self.label, 1)
+        self.effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.effect)
+        self.fade = QPropertyAnimation(self.effect, b"opacity", self)
+        self.fade.setDuration(160)
+        self.fade.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade_target = "show"
+        self.fade.finished.connect(self._on_fade_finished)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 10)
+        shadow.setColor(QColor(0, 0, 0, 130))
+        # Keep the opacity effect because Qt allows only one graphics effect.
+        # Shadow is intentionally not attached; simple flat NVIDIA-like UI is preferred.
+
+    def show_message(self, text: str, tone: str = "success") -> None:
+        self.label.setText(text)
+        self.setProperty("tone", tone if tone in {"success", "warning", "error", "info"} else "success")
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.adjustSize()
+        parent = self.parentWidget()
+        if parent:
+            x = max(18, parent.width() - self.width() - 24)
+            y = 72
+            self.move(x, y)
+        self.effect.setOpacity(0.0)
+        self.setVisible(True)
+        self.raise_()
+        self.fade.stop()
+        self._fade_target = "show"
+        self.fade.setStartValue(0.0)
+        self.fade.setEndValue(1.0)
+        self.fade.start()
+        QTimer.singleShot(2800, self.fade_out)
+
+    def fade_out(self) -> None:
+        if not self.isVisible():
+            return
+        self.fade.stop()
+        self._fade_target = "hide"
+        self.fade.setStartValue(float(self.effect.opacity()))
+        self.fade.setEndValue(0.0)
+        self.fade.start()
+
+    def _on_fade_finished(self) -> None:
+        if getattr(self, "_fade_target", "show") == "hide":
+            self.setVisible(False)
+
+
+@dataclass
+class UiTaskSection:
+    key: str
+    title: str
+    rows: List[TaskRow]
+    container: QWidget
+    layout: QVBoxLayout
+
+
+class FreeCleanerQt(QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        log_startup("FreeCleanerQt.__init__ start")
+        log_app("FreeCleanerQt window initialization started")
+        log_qa_event("qt_window_init_start", thread=threading.current_thread().name, pid=os.getpid())
+        self.config = self.load_config()
+        self.lang_preference = self.normalize_language_preference(str(self.config.get("language", "auto")))
+        self.lang_code = self.detect_initial_language()
+        self.lang = LANG_PACKS.get(self.lang_code, LANG_PACKS.get("en", {}))
+        self.is_admin = WindowsOps.is_admin()
+        self.tasks: Dict[str, CleanerTask] = {}
+        self.rows: Dict[str, TaskRow] = {}
+        self.sections: Dict[str, UiTaskSection] = {}
+        self.cancel_event = threading.Event()
+        self.thread: Optional[QThread] = None
+        self.worker: Optional[Worker] = None
+        self.background_jobs: List[Tuple[QThread, Worker]] = []
+        self.toggle_jobs: Dict[str, Tuple[QThread, Worker]] = {}
+        self.analysis_total = 0
+        self.freed_bytes = 0
+        self.revert_registry_specs: Dict[str, List[RegistryValueSpec]] = {}
+        self.revert_commands: Dict[str, Callable[[], Any]] = {}
+        self._programmatic_change = False
+        self._estimate_token = 0
+        self.estimate_bridge = EstimateBridge(self)
+        self.estimate_bridge.finished.connect(self.on_selection_estimate_ready, Qt.QueuedConnection)
+        self.estimate_timer = QTimer(self)
+        self.estimate_timer.setSingleShot(True)
+        self.estimate_timer.timeout.connect(self.start_selection_estimate)
+        self._active_power_scheme_cache: Optional[str] = None
+        self._active_power_scheme_guid_cache: Optional[str] = None
+        self._dynamic_tick_cache: Optional[bool] = None
+        self._cleaning_keys: List[str] = []
+        self._status_sync_pending = False
+        self._last_status_sync_started_at = 0.0
+        self._powercfg_value_cache: Dict[Tuple[str, str], Optional[int]] = {}
+        self.worker_bridge = WorkerBridge(self)
+        self.worker_bridge.toggle_progress.connect(self.on_toggle_progress, Qt.QueuedConnection)
+        self.worker_bridge.toggle_finished.connect(self.on_toggle_finished, Qt.QueuedConnection)
+        self.worker_bridge.toggle_failed.connect(self.on_toggle_failed, Qt.QueuedConnection)
+        self.worker_bridge.background_progress.connect(lambda _percent, text: self.log(text) if text else None, Qt.QueuedConnection)
+        self.worker_bridge.background_finished.connect(self.on_background_worker_finished, Qt.QueuedConnection)
+        self.worker_bridge.background_failed.connect(self.on_background_worker_failed, Qt.QueuedConnection)
+
+        self.setWindowTitle(f"FreeCleaner {APP_VERSION_RAW}")
+        icon = find_icon_path("app.ico") or find_icon_path("app.png")
+        if icon:
+            self.setWindowIcon(QIcon(icon))
+        self.resize(1360, 820)
+        self.setMinimumSize(1060, 680)
+
+        root = QWidget()
+        root.setObjectName("Root")
+        self.setCentralWidget(root)
+        main = QVBoxLayout(root)
+        main.setContentsMargins(0, 0, 0, 0)
+        main.setSpacing(0)
+
+        self.build_top_bar(main)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        main.addLayout(body, 1)
+        self.build_nav(body)
+        self.stack = QStackedWidget()
+        body.addWidget(self.stack, 1)
+        self.toast = Toast(root)
+
+        self.build_pages()
+        self.register_tasks()
+        self.refresh_task_counts()
+        self.refresh_backup_state()
+        self.nav_buttons[0].setChecked(True)
+        self.stack.setCurrentIndex(0)
+        self.log(self.trf("app_started", title="FreeCleaner") if self.tr("app_started") != "app_started" else "FreeCleaner started.")
+        self.refresh_system_drive_status()
+        # Heavy registry/powercfg status checks are deferred until after the
+        # window is visible.  This keeps splash startup clean and avoids bursts
+        # of hidden helper processes during UI construction.
+        QTimer.singleShot(650, lambda: self.defer_status_sync(0))
+        log_startup("FreeCleanerQt.__init__ complete")
+        log_qa_event("qt_window_init_complete", tasks=len(self.tasks), rows=len(self.rows), thread=threading.current_thread().name)
+        if self.setting_bool("auto_check_updates", True):
+            QTimer.singleShot(1800, self.check_updates)
+
+    # ------------------------- config / i18n -------------------------
+    def load_config(self) -> Dict[str, Any]:
+        for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
+            try:
+                if path and os.path.isfile(path):
+                    with open(path, "r", encoding="utf-8") as fh:
+                        data = json.load(fh)
+                    if isinstance(data, dict):
+                        return data
+            except Exception as exc:
+                log_app(f"config load failed for {path}: {exc}", level="ERROR")
+                try:
+                    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    os.replace(path, f"{path}.corrupt_{stamp}")
+                    log_app(f"corrupt config moved to {path}.corrupt_{stamp}", level="WARNING")
+                except Exception as move_exc:
+                    log_app(f"could not move corrupt config {path}: {move_exc}", level="ERROR")
+        return {}
+
+    def save_config(self) -> None:
+        try:
+            data = dict(self.config or {})
+            data["language"] = self.lang_preference
+            folder = os.path.dirname(CONFIG_PATH)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            tmp = f"{CONFIG_PATH}.tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+                fh.write("\n")
+            os.replace(tmp, CONFIG_PATH)
+        except Exception as exc:
+            log_app(f"config save failed: {exc}", level="ERROR")
+
+    @staticmethod
+    def normalize_language_preference(value: str) -> str:
+        code = (value or "auto").strip().lower()
+        return code if code == "auto" or code in LANG_PACKS else "auto"
+
+    def detect_initial_language(self) -> str:
+        if self.lang_preference != "auto":
+            return self.lang_preference
+        try:
+            loc = (locale.getdefaultlocale()[0] or "").lower()
+        except Exception:
+            loc = ""
+        if loc.startswith("uk"):
+            return "uk" if "uk" in LANG_PACKS else "en"
+        if loc.startswith("pl") and "pl" in LANG_PACKS:
+            return "pl"
+        if loc.startswith("de") and "de" in LANG_PACKS:
+            return "de"
+        if loc.startswith("es") and "es" in LANG_PACKS:
+            return "es"
+        return "en"
+
+    def tr(self, key: str) -> str:
+        value = str(self.lang.get(key) or LANG_PACKS.get("en", {}).get(key) or key)
+        return value.replace("\\n", "\n")
+
+    def trf(self, key: str, **kwargs: Any) -> str:
+        try:
+            return self.tr(key).format(**kwargs)
+        except Exception:
+            return self.tr(key)
+
+    def task_text(self, task: CleanerTask) -> Tuple[str, str]:
+        fmt = task.fmt or {}
+        try:
+            title = self.tr(task.title_key).format(**fmt)
+        except Exception:
+            title = self.tr(task.title_key)
+        try:
+            desc = self.tr(task.desc_key).format(**fmt)
+        except Exception:
+            desc = self.tr(task.desc_key)
+        return title, desc
+
+    # ------------------------- layout -------------------------
+    def build_top_bar(self, parent: QVBoxLayout) -> None:
+        top = QFrame()
+        top.setObjectName("TopBar")
+        top.setFixedHeight(56)
+        layout = QHBoxLayout(top)
+        layout.setContentsMargins(16, 0, 16, 0)
+        layout.setSpacing(10)
+
+        title = QLabel("FreeCleaner")
+        title.setObjectName("BrandTitle")
+        layout.addWidget(title)
+        subtitle = QLabel(f"{APP_VERSION} • Qt 6")
+        subtitle.setObjectName("VersionText")
+        layout.addWidget(subtitle)
+        layout.addStretch(1)
+
+        mode_text = self.tr("admin_access") if self.is_admin else self.tr("limited_mode")
+        self.top_admin_label = Pill(mode_text, "Green" if self.is_admin else "Amber")
+        layout.addWidget(self.top_admin_label)
+
+        self.elevate_btn = None
+        self.about_top_btn = None
+        parent.addWidget(top)
+
+    def build_nav(self, parent: QHBoxLayout) -> None:
+        rail = QFrame()
+        rail.setObjectName("NavRail")
+        rail.setFixedWidth(78)
+        nav = QVBoxLayout(rail)
+        nav.setContentsMargins(0, 8, 0, 8)
+        nav.setSpacing(2)
+        self.nav_buttons: List[QToolButton] = []
+        items = [
+            ("home", "Головна" if self.lang_code == "uk" else "Home"),
+            ("cleaner", "Клінер" if self.lang_code == "uk" else "Cleaner"),
+            ("optimizer", "Оптим." if self.lang_code == "uk" else "Optimizer"),
+            ("registry", "Реєстр" if self.lang_code == "uk" else "Registry"),
+            ("diagnostics", "Перевірки" if self.lang_code == "uk" else "Checks"),
+            ("settings", "Налашт." if self.lang_code == "uk" else "Settings"),
+        ]
+        group = QButtonGroup(self)
+        group.setExclusive(True)
+        for idx, (icon_name, text) in enumerate(items):
+            label = text if len(text) <= 10 else text[:9] + "…"
+            btn = QToolButton()
+            btn.setObjectName("NavButton")
+            btn.setFixedSize(78, 66)
+            btn.setAutoRaise(True)
+            icon_path = find_icon_path(os.path.join("nav", f"{icon_name}.svg")) or find_icon_path(os.path.join("nav", f"{icon_name}.png"))
+            if icon_path:
+                btn.setIcon(QIcon(icon_path))
+                btn.setIconSize(QSize(22, 22))
+                btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                btn.setText(label)
+            else:
+                fallback = {"home": "⌂", "cleaner": "◫", "optimizer": "☑", "registry": "▣", "diagnostics": "◈", "settings": "⚙"}.get(icon_name, "•")
+                btn.setText(f"{fallback}\n{label}")
+                btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            btn.setToolTip(text)
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda _=False, i=idx: self.set_page(i))
+            group.addButton(btn, idx)
+            nav.addWidget(btn, 0, Qt.AlignHCenter)
+            self.nav_buttons.append(btn)
+        nav.addStretch(1)
+        parent.addWidget(rail)
+
+    def set_page(self, index: int) -> None:
+        if not hasattr(self, "stack"):
+            return
+        if hasattr(self, "nav_buttons") and 0 <= index < len(self.nav_buttons):
+            self.nav_buttons[index].setChecked(True)
+        self.stack.setCurrentIndex(index)
+        page = self.stack.currentWidget()
+        if page is not None:
+            effect = QGraphicsOpacityEffect(page)
+            page.setGraphicsEffect(effect)
+            anim = QPropertyAnimation(effect, b"opacity", page)
+            anim.setDuration(120)
+            anim.setStartValue(0.78)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.OutCubic)
+            anim.finished.connect(lambda p=page: p.setGraphicsEffect(None))
+            anim.start(QPropertyAnimation.DeleteWhenStopped)
+
+    def content_page(self, title: str, subtitle: str = "") -> Tuple[QWidget, QVBoxLayout]:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(20, 18, 20, 18)
+        outer.setSpacing(16)
+        head = QVBoxLayout()
+        label = QLabel(title)
+        label.setObjectName("PageTitle")
+        head.addWidget(label)
+        if subtitle:
+            sub = QLabel(subtitle)
+            sub.setObjectName("Muted")
+            sub.setWordWrap(True)
+            head.addWidget(sub)
+        outer.addLayout(head)
+        return page, outer
+
+    def build_pages(self) -> None:
+        self.home_page, home_layout = self.content_page(
+            "Головна" if self.lang_code == "uk" else "Home",
+            "Швидкий огляд стану FreeCleaner, доступності адмін-функцій і безпечних дій.",
+        )
+        self.build_home_page(home_layout)
+        self.stack.addWidget(self.home_page)
+
+        self.cleaner_page, cleaner_layout = self.content_page(
+            self.tr("tab_cleaner") if self.tr("tab_cleaner") != "tab_cleaner" else "Cleaner",
+            self.tr("tab_cleaner_sub") if self.tr("tab_cleaner_sub") != "tab_cleaner_sub" else "Cleanup caches, temporary files and leftovers.",
+        )
+        self.build_cleaner_page(cleaner_layout)
+        self.stack.addWidget(self.cleaner_page)
+
+        self.optimizer_page, opt_layout = self.content_page(
+            self.tr("optimizer_modules").strip() if self.tr("optimizer_modules") != "optimizer_modules" else "Optimizer",
+            "Твіки Windows у вигляді тумблерів із реальним статусом реєстру.",
+        )
+        self.build_optimizer_page(opt_layout)
+        self.stack.addWidget(self.optimizer_page)
+
+        self.registry_page, registry_layout = self.content_page(
+            self.tr("registry_tools_title"),
+            self.tr("registry_tools_sub"),
+        )
+        self.build_registry_page(registry_layout)
+        self.stack.addWidget(self.registry_page)
+
+        self.diagnostics_page, diag_layout = self.content_page(
+            self.tr("diagnostics_modules"),
+            self.tr("diagnostics_subtitle") if self.tr("diagnostics_subtitle") != "diagnostics_subtitle" else "System, gaming and streaming diagnostics.",
+        )
+        self.build_diagnostics_page(diag_layout)
+        self.stack.addWidget(self.diagnostics_page)
+
+        self.settings_page, settings_layout = self.content_page(
+            self.tr("settings_title"),
+            self.tr("settings_subtitle") if self.tr("settings_subtitle") != "settings_subtitle" else "Language, safety, updates and app info.",
+        )
+        self.build_settings_page(settings_layout)
+        self.stack.addWidget(self.settings_page)
+
+
+    def build_home_page(self, parent: QVBoxLayout) -> None:
+        hero = QFrame()
+        hero.setObjectName("HomeHero")
+        h = QHBoxLayout(hero)
+        h.setContentsMargins(18, 16, 18, 16)
+        h.setSpacing(18)
+        text = QVBoxLayout()
+        title = QLabel("FreeCleaner")
+        title.setObjectName("HeroTitle")
+        subtitle = QLabel("Qt / PySide6 frontend • SafeFS cleanup • Registry safety • Gaming tweaks")
+        subtitle.setObjectName("SectionSub")
+        subtitle.setWordWrap(True)
+        text.addWidget(title)
+        text.addWidget(subtitle)
+        h.addLayout(text, 1)
+        self.home_admin_pill = Pill(self.tr("admin_access") if self.is_admin else self.tr("limited_mode"), "Green" if self.is_admin else "Amber")
+        h.addWidget(self.home_admin_pill)
+        admin = QPushButton("Адмін режим" if not self.is_admin else "Адмін активний")
+        admin.setObjectName("PrimaryButton" if not self.is_admin else "GhostButton")
+        admin.setEnabled(not self.is_admin)
+        admin.clicked.connect(self.restart_as_admin)
+        h.addWidget(admin)
+        parent.addWidget(hero)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        self.home_selected_metric = self.home_tile("Обрано для очищення", "0", "Перейти до Cleaner", lambda: self.set_page(1))
+        self.home_optimizer_metric = self.home_tile("Твіки Windows", "Registry-aware", "Відкрити Optimizer", lambda: self.set_page(2))
+        self.home_backup_metric = self.home_tile("Registry backup", "—", "Відкрити безпеку реєстру", lambda: self.set_page(3))
+        self.home_diag_metric = self.home_tile("Діагностика", "OBS / Gaming / OneDrive", "Відкрити Diagnostics", lambda: self.set_page(4))
+        for idx, tile in enumerate((self.home_selected_metric, self.home_optimizer_metric, self.home_backup_metric, self.home_diag_metric)):
+            grid.addWidget(tile, idx // 2, idx % 2)
+        parent.addLayout(grid)
+
+        notice = QFrame()
+        notice.setObjectName("InlineNotice")
+        nl = QHBoxLayout(notice)
+        nl.setContentsMargins(14, 12, 14, 12)
+        msg = QLabel("Cleaner використовує чекбокси, Optimizer і налаштування — тумблери. Недоступні дії показують причину: admin-only, unavailable або applied.")
+        msg.setObjectName("SectionSub")
+        msg.setWordWrap(True)
+        nl.addWidget(msg, 1)
+        parent.addWidget(notice)
+        parent.addStretch(1)
+
+    def home_tile(self, title: str, value: str, action_text: str, callback: Callable[[], None]) -> QFrame:
+        tile = QFrame()
+        tile.setObjectName("ActionTile")
+        layout = QVBoxLayout(tile)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(7)
+        t = QLabel(title)
+        t.setObjectName("SectionTitle")
+        v = QLabel(value)
+        v.setObjectName("HeroMetric")
+        b = QPushButton(action_text)
+        b.setObjectName("TextLinkButton")
+        b.clicked.connect(callback)
+        layout.addWidget(t)
+        layout.addWidget(v)
+        layout.addStretch(1)
+        layout.addWidget(b)
+        tile.metric_label = v  # type: ignore[attr-defined]
+        return tile
+
+    def refresh_system_drive_status(self) -> None:
+        """Refresh visible system-drive card without blocking the UI."""
+        try:
+            info = get_system_drive_info()
+            value = info.get("display") or "—"
+            if hasattr(self, "card_disk"):
+                self.card_disk.set_value(str(value))
+            if hasattr(self, "home_diag_metric"):
+                # Keep Home compact but useful; full drive line stays on Cleaner.
+                self.home_diag_metric.metric_label.setText(str(info.get("size_text") or "—"))  # type: ignore[attr-defined]
+            log_app(f"system drive status: {value}")
+        except Exception as exc:
+            log_app(f"refresh_system_drive_status failed: {exc}", level="ERROR")
+            if hasattr(self, "card_disk"):
+                self.card_disk.set_value("—")
+
+    def build_status_row(self, parent: QVBoxLayout) -> None:
+        row = QGridLayout()
+        row.setHorizontalSpacing(12)
+        self.card_selected = StatusCard(self.tr("selected_modules"), "0", "Green")
+        self.card_junk = StatusCard(self.tr("junk_found") if self.tr("junk_found") != "junk_found" else "Знайдено сміття", "—", "Blue")
+        self.card_disk = StatusCard("Системний диск", "—", "Green")
+        self.card_admin = StatusCard(self.tr("admin_access"), self.tr("yes") if self.is_admin else self.tr("no"), "Green" if self.is_admin else "Amber")
+        row.addWidget(self.card_selected, 0, 0)
+        row.addWidget(self.card_junk, 0, 1)
+        row.addWidget(self.card_disk, 0, 2)
+        row.addWidget(self.card_admin, 0, 3)
+        for column in range(4):
+            row.setColumnStretch(column, 1)
+        parent.addLayout(row)
+
+    def build_cleaner_page(self, parent: QVBoxLayout) -> None:
+        self.build_status_row(parent)
+        toolbar = QFrame()
+        toolbar.setObjectName("Panel")
+        tlay = QHBoxLayout(toolbar)
+        tlay.setContentsMargins(12, 10, 12, 10)
+        tlay.addWidget(QLabel(self.tr("search_modules") if self.tr("search_modules") != "search_modules" else "Пошук"))
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(self.tr("search_placeholder") if self.tr("search_placeholder") != "search_placeholder" else "Фільтр модулів")
+        self.search.textChanged.connect(self.apply_search)
+        tlay.addWidget(self.search, 1)
+        reset_search = QPushButton(self.tr("clear_search") if self.tr("clear_search") != "clear_search" else "Очистити")
+        reset_search.clicked.connect(lambda: self.search.setText(""))
+        tlay.addWidget(reset_search)
+        parent.addWidget(toolbar)
+
+        self.cleaner_scroll, self.cleaner_inner, self.cleaner_inner_layout = self.scroll_container()
+        parent.addWidget(self.cleaner_scroll, 1)
+        self.build_footer(parent)
+
+    def build_optimizer_page(self, parent: QVBoxLayout) -> None:
+        legend = QFrame()
+        legend.setObjectName("LegendStrip")
+        l = QHBoxLayout(legend)
+        l.setContentsMargins(12, 8, 12, 8)
+        l.setSpacing(8)
+        l.addWidget(QLabel("Стани:"))
+        for text, tone in ((self.tr("registry_status_change_needed"), "Green"), (self.tr("registry_status_done"), "Blue"), (self.tr("registry_status_admin_only"), "Amber"), (self.tr("registry_status_unavailable"), "Grey")):
+            l.addWidget(Pill(text, tone))
+        l.addStretch(1)
+        parent.addWidget(legend)
+
+        toolbar = QFrame()
+        toolbar.setObjectName("Panel")
+        tl = QHBoxLayout(toolbar)
+        tl.setContentsMargins(12, 10, 12, 10)
+        tl.addWidget(QLabel("Пошук твікiв"))
+        self.optimizer_search = QLineEdit()
+        self.optimizer_search.setPlaceholderText("Фільтр registry/gaming твікiв")
+        self.optimizer_search.textChanged.connect(self.apply_optimizer_search)
+        tl.addWidget(self.optimizer_search, 1)
+        clear = QPushButton("Очистити")
+        clear.clicked.connect(lambda: self.optimizer_search.setText(""))
+        tl.addWidget(clear)
+        parent.addWidget(toolbar)
+
+        self.optimizer_scroll, self.optimizer_inner, self.optimizer_inner_layout = self.scroll_container()
+        parent.addWidget(self.optimizer_scroll, 1)
+        actions = QHBoxLayout()
+        self.refresh_registry_btn = QPushButton(self.tr("task.refresh_registry_statuses.title") if self.tr("task.refresh_registry_statuses.title") != "task.refresh_registry_statuses.title" else "Оновити статуси")
+        self.refresh_registry_btn.clicked.connect(self.sync_registry_toggle_states)
+        actions.addWidget(self.refresh_registry_btn)
+        hint = QLabel("Тумблери виконуються миттєво. OFF повертає безпечний дефолт там, де він визначений.")
+        hint.setObjectName("SectionSub")
+        actions.addWidget(hint, 1)
+        parent.addLayout(actions)
+
+    def build_registry_page(self, parent: QVBoxLayout) -> None:
+        panel = QFrame()
+        panel.setObjectName("RegistryPanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(18, 16, 18, 16)
+        title = QLabel(self.tr("registry_tools_title"))
+        title.setObjectName("SectionTitle")
+        layout.addWidget(title)
+        sub = QLabel(self.tr("manual_registry_backup_desc") if self.tr("manual_registry_backup_desc") != "manual_registry_backup_desc" else self.tr("registry_tools_sub"))
+        sub.setObjectName("Muted")
+        sub.setWordWrap(True)
+        layout.addWidget(sub)
+        actions = QHBoxLayout()
+        b1 = QPushButton(self.tr("manual_registry_backup"))
+        b1.setObjectName("PrimaryButton")
+        b1.clicked.connect(self.manual_registry_backup)
+        b2 = QPushButton(self.tr("restore_registry_backup"))
+        b2.clicked.connect(self.open_restore_dialog)
+        b3 = QPushButton(self.tr("open_backup_folder") if self.tr("open_backup_folder") != "open_backup_folder" else "Відкрити папку backup")
+        b3.clicked.connect(lambda: WindowsOps.open_in_file_manager(WindowsOps.registry_backup_root()))
+        actions.addWidget(b1)
+        actions.addWidget(b2)
+        actions.addWidget(b3)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+        parent.addWidget(panel)
+
+        self.backup_list = QListWidget()
+        parent.addWidget(self.backup_list, 1)
+
+    def build_diagnostics_page(self, parent: QVBoxLayout) -> None:
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        cards = [
+            DiagnosticCard("Системна перевірка", "Адмін-режим, кількість модулів, registry backups, adaptive workers і базовий стан запуску.", "Перевірити", self.run_system_report, "#76B900"),
+            DiagnosticCard(self.tr("task.gaming_compat_report.title") if self.tr("task.gaming_compat_report.title") != "task.gaming_compat_report.title" else "Gaming report", "Game Mode, GameDVR, HAGS, Power Throttling, GPU preferences і active power scheme.", "Зібрати", self.run_gaming_report, "#4C8DFF"),
+            DiagnosticCard(self.tr("task.streaming_diagnostics.title") if self.tr("task.streaming_diagnostics.title") != "task.streaming_diagnostics.title" else "OBS/Streaming diagnostics", "OBS profiles, log issues, CPU/RAM/GPU load і швидкий disk write test.", "Зібрати", self.run_streaming_report, "#F59E0B"),
+            DiagnosticCard(self.tr("task.onedrive_report.title") if self.tr("task.onedrive_report.title") != "task.onedrive_report.title" else "OneDrive report", "OneDrive status, autostart, policy, cleanup targets і estimated cache.", "Зібрати", self.run_onedrive_report, "#22C55E"),
+        ]
+        self.diagnostic_cards = cards
+        for idx, card in enumerate(cards):
+            grid.addWidget(card, idx // 2, idx % 2)
+        parent.addLayout(grid)
+        log_head = QFrame()
+        log_head.setObjectName("Panel")
+        lh = QHBoxLayout(log_head)
+        lh.setContentsMargins(12, 8, 12, 8)
+        title = QLabel("Журнал перевірок")
+        title.setObjectName("SectionTitle")
+        lh.addWidget(title)
+        lh.addStretch(1)
+        clear = QPushButton("Очистити журнал")
+        clear.clicked.connect(lambda: self.log_box.clear())
+        lh.addWidget(clear)
+        parent.addWidget(log_head)
+        self.log_box = QTextEdit()
+        self.log_box.setReadOnly(True)
+        parent.addWidget(self.log_box, 1)
+
+    def build_settings_page(self, parent: QVBoxLayout) -> None:
+        tabs = QTabWidget()
+        tabs.setDocumentMode(True)
+
+        functions = QWidget()
+        functions_layout = QVBoxLayout(functions)
+        functions_layout.setContentsMargins(0, 16, 0, 0)
+        functions_layout.setSpacing(12)
+        functions_layout.addWidget(self.settings_section_header("Функції", "Поведінка програми, запуск, оновлення та режим адміністратора."))
+
+        self.auto_update_switch = ToggleSwitch()
+        self.auto_update_switch.setChecked(self.setting_bool("auto_check_updates", True))
+        functions_layout.addLayout(self.setting_row(self.tr("setting_auto_updates") if self.tr("setting_auto_updates") != "setting_auto_updates" else "Перевіряти оновлення під час запуску", self.auto_update_switch, "Рекомендовано: показує нові релізи без авто-встановлення."))
+
+        self.confirm_heavy_switch = ToggleSwitch()
+        self.confirm_heavy_switch.setChecked(self.setting_bool("confirm_heavy_actions", True))
+        functions_layout.addLayout(self.setting_row(self.tr("setting_confirm_heavy") if self.tr("setting_confirm_heavy") != "setting_confirm_heavy" else "Підтверджувати важкі дії очищення", self.confirm_heavy_switch, "Захист від випадкового запуску DISM, глибокої очистки та registry-дій."))
+
+        self.compact_logs_switch = ToggleSwitch()
+        self.compact_logs_switch.setChecked(self.setting_bool("compact_event_log", True))
+        functions_layout.addLayout(self.setting_row("Компактний журнал подій", self.compact_logs_switch, "Лог показує тільки важливі події, без зайвого шуму."))
+
+        self.auto_update_switch.stateChanged.connect(lambda: self.set_setting_bool("auto_check_updates", self.auto_update_switch.isChecked()))
+        self.confirm_heavy_switch.stateChanged.connect(lambda: self.set_setting_bool("confirm_heavy_actions", self.confirm_heavy_switch.isChecked()))
+        self.compact_logs_switch.stateChanged.connect(lambda: self.set_setting_bool("compact_event_log", self.compact_logs_switch.isChecked()))
+
+        admin_panel = QFrame()
+        admin_panel.setObjectName("SettingsSection")
+        al = QHBoxLayout(admin_panel)
+        al.setContentsMargins(14, 12, 14, 12)
+        admin_text = QVBoxLayout()
+        admin_title = QLabel("Адмін режим")
+        admin_title.setObjectName("SectionTitle")
+        admin_desc = QLabel("Дає доступ до HKLM, системних кешів, powercfg, DISM та відновлення registry backup.")
+        admin_desc.setObjectName("SectionSub")
+        admin_desc.setWordWrap(True)
+        admin_text.addWidget(admin_title)
+        admin_text.addWidget(admin_desc)
+        al.addLayout(admin_text, 1)
+        admin_pill = Pill(self.tr("admin_access") if self.is_admin else self.tr("limited_mode"), "Green" if self.is_admin else "Amber")
+        al.addWidget(admin_pill)
+        self.admin_mode_switch = ToggleSwitch()
+        self.admin_mode_switch.setChecked(self.is_admin)
+        self.admin_mode_switch.setEnabled(not self.is_admin)
+        self.admin_mode_switch.stateChanged.connect(self.on_admin_switch_changed)
+        al.addWidget(self.admin_mode_switch)
+        admin_btn = QPushButton("Уже запущено від адміністратора" if self.is_admin else "Перезапустити від адміністратора")
+        admin_btn.setEnabled(not self.is_admin)
+        admin_btn.setObjectName("PrimaryButton" if not self.is_admin else "GhostButton")
+        admin_btn.clicked.connect(self.restart_as_admin)
+        al.addWidget(admin_btn)
+        functions_layout.addWidget(admin_panel)
+        functions_layout.addStretch(1)
+        tabs.addTab(functions, "Функції")
+
+        notify = QWidget()
+        notify_layout = QVBoxLayout(notify)
+        notify_layout.setContentsMargins(0, 16, 0, 0)
+        notify_layout.setSpacing(12)
+        notify_layout.addWidget(self.settings_section_header("Сповіщення", "Візуальні підказки та безпечні підтвердження."))
+        self.notify_done_switch = ToggleSwitch()
+        self.notify_done_switch.setChecked(self.setting_bool("notify_on_finish", True))
+        notify_layout.addLayout(self.setting_row("Повідомляти після завершення", self.notify_done_switch, "Показує підсумок після аналізу, очищення або застосування твікiв."))
+        self.notify_admin_switch = ToggleSwitch()
+        self.notify_admin_switch.setChecked(self.setting_bool("notify_admin_required", True))
+        notify_layout.addLayout(self.setting_row("Пояснювати недоступні дії", self.notify_admin_switch, "Показує, чому дія disabled/admin-only/unavailable."))
+        self.notify_done_switch.stateChanged.connect(lambda: self.set_setting_bool("notify_on_finish", self.notify_done_switch.isChecked()))
+        self.notify_admin_switch.stateChanged.connect(lambda: self.set_setting_bool("notify_admin_required", self.notify_admin_switch.isChecked()))
+        notify_layout.addStretch(1)
+        tabs.addTab(notify, "Сповіщення")
+
+        info = QWidget()
+        info_layout = QVBoxLayout(info)
+        info_layout.setContentsMargins(0, 16, 0, 0)
+        info_layout.setSpacing(14)
+        info_layout.addWidget(self.settings_section_header("Інформація", "Мова, версія, оновлення, папки та документи програми."))
+
+        lang_panel = QFrame()
+        lang_panel.setObjectName("SettingsSection")
+        lang_row = QHBoxLayout(lang_panel)
+        lang_row.setContentsMargins(14, 12, 14, 12)
+        lang_text = QVBoxLayout()
+        lang_title = QLabel(self.tr("language") if self.tr("language") != "language" else "Мова")
+        lang_title.setObjectName("SectionTitle")
+        lang_desc = QLabel("Зміна мови застосовується після перезапуску програми.")
+        lang_desc.setObjectName("SectionSub")
+        lang_text.addWidget(lang_title)
+        lang_text.addWidget(lang_desc)
+        lang_row.addLayout(lang_text, 1)
+        self.lang_combo = QComboBox()
+        self.lang_combo.setMinimumWidth(240)
+        self.lang_options: List[Tuple[str, str]] = [("auto", f"auto — {language_display_name(self.lang_code)}")]
+        for code in sorted(LANG_PACKS.keys()):
+            self.lang_options.append((code, language_display_name(code)))
+        for _code, label in self.lang_options:
+            self.lang_combo.addItem(label)
+        selected = next((i for i, (code, _label) in enumerate(self.lang_options) if code == self.lang_preference), 0)
+        self.lang_combo.setCurrentIndex(selected)
+        self.lang_combo.currentIndexChanged.connect(self.on_language_changed)
+        lang_row.addWidget(self.lang_combo)
+        info_layout.addWidget(lang_panel)
+
+        about_panel = QFrame()
+        about_panel.setObjectName("SettingsSection")
+        ap = QVBoxLayout(about_panel)
+        ap.setContentsMargins(14, 12, 14, 12)
+        about_title = QLabel(f"FreeCleaner {APP_VERSION}")
+        about_title.setObjectName("SectionTitle")
+        about_text = QLabel("Повний Qt / PySide6 frontend. Безпечне очищення Windows, registry backup/restore, діагностика, gaming tweaks та адмін-режим.")
+        about_text.setObjectName("SectionSub")
+        about_text.setWordWrap(True)
+        ap.addWidget(about_title)
+        ap.addWidget(about_text)
+        actions = QHBoxLayout()
+        open_cfg = QPushButton(self.tr("open_config_folder") if self.tr("open_config_folder") != "open_config_folder" else "Відкрити папку конфігурації")
+        open_cfg.clicked.connect(self.open_config_folder)
+        open_logs = QPushButton("Відкрити папку логів")
+        open_logs.clicked.connect(self.open_logs_folder)
+        about = QPushButton(self.tr("about_title"))
+        about.clicked.connect(self.open_about)
+        update = QPushButton(self.tr("check_updates"))
+        update.clicked.connect(self.check_updates)
+        for b in (open_cfg, open_logs, about, update):
+            actions.addWidget(b)
+        actions.addStretch(1)
+        ap.addLayout(actions)
+        info_layout.addWidget(about_panel)
+        info_layout.addStretch(1)
+        tabs.addTab(info, "Інформація")
+
+        license_page = QWidget()
+        license_layout = QVBoxLayout(license_page)
+        license_layout.setContentsMargins(0, 16, 0, 0)
+        license_layout.setSpacing(12)
+        license_layout.addWidget(self.settings_section_header(self.tr("about_license") if self.tr("about_license") != "about_license" else "Ліцензія", self.tr("about_license_sub") if self.tr("about_license_sub") != "about_license_sub" else "Умови використання FreeCleaner."))
+        self.license_text = QTextEdit()
+        self.license_text.setReadOnly(True)
+        self.license_text.setPlainText(self.read_project_text("LICENSE") or "LICENSE file not found.")
+        license_layout.addWidget(self.license_text, 1)
+        privacy_btn = QPushButton("Показати Privacy Policy")
+        privacy_btn.clicked.connect(self.show_privacy_policy)
+        license_layout.addWidget(privacy_btn, 0, Qt.AlignLeft)
+        tabs.addTab(license_page, self.tr("about_license") if self.tr("about_license") != "about_license" else "Ліцензія")
+
+        parent.addWidget(tabs, 1)
+
+    def settings_section_header(self, title: str, subtitle: str = "") -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("SettingsSection")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
+        t = QLabel(title)
+        t.setObjectName("SectionTitle")
+        layout.addWidget(t)
+        if subtitle:
+            sub = QLabel(subtitle)
+            sub.setObjectName("SectionSub")
+            sub.setWordWrap(True)
+            layout.addWidget(sub)
+        return panel
+
+    def setting_row(self, text: str, switch: ToggleSwitch, subtitle: str = "") -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(14, 8, 14, 8)
+        label_box = QVBoxLayout()
+        title = QLabel(text)
+        title.setObjectName("SectionTitle")
+        label_box.addWidget(title)
+        if subtitle:
+            sub = QLabel(subtitle)
+            sub.setObjectName("SectionSub")
+            sub.setWordWrap(True)
+            label_box.addWidget(sub)
+        row.addLayout(label_box, 1)
+        row.addWidget(switch, 0, Qt.AlignVCenter)
+        return row
+
+    def read_project_text(self, filename: str) -> str:
+        candidates = []
+        try:
+            base = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            candidates.append(os.path.join(base, filename))
+        except Exception:
+            pass
+        try:
+            if getattr(sys, "frozen", False):
+                candidates.append(os.path.join(os.path.dirname(sys.executable), filename))
+        except Exception:
+            pass
+        for path in candidates:
+            try:
+                if path and os.path.isfile(path):
+                    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                        return fh.read()
+            except Exception:
+                continue
+        return ""
+
+    def scroll_container(self) -> Tuple[QScrollArea, QWidget, QVBoxLayout]:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        layout.addStretch(1)
+        scroll.setWidget(inner)
+        return scroll, inner, layout
+
+    def build_footer(self, parent: QVBoxLayout) -> None:
+        foot = QFrame()
+        foot.setObjectName("Panel")
+        layout = QVBoxLayout(foot)
+        layout.setContentsMargins(14, 12, 14, 12)
+        self.result_label = QLabel(self.tr("freed_zero") if self.tr("freed_zero") != "freed_zero" else "Звільнено: 0.00 MB")
+        self.result_label.setStyleSheet("font-size: 18px; font-weight: 800;")
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress_anim = QPropertyAnimation(self.progress, b"value", self)
+        self.progress_anim.setDuration(170)
+        self.progress_anim.setEasingCurve(QEasingCurve.OutCubic)
+        layout.addWidget(self.result_label)
+        layout.addWidget(self.progress)
+        actions = QHBoxLayout()
+        self.run_btn = QPushButton(self.tr("analyze_clean"))
+        self.run_btn.setObjectName("PrimaryButton")
+        self.run_btn.clicked.connect(self.start_clean)
+        self.scan_btn = QPushButton(self.tr("analyze_only") if self.tr("analyze_only") != "analyze_only" else "Лише аналіз")
+        self.scan_btn.clicked.connect(self.start_analysis)
+        self.reset_btn = QPushButton(self.tr("reset_all"))
+        self.reset_btn.clicked.connect(self.clear_selection)
+        actions.addWidget(self.run_btn, 2)
+        actions.addWidget(self.scan_btn, 1)
+        actions.addWidget(self.reset_btn, 1)
+        layout.addLayout(actions)
+        parent.addWidget(foot)
+
+    def section(self, parent_layout: QVBoxLayout, key: str, title: str) -> UiTaskSection:
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+        head = QLabel(title)
+        head.setObjectName("SectionTitle")
+        layout.addWidget(head)
+        parent_layout.insertWidget(max(0, parent_layout.count() - 1), panel)
+        section = UiTaskSection(key, title, [], panel, layout)
+        self.sections[key] = section
+        return section
+
+    # ------------------------- task registration -------------------------
+    def add_task(self, section_key: str, task: CleanerTask, *, switch: bool = False) -> None:
+        self.tasks[task.key] = task
+        if section_key not in self.sections:
+            raise KeyError(section_key)
+        title, desc = self.task_text(task)
+        enabled = task.state != "disabled" and (not task.requires_admin or self.is_admin or (switch and task.category == "optimizer"))
+        status = "checking" if switch and task.category == "optimizer" else self.status_for_task(task)
+        row = TaskRow(task, title, desc, switch=switch, status=status, enabled=enabled)
+        row.changed.connect(lambda key=task.key: self.on_task_row_changed(key))
+        self.rows[task.key] = row
+        sec = self.sections[section_key]
+        sec.rows.append(row)
+        sec.layout.addWidget(row)
+
+    @staticmethod
+    def registry_keys_for_specs(specs: Sequence[RegistryValueSpec]) -> List[str]:
+        keys: List[str] = []
+        seen = set()
+        for spec in specs or []:
+            key = spec.key_path
+            if key and key not in seen:
+                seen.add(key)
+                keys.append(key)
+        return keys
+
+    def register_tasks(self) -> None:
+        self.section(self.cleaner_inner_layout, "clean_basic", "Системне очищення")
+        self.section(self.cleaner_inner_layout, "clean_browser", "Браузери та застосунки")
+        self.section(self.cleaner_inner_layout, "clean_game", "Ігри та стрімінг")
+        self.section(self.cleaner_inner_layout, "clean_deep", "Глибоке очищення")
+        self.section(self.optimizer_inner_layout, "opt_core", "Windows gaming tweaks")
+        self.section(self.optimizer_inner_layout, "opt_registry", "Registry tweaks")
+        self.register_cleaner_tasks()
+        self.register_optimizer_tasks()
+
+    def register_cleaner_tasks(self) -> None:
+        for index, path in enumerate(PathFinder.existing(PathFinder.get_user_temp_paths())):
+            self.add_task("clean_basic", CleanerTask(
+                key=f"user_temp_{index}", title_key="task.user_temp.title", desc_key="task.user_temp.desc",
+                path=path, paths=[path], category="system", default=True, fmt={"path": path}, control="checkbox",
+            ))
+        sys_state = "normal" if self.is_admin else "disabled"
+        for index, path in enumerate(PathFinder.existing(PathFinder.get_system_temp_paths())):
+            self.add_task("clean_basic", CleanerTask(
+                key=f"sys_temp_{index}", title_key="task.system_temp.title", desc_key="task.system_temp.desc",
+                path=path, paths=[path], category="system", default=self.is_admin, state=sys_state, requires_admin=True, fmt={"path": path}, control="checkbox",
+            ))
+
+        deep_keys = {
+            "prefetch", "update_cache_files", "delivery_opt_programdata", "delivery_opt_networkservice", "wer_system",
+            "windows_logs_cbs", "windows_logs_dism", "windows_logs_mosetup", "windows_logs_waasmedic",
+            "windows_setupcln_logs", "windows_wmi_diagtrack_logs", "windows_panther_logs",
+            "windows_minidump", "windows_memory_dump", "windows_old",
+        }
+        for key, tkey, dkey, path, requires_admin in PathFinder.get_windows_junk_targets():
+            section = "clean_deep" if key in deep_keys else "clean_basic"
+            state = sys_state if requires_admin else "normal"
+            self.add_task(section, CleanerTask(key=key, title_key=tkey, desc_key=dkey, path=path, paths=[path], category="deep" if section == "clean_deep" else "system", default=False, state=state, requires_admin=requires_admin, fmt={"path": path}))
+
+        uwp_paths = PathFinder.get_uwp_temp_cache_targets()
+        if uwp_paths:
+            self.add_task("clean_basic", CleanerTask(key="uwp_temp_caches", title_key="task.uwp_temp_caches.title", desc_key="task.uwp_temp_caches.desc", path=uwp_paths[0], paths=uwp_paths, category="system", default=False, fmt={"count": str(len(uwp_paths)), "path": uwp_paths[0]}))
+
+        chromium_groups: Dict[Tuple[str, str], List[str]] = {}
+        for _key, _tkey, _dkey, path, fmt in PathFinder.get_chromium_cache_targets():
+            chromium_groups.setdefault((fmt.get("browser", "Chromium"), fmt.get("profile", "Default")), []).append(path)
+        for (browser, profile), paths_raw in sorted(chromium_groups.items()):
+            paths = PathFinder.unique_existing(paths_raw)
+            if not paths:
+                continue
+            safe_key = re.sub(r"[^a-zA-Z0-9_]+", "_", f"browser_{browser}_{profile}_cache").strip("_").lower()
+            self.add_task("clean_browser", CleanerTask(key=safe_key, title_key="task.browser_generic.title", desc_key="task.browser_generic.desc", path=paths[0], paths=paths, category="browsers", default=False, fmt={"browser": browser, "profile": profile, "path": paths[0]}))
+
+        firefox_groups: Dict[str, List[str]] = {}
+        for _key, _tkey, _dkey, path, fmt in PathFinder.get_firefox_cache_targets():
+            firefox_groups.setdefault(fmt.get("profile", "Default"), []).append(path)
+        for profile, paths_raw in sorted(firefox_groups.items()):
+            paths = PathFinder.unique_existing(paths_raw)
+            if paths:
+                safe_key = re.sub(r"[^a-zA-Z0-9_]+", "_", f"firefox_{profile}_cache").strip("_").lower()
+                self.add_task("clean_browser", CleanerTask(key=safe_key, title_key="task.firefox_cache2.title", desc_key="task.firefox_cache2.desc", path=paths[0], paths=paths, category="browsers", default=False, fmt={"profile": profile, "path": paths[0]}))
+
+        app_groups: Dict[str, Dict[str, Any]] = {}
+        for key, tkey, dkey, path, fmt in PathFinder.get_app_cache_targets():
+            app_name = fmt.get("app") or key.split("_")[0].title()
+            base = "discord" if key.startswith("discord_") else re.sub(r"[^a-zA-Z0-9_]+", "_", app_name).strip("_").lower()
+            group = app_groups.setdefault(base, {"title_key": tkey, "desc_key": dkey, "paths": [], "app": app_name})
+            group["paths"].append(path)
+        for base, group in sorted(app_groups.items()):
+            paths = PathFinder.unique_existing(group["paths"])
+            if paths:
+                self.add_task("clean_browser", CleanerTask(key=f"{base}_cache_group", title_key=group["title_key"], desc_key=group["desc_key"], path=paths[0], paths=paths, category="browsers", default=False, fmt={"app": group["app"], "path": paths[0]}))
+
+        for key, tkey, dkey, path, requires_admin in PathFinder.get_gaming_cache_targets():
+            self.add_task("clean_game", CleanerTask(key=key, title_key=tkey, desc_key=dkey, path=path, paths=[path], category="gamer", default=False, state=sys_state if requires_admin else "normal", requires_admin=requires_admin, fmt={"path": path}))
+        streaming_groups: Dict[str, Dict[str, Any]] = {}
+        for key, tkey, dkey, path, fmt in PathFinder.get_streaming_cache_targets():
+            app_name = fmt.get("app") or "Streaming app"
+            base = re.sub(r"[^a-zA-Z0-9_]+", "_", f"streaming_{app_name}_{'logs' if 'log' in key or 'crash' in key else 'cache'}").strip("_").lower()
+            group = streaming_groups.setdefault(base, {"title_key": tkey, "desc_key": dkey, "paths": [], "app": app_name})
+            group["paths"].append(path)
+        for base, group in sorted(streaming_groups.items()):
+            paths = PathFinder.unique_existing(group["paths"])
+            if paths:
+                self.add_task("clean_game", CleanerTask(key=f"{base}_group", title_key=group["title_key"], desc_key=group["desc_key"], path=paths[0], paths=paths, category="gamer", default=False, fmt={"app": group["app"], "path": paths[0]}))
+
+        # command-style cleanup actions
+        self.add_task("clean_browser", CleanerTask(key="dns_flush", title_key="task.dns_flush.title", desc_key="task.dns_flush.desc", kind="command", category="browsers", default=True, command=lambda: WindowsOps.run_command_args(["ipconfig.exe", "/flushdns"], timeout=60)))
+        self.add_task("clean_deep", CleanerTask(key="recycle", title_key="task.recycle.title", desc_key="task.recycle.desc", kind="command", category="deep", default=False, command=WindowsOps.clear_recycle_bin))
+        self.add_task("clean_deep", CleanerTask(key="registry_leftovers_conservative", title_key="task.registry_leftovers.title", desc_key="task.registry_leftovers.desc", kind="command", category="deep", default=False, command=lambda: WindowsOps.cleanup_registry_leftovers(include_machine=self.is_admin)))
+        self.add_task("clean_deep", CleanerTask(key="dism_clean", title_key="task.dism_clean.title", desc_key="task.dism_clean.desc", kind="command", category="ultimate", default=False, state=sys_state, requires_admin=True, command=lambda: WindowsOps.run_command_args(["dism.exe", "/Online", "/Cleanup-Image", "/StartComponentCleanup"], timeout=3600), danger="heavy"))
+
+    def register_optimizer_tasks(self) -> None:
+        # Do not mark admin-only toggles as globally disabled when the app is not
+        # elevated.  They must stay clickable so the UI can explain the admin
+        # requirement instead of looking broken/inactive.  Actual execution is
+        # still blocked in start_toggle_task().
+        state = "normal"
+        self.revert_registry_specs.clear()
+        self.revert_commands.clear()
+
+        def add_registry_task(key: str, title_key: str, desc_key: str, specs: List[RegistryValueSpec], *, supports: bool = True, reboot: bool = False, off_specs: Optional[List[RegistryValueSpec]] = None) -> None:
+            if off_specs:
+                self.revert_registry_specs[key] = off_specs
+            self.add_task(
+                "opt_registry",
+                CleanerTask(
+                    key=key,
+                    title_key=title_key,
+                    desc_key=desc_key,
+                    kind="command",
+                    category="optimizer",
+                    default=False,
+                    state=state if supports else "disabled",
+                    requires_admin=any(s.requires_admin for s in specs),
+                    registry_values=specs,
+                    registry_keys=self.registry_keys_for_specs(specs),
+                    reboot_required=reboot,
+                    command=lambda specs=specs: WindowsOps.apply_registry_values(specs),
+                    control="switch",
+                ),
+                switch=True,
+            )
+
+        add_registry_task("enable_game_mode", "task.enable_game_mode.title", "task.enable_game_mode.desc", [
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 1, label="GameBar/AllowAutoGameMode"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1, label="GameBar/AutoGameModeEnabled"),
+        ], off_specs=[
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", 0, label="GameBar/AllowAutoGameMode"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", 0, label="GameBar/AutoGameModeEnabled"),
+        ])
+        add_registry_task("disable_gamedvr", "task.disable_gamedvr.title", "task.disable_gamedvr.desc", [
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0, label="GameConfigStore/GameDVR_Enabled"),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2, label="GameConfigStore/FSEBehaviorMode"),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode", 0, label="GameConfigStore/HonorFSE"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0, label="GameDVR/AppCaptureEnabled"),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel", 0, label="GameBar/ShowStartupPanel"),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 0, label="Policy GameDVR/AllowGameDVR", requires_admin=True),
+        ], reboot=True, off_specs=[
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 1),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_FSEBehaviorMode", 0),
+            RegistryValueSpec(r"HKCU\System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode", 1),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 1),
+            RegistryValueSpec(r"HKCU\Software\Microsoft\GameBar", "ShowStartupPanel", 1),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 1, requires_admin=True),
+        ])
+        add_registry_task("disable_mouse_acceleration", "task.disable_mouse_acceleration.title", "task.disable_mouse_acceleration.desc", [
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseSpeed", "0", "REG_SZ", label="Mouse/MouseSpeed"),
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseThreshold1", "0", "REG_SZ", label="Mouse/MouseThreshold1"),
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseThreshold2", "0", "REG_SZ", label="Mouse/MouseThreshold2"),
+        ], off_specs=[
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseSpeed", "1", "REG_SZ"),
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseThreshold1", "6", "REG_SZ"),
+            RegistryValueSpec(r"HKCU\Control Panel\Mouse", "MouseThreshold2", "10", "REG_SZ"),
+        ])
+        add_registry_task("enable_hags", "task.enable_hags.title", "task.enable_hags.desc", [
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 2, label="GraphicsDrivers/HwSchMode", requires_admin=True),
+        ], supports=WindowsOps.supports_hags(), reboot=True, off_specs=[
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1, requires_admin=True),
+        ])
+        add_registry_task("disable_power_throttling", "task.disable_power_throttling.title", "task.disable_power_throttling.desc", [
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 1, label="PowerThrottling/PowerThrottlingOff", requires_admin=True),
+        ], supports=WindowsOps.supports_power_throttling(), reboot=True, off_specs=[
+            RegistryValueSpec(r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 0, requires_admin=True),
+        ])
+        add_registry_task("network_throttling_off", "task.network_throttling_off.title", "task.network_throttling_off.desc", [
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "NetworkThrottlingIndex", "0xffffffff", label="SystemProfile/NetworkThrottlingIndex", requires_admin=True),
+        ], reboot=True, off_specs=[
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "NetworkThrottlingIndex", 10, requires_admin=True),
+        ])
+        add_registry_task("mmcss_gaming_profile", "task.mmcss_gaming_profile.title", "task.mmcss_gaming_profile.desc", [
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", 10, label="SystemProfile/SystemResponsiveness", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "GPU Priority", 8, label="Games/GPU Priority", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Priority", 6, label="Games/Priority", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Scheduling Category", "High", "REG_SZ", label="Games/Scheduling Category", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "SFIO Priority", "High", "REG_SZ", label="Games/SFIO Priority", requires_admin=True),
+        ], reboot=True, off_specs=[
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", 20, requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "GPU Priority", 8, requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Priority", 2, requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "Scheduling Category", "Medium", "REG_SZ", requires_admin=True),
+            RegistryValueSpec(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "SFIO Priority", "Normal", "REG_SZ", requires_admin=True),
+        ])
+
+        self.revert_commands.update({
+            "high_perf_plan": WindowsOps.restore_balanced_power_profile,
+            "safe_gaming_power_profile": WindowsOps.restore_balanced_power_profile,
+            "cpu_latency_power_profile": WindowsOps.restore_balanced_power_profile,
+            "ultimate_perf_plan": WindowsOps.restore_balanced_power_profile,
+            "disable_dynamic_tick_latency": WindowsOps.restore_dynamic_tick_default,
+        })
+        self.add_task("opt_core", CleanerTask(key="high_perf_plan", title_key="task.high_perf_plan.title", desc_key="task.high_perf_plan.desc", kind="command", category="optimizer", state=state, requires_admin=True, command=lambda: WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90), control="switch"), switch=True)
+        self.add_task("opt_core", CleanerTask(key="safe_gaming_power_profile", title_key="task.safe_gaming_power_profile.title", desc_key="task.safe_gaming_power_profile.desc", kind="command", category="optimizer", state=state, requires_admin=True, command=WindowsOps.apply_safe_gaming_power_profile, control="switch"), switch=True)
+        self.add_task("opt_core", CleanerTask(key="cpu_latency_power_profile", title_key="task.cpu_latency_power_profile.title", desc_key="task.cpu_latency_power_profile.desc", kind="command", category="optimizer", state=state, requires_admin=True, command=WindowsOps.apply_cpu_latency_performance_profile, control="switch"), switch=True)
+        self.add_task("opt_core", CleanerTask(key="ultimate_perf_plan", title_key="task.ultimate_perf_plan.title", desc_key="task.ultimate_perf_plan.desc", kind="command", category="optimizer", state=state if WindowsOps.supports_ultimate_performance() else "disabled", requires_admin=True, command=WindowsOps.try_enable_ultimate_performance, control="switch"), switch=True)
+        self.add_task("opt_core", CleanerTask(key="purge_standby_ram", title_key="task.purge_standby_ram.title", desc_key="task.purge_standby_ram.desc", kind="command", category="optimizer", state=state, requires_admin=True, command=WindowsOps.purge_standby_memory, control="switch", instant_action=True), switch=True)
+        self.add_task("opt_core", CleanerTask(key="disable_dynamic_tick_latency", title_key="task.disable_dynamic_tick_latency.title", desc_key="task.disable_dynamic_tick_latency.desc", kind="command", category="optimizer", state=state if WindowsOps.supports_dynamic_tick_toggle() else "disabled", requires_admin=True, command=lambda: WindowsOps.set_dynamic_tick_disabled(True), reboot_required=True, control="switch"), switch=True)
+
+    # ------------------------- statuses and operations -------------------------
+    def defer_status_sync(self, delay_ms: int = 0) -> None:
+        """Synchronize Windows/toggle statuses without spawning command storms.
+
+        Multiple row updates can request a refresh at almost the same time.  The
+        first request wins; later ones are coalesced.  A small rate limit keeps
+        powercfg/BCDEdit probes from running dozens of times when a user toggles
+        several switches quickly, while still leaving the UI responsive.
+        """
+        if self._status_sync_pending:
+            log_qa_event("status_sync_coalesced", delay_ms=delay_ms)
+            return
+        self._status_sync_pending = True
+
+        def run() -> None:
+            now = time.monotonic()
+            min_gap = 0.9
+            remaining_ms = int(max(0.0, min_gap - (now - float(getattr(self, "_last_status_sync_started_at", 0.0)))) * 1000)
+            if remaining_ms > 0:
+                QTimer.singleShot(remaining_ms, run)
+                return
+            if getattr(self, "thread", None) is not None:
+                QTimer.singleShot(120, run)
+                return
+            if getattr(self, "toggle_jobs", {}):
+                # Do not rescan while a toggle worker is still active. That was
+                # the main source of stale/overwritten visual switch states.
+                QTimer.singleShot(180, run)
+                return
+            self._status_sync_pending = False
+            self._last_status_sync_started_at = time.monotonic()
+            self.sync_registry_toggle_states()
+
+        QTimer.singleShot(max(0, int(delay_ms)), run)
+
+    def invalidate_system_status_cache(self) -> None:
+        self._active_power_scheme_cache = None
+        self._active_power_scheme_guid_cache = None
+        self._dynamic_tick_cache = None
+        self._powercfg_value_cache = {}
+
+    def active_power_scheme_guid_cached(self, *, refresh: bool = False) -> Optional[str]:
+        if refresh or self._active_power_scheme_guid_cache is None:
+            self._active_power_scheme_guid_cache = WindowsOps.active_power_scheme_guid() if IS_WINDOWS else None
+        return self._active_power_scheme_guid_cache
+
+    def powercfg_ac_value_cached(self, subgroup: str, setting: str) -> Optional[int]:
+        scheme = self.active_power_scheme_guid_cached() or "SCHEME_CURRENT"
+        key = (str(scheme).lower(), str(subgroup), str(setting))
+        if key not in self._powercfg_value_cache:
+            self._powercfg_value_cache[key] = WindowsOps.powercfg_get_ac_value(subgroup, setting, scheme=scheme)
+        return self._powercfg_value_cache.get(key)
+
+    def active_power_scheme_text(self, *, refresh: bool = False) -> str:
+        if refresh or self._active_power_scheme_cache is None:
+            text = ""
+            if IS_WINDOWS:
+                rc, output = WindowsOps.run_command_capture(
+                    WindowsOps.powercfg_args("/getactivescheme"),
+                    timeout=30,
+                    log_failure=False,
+                    context={"feature": "qt_status_active_power_scheme", "optional": True},
+                )
+                if rc == 0 and output:
+                    text = " ".join(output.strip().split()).casefold()
+                    parsed_guid = WindowsOps.parse_active_power_scheme_guid(output)
+                    if parsed_guid:
+                        self._active_power_scheme_guid_cache = parsed_guid
+            self._active_power_scheme_cache = text
+        return self._active_power_scheme_cache or ""
+
+    def dynamic_tick_disabled_state(self, *, refresh: bool = False) -> Optional[bool]:
+        if refresh or self._dynamic_tick_cache is None:
+            value: Optional[bool] = None
+            if IS_WINDOWS and WindowsOps.supports_dynamic_tick_toggle():
+                value = WindowsOps.dynamic_tick_disabled_status()
+            self._dynamic_tick_cache = value
+        return self._dynamic_tick_cache
+
+    def command_task_applied(self, task: CleanerTask) -> Optional[bool]:
+        key = task.key
+        if task.instant_action:
+            return False
+        if key == "high_perf_plan":
+            text = self.active_power_scheme_text()
+            if not text:
+                return None
+            return ("scheme_min" in text) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in text) or ("high performance" in text)
+        if key == "safe_gaming_power_profile":
+            text = self.active_power_scheme_text()
+            if not text:
+                return None
+            high = ("scheme_min" in text) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in text) or ("high performance" in text)
+            epp = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFEPP")
+            aspm = self.powercfg_ac_value_cached("SUB_PCIEXPRESS", "ASPM")
+            boost = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFBOOSTMODE")
+            known = [value for value in (epp, aspm, boost) if value is not None]
+            if not known:
+                # If the OEM/current plan hides every optional setting, do not
+                # mark this advanced profile as applied only because the machine
+                # is on High Performance. That made several distinct switches
+                # look active at once.
+                return None if high else False
+            return high and (epp in (0, None)) and (aspm in (0, None)) and (boost in (1, 2, None))
+        if key == "cpu_latency_power_profile":
+            text = self.active_power_scheme_text()
+            if not text:
+                return None
+            high = ("scheme_min" in text) or ("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" in text) or ("high performance" in text)
+            epp = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFEPP")
+            aspm = self.powercfg_ac_value_cached("SUB_PCIEXPRESS", "ASPM")
+            boost = self.powercfg_ac_value_cached("SUB_PROCESSOR", "PERFBOOSTMODE")
+            min_cores = self.powercfg_ac_value_cached("SUB_PROCESSOR", "CPMINCORES")
+            known = [value for value in (epp, aspm, boost, min_cores) if value is not None]
+            if not known:
+                return None if high else False
+            return high and (epp in (0, None)) and (aspm in (0, None)) and (boost in (2, None)) and (min_cores in (100, None))
+        if key == "ultimate_perf_plan":
+            text = self.active_power_scheme_text()
+            if not text:
+                return None
+            return ("e9a42b02-d5df-448d-aa00-03f14749eb61" in text) or ("ultimate performance" in text)
+        if key == "disable_dynamic_tick_latency":
+            return self.dynamic_tick_disabled_state()
+        return None
+
+    def status_for_task(self, task: CleanerTask) -> str:
+        if task.requires_admin and not self.is_admin:
+            return self.tr("registry_status_admin_only")
+        if task.state == "disabled":
+            return self.tr("registry_status_unavailable") if task.registry_values else "disabled"
+        if task.registry_values:
+            statuses = WindowsOps.registry_statuses(task.registry_values)
+            if statuses and all(s.get("matches") for s in statuses):
+                return self.tr("registry_status_done")
+            if any(s.get("status") == "access_denied" for s in statuses):
+                return self.tr("registry_status_access_denied")
+            return self.tr("registry_status_change_needed")
+        if task.category == "optimizer" and task.kind != "directory":
+            applied = self.command_task_applied(task)
+            if applied is True:
+                return self.tr("registry_status_done")
+            if applied is False:
+                return self.tr("registry_status_change_needed")
+            return "action"
+        if task.paths or task.path:
+            return "clean"
+        return "action"
+
+    def sync_registry_toggle_states(self) -> None:
+        log_action("status_sync_start")
+        log_qa_event("status_sync_start", active_toggles=list(getattr(self, "toggle_jobs", {}).keys()))
+        self.invalidate_system_status_cache()
+        for task in self.tasks.values():
+            if task.category != "optimizer" or task.control != "switch":
+                continue
+            row = self.rows.get(task.key)
+            if not row:
+                continue
+            if task.key in getattr(self, "toggle_jobs", {}):
+                log_qa_event("status_sync_skip_busy_toggle", key=task.key)
+                continue
+            row.control.setEnabled(self.row_base_enabled(row))
+            applied: Optional[bool]
+            try:
+                if task.registry_values:
+                    statuses = WindowsOps.registry_statuses(task.registry_values)
+                    applied = bool(statuses) and all(s.get("matches") for s in statuses)
+                    log_qa_event("status_sync_registry", key=task.key, applied=applied, statuses=statuses)
+                else:
+                    applied = self.command_task_applied(task)
+                    log_qa_event("status_sync_command", key=task.key, applied=applied)
+            except Exception as exc:
+                applied = None
+                log_error(f"status sync failed for {task.key}: {exc}")
+            if applied is not None:
+                row.control.blockSignals(True)
+                row.control.setChecked(bool(applied))
+                row.control.blockSignals(False)
+                row.set_selected_property(bool(applied) and row.control.isEnabled())
+                row.update_status(self.tr("registry_status_done") if applied else self.tr("registry_status_change_needed"))
+            else:
+                row.update_status(self.status_for_task(task))
+                row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
+            row.control.update()
+        self.refresh_task_counts()
+        self.log(self.tr("registry_status_refresh_ok"))
+        log_action("status_sync_complete")
+        log_qa_event("status_sync_complete")
+
+    def selected_tasks(self, *, include_optimizer: bool = True) -> List[CleanerTask]:
+        selected = []
+        for key, row in self.rows.items():
+            task = self.tasks[key]
+            if row.selected() and (include_optimizer or task.category != "optimizer"):
+                selected.append(task)
+        return selected
+
+    def clear_selection(self) -> None:
+        for row in self.rows.values():
+            row.set_selected(False)
+        self.refresh_task_counts()
+        self.log(self.tr("selected_reset_hint") if self.tr("selected_reset_hint") != "selected_reset_hint" else "Selection cleared.")
+
+    def refresh_task_counts(self) -> None:
+        selected_clean = len(self.selected_tasks(include_optimizer=False))
+        selected_tweaks = len([t for t in self.selected_tasks(include_optimizer=True) if t.category == "optimizer"])
+        if hasattr(self, "card_selected"):
+            self.card_selected.set_value(str(selected_clean))
+        if hasattr(self, "home_selected_metric"):
+            self.home_selected_metric.metric_label.setText(str(selected_clean))  # type: ignore[attr-defined]
+        if hasattr(self, "home_optimizer_metric"):
+            self.home_optimizer_metric.metric_label.setText(f"{selected_tweaks} selected")  # type: ignore[attr-defined]
+
+    def on_task_row_changed(self, key: str) -> None:
+        self.refresh_task_counts()
+        task = self.tasks.get(key)
+        row = self.rows.get(key)
+        if not task or not row:
+            return
+        if task.category == "optimizer" and row.switch_mode:
+            self.start_toggle_task(key, bool(row.control.isChecked()))
+        else:
+            self.schedule_selection_estimate()
+
+    def schedule_selection_estimate(self) -> None:
+        if getattr(self, "thread", None) is not None:
+            return
+        self._estimate_token += 1
+        self.estimate_timer.start(260)
+
+    def start_selection_estimate(self) -> None:
+        token = int(self._estimate_token)
+        tasks = [t for t in self.selected_tasks(include_optimizer=False) if t.kind == "directory" and self._task_paths(t)]
+        if not tasks:
+            self.estimate_bridge.finished.emit(token, 0)
+            return
+        def worker() -> None:
+            total = 0
+            local_cancel = threading.Event()
+            try:
+                workers = get_adaptive_workers("scan", SCAN_WORKERS)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = [executor.submit(SafeFS.fast_size_many, self._task_paths(task), local_cancel) for task in tasks]
+                    for fut in concurrent.futures.as_completed(futures):
+                        try:
+                            total += int(fut.result() or 0)
+                        except Exception:
+                            pass
+            finally:
+                self.estimate_bridge.finished.emit(token, int(total))
+        threading.Thread(target=worker, name="FreeCleanerSelectionEstimate", daemon=True).start()
+
+    def on_selection_estimate_ready(self, token: int, total: int) -> None:
+        if token != self._estimate_token:
+            return
+        self.analysis_total = int(total or 0)
+        if hasattr(self, "card_junk"):
+            self.card_junk.set_value(self.human_mb(total) if total else "—")
+        if hasattr(self, "result_label"):
+            self.result_label.setText(f"Обрано до очищення: {self.human_mb(total)}" if total else (self.tr("freed_zero") if self.tr("freed_zero") != "freed_zero" else "Звільнено: 0.00 MB"))
+
+    def row_base_enabled(self, row: TaskRow) -> bool:
+        task = row.task
+        admin_prompt_allowed = row.switch_mode and task.category == "optimizer"
+        return bool(task.state != "disabled" and (not task.requires_admin or self.is_admin or admin_prompt_allowed))
+
+    def rollback_toggle_control(self, row: TaskRow, value: bool) -> None:
+        row.control.blockSignals(True)
+        row.control.setChecked(bool(value))
+        row.control.blockSignals(False)
+        row.control.setEnabled(self.row_base_enabled(row) and row.task.key not in getattr(self, "toggle_jobs", {}))
+        row.set_selected_property(bool(value) and row.control.isEnabled())
+        row.control.update()
+
+    def toggle_action_group(self, key: str) -> str:
+        # Power-plan actions target the same Windows power policy and must not
+        # run on top of each other.  Independent registry/command toggles can run
+        # in parallel; each still has its own row lock.
+        if key in {"high_perf_plan", "safe_gaming_power_profile", "cpu_latency_power_profile", "ultimate_perf_plan"}:
+            return "power-policy"
+        if key == "disable_dynamic_tick_latency":
+            return "boot-policy"
+        task = self.tasks.get(key)
+        if task and task.registry_values:
+            first = task.registry_values[0]
+            return f"registry:{first.key_path.casefold()}:{first.name.casefold()}"
+        return f"toggle:{key}"
+
+    def toggle_group_busy(self, key: str) -> bool:
+        group = self.toggle_action_group(key)
+        return any(other != key and self.toggle_action_group(other) == group for other in getattr(self, "toggle_jobs", {}))
+
+    def run_toggle_worker(self, key: str, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
+        if key in self.toggle_jobs:
+            log_qa_event("toggle_worker_duplicate_blocked", key=key, active=list(self.toggle_jobs.keys()))
+            self.show_toast("Цей тумблер уже виконує дію.", "warning")
+            return
+        log_qa_event("toggle_worker_create", key=key, group=self.toggle_action_group(key), active=list(self.toggle_jobs.keys()))
+        thread = QThread()
+        worker = Worker(fn)
+        worker.moveToThread(thread)
+        self.toggle_jobs[key] = (thread, worker)
+        thread.started.connect(worker.run)
+        worker.progress.connect(lambda percent, text, toggle_key=key: self.worker_bridge.toggle_progress.emit(toggle_key, int(percent), str(text or "")))
+        worker.finished.connect(lambda result, toggle_key=key, th=thread, wk=worker: self.worker_bridge.toggle_finished.emit(toggle_key, result or {}, th, wk))
+        worker.failed.connect(lambda error, toggle_key=key, th=thread, wk=worker: self.worker_bridge.toggle_failed.emit(toggle_key, str(error or ""), th, wk))
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+        log_qa_event("toggle_worker_started", key=key, thread_object=str(thread))
+
+    def on_toggle_progress(self, key: str, percent: int, text: str) -> None:
+        row = self.rows.get(key)
+        if row:
+            row.set_running(True)
+        self.set_progress_value(percent, animated=True)
+        if text:
+            self.log(text)
+        log_qa_event("toggle_progress", key=key, percent=percent, text=text)
+
+    def on_toggle_finished(self, key: str, result: Dict[str, Any], thread: QThread, worker: Worker) -> None:
+        self.toggle_jobs.pop(key, None)
+        log_qa_event("toggle_finished", key=key, result=result, remaining=list(self.toggle_jobs.keys()))
+        row = self.rows.get(key)
+        task = self.tasks.get(key)
+        ok = bool(result.get("ok"))
+        requested_enabled = bool(result.get("enabled"))
+        previous = bool(result.get("previous_state"))
+        verified_state: Optional[bool] = None
+        final_status = "ready"
+        if row and task:
+            row.set_running(False)
+            row.control.setEnabled(self.row_base_enabled(row))
+            if ok and not task.instant_action:
+                # Read the real Windows state after the operation so the visual
+                # switch cannot disagree with the status pill (old builds could
+                # show "applied" with an off switch after BCDEdit/powercfg lag).
+                self.invalidate_system_status_cache()
+                try:
+                    if task.registry_values:
+                        statuses = WindowsOps.registry_statuses(task.registry_values)
+                        verified_state = bool(statuses) and all(s.get("matches") for s in statuses)
+                    elif task.category == "optimizer":
+                        verified_state = self.command_task_applied(task)
+                except Exception as exc:
+                    log_error(f"toggle verify failed for {key}: {exc}")
+                    verified_state = None
+            row.control.blockSignals(True)
+            if task.instant_action:
+                row.control.setChecked(False)
+                final_status = "ready" if ok else self.status_for_task(task)
+            elif verified_state is not None:
+                row.control.setChecked(bool(verified_state))
+                final_status = self.tr("registry_status_done") if verified_state else self.tr("registry_status_change_needed")
+            elif ok:
+                row.control.setChecked(requested_enabled)
+                final_status = self.tr("registry_status_done") if requested_enabled else self.tr("registry_status_change_needed")
+            else:
+                row.control.setChecked(previous)
+                final_status = self.status_for_task(task)
+            row.control.blockSignals(False)
+            row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
+            row.update_status(final_status)
+            row.control.update()
+        self.invalidate_system_status_cache()
+        self.refresh_task_counts()
+        self.refresh_backup_state()
+        log_action({"toggle": key, "ok": ok, "requested_enabled": requested_enabled, "verified": verified_state})
+        self.show_toast("Тумблер застосовано" if ok else "Не вдалося застосувати тумблер", "success" if ok else "error")
+        # Let QThread.quit()/deleteLater settle before a full status probe.
+        self.defer_status_sync(450)
+
+    def on_toggle_failed(self, key: str, error: str, thread: QThread, worker: Worker) -> None:
+        self.toggle_jobs.pop(key, None)
+        log_qa_event("toggle_failed", key=key, error=error, remaining=list(self.toggle_jobs.keys()))
+        row = self.rows.get(key)
+        if row:
+            row.set_running(False)
+            row.control.setEnabled(self.row_base_enabled(row))
+            row.update_status(self.status_for_task(row.task))
+            row.set_selected_property(row.control.isChecked() and row.control.isEnabled())
+            row.control.update()
+        self.log(error)
+        log_error(f"toggle failed: {key}\n{error}")
+        self.show_toast("Помилка тумблера. Деталі у Diagnostics.", "error")
+        self.defer_status_sync(180)
+
+    def start_toggle_task(self, key: str, enable: bool) -> None:
+        task = self.tasks.get(key)
+        row = self.rows.get(key)
+        if not task or not row:
+            log_qa_event("toggle_start_missing_row_or_task", key=key, enable=enable)
+            return
+        previous_state = not bool(enable)
+        log_qa_event("toggle_requested", key=key, enable=bool(enable), previous_state=previous_state, admin=self.is_admin, state=task.state)
+        if key in getattr(self, "toggle_jobs", {}):
+            self.rollback_toggle_control(row, previous_state)
+            self.show_toast("Цей тумблер уже виконує дію.", "warning")
+            return
+        if self.toggle_group_busy(key):
+            self.rollback_toggle_control(row, previous_state)
+            self.show_toast("Суміжний системний твік ще виконується. Дочекайся завершення.", "warning")
+            return
+        if task.requires_admin and not self.is_admin:
+            self.rollback_toggle_control(row, previous_state)
+            row.update_status(self.tr("registry_status_admin_only"))
+            log_action({"toggle_blocked_admin_required": key})
+            self.show_toast("Потрібен запуск від адміністратора.", "warning")
+            return
+        if task.state == "disabled":
+            self.rollback_toggle_control(row, previous_state)
+            self.show_toast("Твік недоступний на цій системі.", "warning")
+            return
+        specs = task.registry_values if enable else self.revert_registry_specs.get(key)
+        command = task.command if enable else self.revert_commands.get(key)
+        if not enable and not specs and not command:
+            self.rollback_toggle_control(row, previous_state)
+            self.show_toast("Для цього тумблера немає безпечного OFF. Використай Registry restore.", "warning")
+            self.defer_status_sync(0)
+            return
+        title, _ = self.task_text(task)
+        log_action({"toggle_start": key, "enable": bool(enable), "group": self.toggle_action_group(key)})
+        row.set_running(True)
+        row.control.setEnabled(False)
+        row.control.update()
+
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(5, f"{title}: {'ON' if enable else 'OFF'}")
+            reg_keys = self.registry_keys_for_specs(specs or [])
+            if reg_keys:
+                backup = WindowsOps.backup_registry_keys(reg_keys)
+                emit(18, self.trf("registry_backup_created", path=backup) if backup else self.tr("registry_backup_failed"))
+                if not backup:
+                    return {"op": "toggle", "toggle_key": key, "ok": False, "enabled": enable, "previous_state": previous_state}
+            ok = True
+            if specs:
+                ok = all(WindowsOps.apply_registry_values(specs) or [False])
+            elif command:
+                result = command()
+                ok = bool(result) if isinstance(result, bool) else True
+            emit(100, f"{title}: {'OK' if ok else 'FAIL'}")
+            return {
+                "op": "toggle",
+                "toggle_key": key,
+                "ok": bool(ok),
+                "enabled": enable,
+                "previous_state": previous_state,
+                "momentary": bool(task.instant_action),
+            }
+
+        self.run_toggle_worker(key, job)
+
+    def apply_search(self) -> None:
+        query = self.search.text().strip() if hasattr(self, "search") else ""
+        self.apply_task_search(query, lambda key: key.startswith("clean_"))
+
+    def apply_optimizer_search(self) -> None:
+        query = self.optimizer_search.text().strip() if hasattr(self, "optimizer_search") else ""
+        self.apply_task_search(query, lambda key: key.startswith("opt_"))
+
+    def apply_task_search(self, query: str, section_filter: Callable[[str], bool]) -> None:
+        for section in self.sections.values():
+            if not section_filter(section.key):
+                continue
+            visible = False
+            for row in section.rows:
+                match = row.matches(query)
+                row.setVisible(match)
+                visible = visible or match
+            section.container.setVisible(visible or not query)
+
+    def _task_paths(self, task: CleanerTask) -> List[str]:
+        paths: List[str] = []
+        if task.paths:
+            paths.extend(task.paths)
+        elif task.path:
+            paths.append(task.path)
+        return PathFinder.unique_existing(paths)
+
+    @staticmethod
+    def human_mb(value: int) -> str:
+        return f"{value / (1024 * 1024):.2f} MB"
+
+    def set_progress_value(self, value: int, *, animated: bool = True) -> None:
+        if not hasattr(self, "progress"):
+            return
+        value = max(0, min(100, int(value)))
+        if not animated or not hasattr(self, "progress_anim"):
+            self.progress.setValue(value)
+            return
+        try:
+            self.progress_anim.stop()
+            self.progress_anim.setStartValue(int(self.progress.value()))
+            self.progress_anim.setEndValue(value)
+            self.progress_anim.start()
+        except Exception:
+            self.progress.setValue(value)
+
+    def log(self, text: str) -> None:
+        line = str(text or "").strip()
+        if not line:
+            return
+        log_app(line)
+        if hasattr(self, "log_box"):
+            self.log_box.append(line)
+        else:
+            # Avoid printing during normal GUI/source startup; logs are written
+            # to %LOCALAPPDATA%/FreeCleaner/logs/app.log instead.
+            pass
+
+    def set_busy(self, busy: bool) -> None:
+        for btn in (
+            getattr(self, "run_btn", None), getattr(self, "scan_btn", None), getattr(self, "reset_btn", None),
+            getattr(self, "refresh_registry_btn", None),
+        ):
+            if btn:
+                btn.setEnabled(not busy)
+        for row in getattr(self, "rows", {}).values():
+            admin_prompt_allowed = row.switch_mode and row.task.category == "optimizer"
+            base_enabled = row.task.state != "disabled" and (not row.task.requires_admin or self.is_admin or admin_prompt_allowed)
+            row_busy = bool(busy and row.task.category != "optimizer") or row.task.key in getattr(self, "toggle_jobs", {})
+            row.control.setEnabled(base_enabled and not row_busy)
+            row.setCursor(Qt.PointingHandCursor if base_enabled and not row_busy else Qt.ArrowCursor)
+        if not busy:
+            # Repaint rows after transient busy-disable so they do not stay grey.
+            for row in getattr(self, "rows", {}).values():
+                if row.task.category == "optimizer" and row.task.key not in getattr(self, "toggle_jobs", {}):
+                    row.update_status(self.status_for_task(row.task))
+
+    def run_background_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
+        """Run lightweight background jobs without locking the cleaner UI."""
+        thread = QThread()
+        worker = Worker(fn)
+        worker.moveToThread(thread)
+        self.background_jobs.append((thread, worker))
+        thread.started.connect(worker.run)
+        worker.progress.connect(lambda percent, text: self.worker_bridge.background_progress.emit(int(percent), str(text or "")))
+        worker.finished.connect(lambda result, th=thread, wk=worker: self.worker_bridge.background_finished.emit(result or {}, th, wk))
+        worker.failed.connect(lambda error, th=thread, wk=worker: self.worker_bridge.background_failed.emit(str(error or ""), th, wk))
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    def on_background_worker_finished(self, result: Dict[str, Any], thread: QThread, worker: Worker) -> None:
+        try:
+            if (thread, worker) in self.background_jobs:
+                self.background_jobs.remove((thread, worker))
+        except Exception:
+            pass
+        if str(result.get("op") or "") == "update" and self.setting_bool("notify_on_finish", True):
+            if result.get("available"):
+                self.show_toast(f"Доступне оновлення: {result.get('latest')}", "info")
+            else:
+                self.show_toast("FreeCleaner актуальний", "info")
+
+    def on_background_worker_failed(self, error: str, thread: QThread, worker: Worker) -> None:
+        try:
+            if (thread, worker) in self.background_jobs:
+                self.background_jobs.remove((thread, worker))
+        except Exception:
+            pass
+        self.log(f"Background job failed: {error}")
+
+    def run_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
+        if self.thread is not None:
+            self.show_toast("Зачекай завершення поточної дії.", "warning")
+            return
+        self.cancel_event.clear()
+        self.set_progress_value(0, animated=False)
+        self.set_busy(True)
+        self.thread = QThread()
+        self.worker = Worker(fn)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.progress.connect(self.on_worker_progress, Qt.QueuedConnection)
+        self.worker.finished.connect(self.on_worker_finished, Qt.QueuedConnection)
+        self.worker.failed.connect(self.on_worker_failed, Qt.QueuedConnection)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.failed.connect(self.thread.quit)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.finished.connect(lambda: setattr(self, "thread", None), Qt.QueuedConnection)
+        self.thread.finished.connect(lambda: setattr(self, "worker", None), Qt.QueuedConnection)
+        self.thread.finished.connect(lambda: self.set_busy(False), Qt.QueuedConnection)
+        self.thread.finished.connect(lambda: self.defer_status_sync(0), Qt.QueuedConnection)
+        self.thread.start()
+
+    def on_worker_progress(self, percent: int, text: str) -> None:
+        self.set_progress_value(percent, animated=True)
+        if text:
+            self.log(text)
+
+    def on_worker_finished(self, result: Dict[str, Any]) -> None:
+        op = str(result.get("op") or "")
+        total = int(result.get("total", self.analysis_total) or 0)
+        if op == "toggle":
+            key = str(result.get("toggle_key") or "")
+            row = self.rows.get(key)
+            task = self.tasks.get(key)
+            if row and result.get("momentary"):
+                row.control.blockSignals(True)
+                row.control.setChecked(False)
+                row.control.blockSignals(False)
+            if row and task and not task.registry_values:
+                row.update_status("applied" if result.get("enabled") and result.get("ok") else "ready")
+        elif op != "update":
+            self.analysis_total = total
+            if hasattr(self, "card_junk"):
+                self.card_junk.set_value(self.human_mb(total) if total else "—")
+            if "freed" in result:
+                self.freed_bytes = int(result.get("freed") or 0)
+                self.result_label.setText(f"Звільнено: {self.human_mb(self.freed_bytes)}")
+            else:
+                self.result_label.setText(f"Знайдено: {self.human_mb(total)}")
+        self.set_progress_value(100, animated=True)
+        for key in getattr(self, "_cleaning_keys", []):
+            row = self.rows.get(key)
+            if row:
+                row.update_status(self.status_for_task(row.task))
+        self._cleaning_keys = []
+        if hasattr(self, "toast") and self.setting_bool("notify_on_finish", True):
+            if op == "update":
+                self.show_toast("Перевірка оновлень завершена", "info")
+            elif op == "toggle":
+                self.show_toast("Тумблер застосовано" if result.get("ok") else "Не вдалося застосувати тумблер", "success" if result.get("ok") else "error")
+            elif "tweaks" in result:
+                self.show_toast(f"Застосовано твікiв: {int(result.get('tweaks') or 0)}", "success")
+            elif "freed" in result:
+                self.show_toast(f"Очищення завершено: {self.human_mb(self.freed_bytes)}", "success")
+            else:
+                self.show_toast(f"Аналіз завершено: {self.human_mb(total)}", "info")
+        self.refresh_backup_state()
+        self.refresh_system_drive_status()
+
+    def on_worker_failed(self, error: str) -> None:
+        QMessageBox.critical(self, "FreeCleaner", error)
+        self.log(error)
+        for key in getattr(self, "_cleaning_keys", []):
+            row = self.rows.get(key)
+            if row:
+                row.update_status(self.status_for_task(row.task))
+        self._cleaning_keys = []
+        self.set_progress_value(0, animated=True)
+        if hasattr(self, "toast"):
+            self.show_toast("Помилка виконання. Деталі у Diagnostics.", "error")
+        self.defer_status_sync(0)
+
+    def start_analysis(self) -> None:
+        tasks = [t for t in self.selected_tasks(include_optimizer=False) if t.kind == "directory" and self._task_paths(t)]
+        if not tasks:
+            QMessageBox.information(self, "FreeCleaner", self.tr("nothing_selected"))
+            return
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            total = 0
+            count = len(tasks)
+            workers = get_adaptive_workers("scan", SCAN_WORKERS)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                future_map = {executor.submit(SafeFS.fast_size_many, self._task_paths(task), self.cancel_event): task for task in tasks}
+                for idx, fut in enumerate(concurrent.futures.as_completed(future_map), start=1):
+                    task = future_map[fut]
+                    try:
+                        size = int(fut.result() or 0)
+                    except Exception:
+                        size = 0
+                    total += size
+                    title, _ = self.task_text(task)
+                    emit(int(idx / count * 100), f"{title}: {self.human_mb(size)}")
+            return {"total": total, "op": "analysis"}
+        self.run_worker(job)
+
+    def start_clean(self) -> None:
+        tasks = self.selected_tasks(include_optimizer=False)
+        if not tasks:
+            QMessageBox.information(self, "FreeCleaner", self.tr("nothing_selected"))
+            return
+        if self.setting_bool("confirm_heavy_actions", True) and any(t.danger == "heavy" for t in tasks):
+            if QMessageBox.question(self, self.tr("confirm_heavy_title"), self.tr("confirm_heavy_message")) != QMessageBox.Yes:
+                return
+        self._cleaning_keys = [t.key for t in tasks]
+        for task in tasks:
+            row = self.rows.get(task.key)
+            if row:
+                row.control.blockSignals(True)
+                row.control.setChecked(False)
+                row.control.blockSignals(False)
+                row.set_selected_property(False)
+                row.set_running(True)
+        self.refresh_task_counts()
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            total_before = 0
+            freed = 0
+            dir_tasks = [t for t in tasks if t.kind == "directory" and self._task_paths(t)]
+            cmd_tasks = [t for t in tasks if t.kind != "directory"]
+            workers = get_adaptive_workers("scan", SCAN_WORKERS)
+            emit(1, f"Аналіз: {len(dir_tasks)} modules")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                future_map = {executor.submit(SafeFS.fast_size_many, self._task_paths(task), self.cancel_event): task for task in dir_tasks}
+                for fut in concurrent.futures.as_completed(future_map):
+                    try:
+                        total_before += int(fut.result() or 0)
+                    except Exception:
+                        pass
+            if total_before:
+                emit(12, f"Знайдено: {self.human_mb(total_before)}")
+            # backup registry before optimizer registry tweaks
+            reg_keys: List[str] = []
+            for task in cmd_tasks:
+                for key in task.registry_keys or []:
+                    if key not in reg_keys:
+                        reg_keys.append(key)
+            if reg_keys:
+                backup = WindowsOps.backup_registry_keys(reg_keys)
+                emit(15, self.trf("registry_backup_created", path=backup) if backup else self.tr("registry_backup_failed"))
+                if not backup:
+                    return {"total": total_before, "freed": 0, "op": "clean"}
+            clean_workers = get_adaptive_workers("clean", CLEAN_WORKERS)
+            step_base = 20
+            count = max(1, len(dir_tasks))
+            for idx, task in enumerate(dir_tasks, start=1):
+                paths = self._task_paths(task)
+                title, _ = self.task_text(task)
+                result = SafeFS.clean_many(paths, lambda b: None, self.cancel_event)
+                removed = int(result.get("removed_bytes", 0) or 0)
+                freed += removed
+                skipped = int(result.get("skipped_busy", 0) or 0)
+                scheduled = int(result.get("scheduled_reboot", 0) or 0)
+                suffix = ""
+                if skipped or scheduled:
+                    suffix = f" • skipped busy: {skipped}" + (f" • reboot: {scheduled}" if scheduled else "")
+                emit(step_base + int(idx / count * 58), f"{title}: {self.human_mb(removed)}{suffix}")
+            for idx, task in enumerate(cmd_tasks, start=1):
+                title, _ = self.task_text(task)
+                ok = True
+                if task.registry_values:
+                    statuses = WindowsOps.registry_statuses(task.registry_values)
+                    if statuses and all(s.get("matches") for s in statuses):
+                        ok = True
+                        emit(80 + int(idx / max(1, len(cmd_tasks)) * 18), f"{title}: already applied")
+                        continue
+                    ok = all(WindowsOps.apply_registry_values(task.registry_values) or [False])
+                elif task.command:
+                    res = task.command()
+                    ok = bool(res) if isinstance(res, bool) else True
+                emit(80 + int(idx / max(1, len(cmd_tasks)) * 18), f"{title}: {'OK' if ok else 'FAIL'}")
+            return {"total": total_before, "freed": freed, "op": "clean"}
+        self.run_worker(job)
+
+    def start_apply_tweaks(self) -> None:
+        tasks = [t for t in self.selected_tasks(include_optimizer=True) if t.category == "optimizer" and t.kind != "directory"]
+        if not tasks:
+            QMessageBox.information(self, "FreeCleaner", self.tr("nothing_selected"))
+            return
+        if self.setting_bool("confirm_heavy_actions", True) and any(t.danger == "heavy" for t in tasks):
+            if QMessageBox.question(self, self.tr("confirm_heavy_title"), self.tr("confirm_heavy_message")) != QMessageBox.Yes:
+                return
+
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            reg_keys: List[str] = []
+            for task in tasks:
+                for key in task.registry_keys or []:
+                    if key not in reg_keys:
+                        reg_keys.append(key)
+            if reg_keys:
+                backup = WindowsOps.backup_registry_keys(reg_keys)
+                emit(10, self.trf("registry_backup_created", path=backup) if backup else self.tr("registry_backup_failed"))
+                if not backup:
+                    return {"total": self.analysis_total, "freed": 0, "op": "tweaks"}
+            count = max(1, len(tasks))
+            for idx, task in enumerate(tasks, start=1):
+                title, _ = self.task_text(task)
+                ok = True
+                if task.registry_values:
+                    statuses = WindowsOps.registry_statuses(task.registry_values)
+                    if statuses and all(s.get("matches") for s in statuses):
+                        emit(10 + int(idx / count * 88), f"{title}: already applied")
+                        continue
+                    ok = all(WindowsOps.apply_registry_values(task.registry_values) or [False])
+                elif task.command:
+                    res = task.command()
+                    ok = bool(res) if isinstance(res, bool) else True
+                emit(10 + int(idx / count * 88), f"{title}: {'OK' if ok else 'FAIL'}")
+            return {"total": self.analysis_total, "freed": 0, "tweaks": len(tasks), "op": "tweaks"}
+
+        self.run_worker(job)
+
+    # ------------------------- registry/settings/actions -------------------------
+    def collect_registry_keys(self) -> List[str]:
+        keys: List[str] = []
+        for task in self.tasks.values():
+            for key in task.registry_keys or []:
+                if key not in keys:
+                    keys.append(key)
+        return keys
+
+    def manual_registry_backup(self) -> None:
+        keys = self.collect_registry_keys()
+        if not keys:
+            QMessageBox.information(self, "FreeCleaner", self.tr("manual_registry_backup_empty"))
+            return
+        path = WindowsOps.backup_registry_keys(keys)
+        if path:
+            self.log(self.trf("manual_registry_backup_ok", path=path))
+            self.refresh_backup_state()
+            self.show_toast("Registry backup створено", "success")
+        else:
+            QMessageBox.warning(self, "FreeCleaner", self.tr("manual_registry_backup_fail"))
+
+    def refresh_backup_state(self) -> None:
+        if not hasattr(self, "backup_list"):
+            return
+        self.backup_list.clear()
+        backups = WindowsOps.list_registry_backups()
+        for item in backups:
+            self.backup_list.addItem(f"{item.get('created')} • {item.get('name')} • {item.get('count')} .reg")
+        if hasattr(self, "home_backup_metric"):
+            self.home_backup_metric.metric_label.setText(str(len(backups)))  # type: ignore[attr-defined]
+
+    def open_restore_dialog(self) -> None:
+        backups = WindowsOps.list_registry_backups()
+        if not backups:
+            QMessageBox.information(self, "FreeCleaner", self.tr("registry_restore_missing"))
+            return
+        current_row = self.backup_list.currentRow() if hasattr(self, "backup_list") else 0
+        current_row = current_row if 0 <= current_row < len(backups) else 0
+        backup = backups[current_row]
+        if not self.is_admin:
+            QMessageBox.warning(self, "FreeCleaner", self.tr("restore_registry_admin_required"))
+            return
+        if QMessageBox.question(self, "FreeCleaner", f"Restore backup?\n{backup.get('name')}") != QMessageBox.Yes:
+            return
+        ok = WindowsOps.restore_registry_backup_dir(str(backup.get("path") or ""))
+        self.log(self.trf("registry_restore_ok" if ok else "registry_restore_fail", name=backup.get("name", "backup")))
+        self.sync_registry_toggle_states()
+
+    def setting_bool(self, key: str, default: bool = False) -> bool:
+        value = self.config.get(key, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().casefold() in {"1", "true", "yes", "on", "enabled"}
+
+    def set_setting_bool(self, key: str, value: bool) -> None:
+        self.config[key] = bool(value)
+        self.save_config()
+
+    def on_language_changed(self, index: int) -> None:
+        if 0 <= index < len(self.lang_options):
+            self.lang_preference = self.lang_options[index][0]
+            self.config["language"] = self.lang_preference
+            self.save_config()
+            QMessageBox.information(self, "FreeCleaner", "Мова буде повністю оновлена після перезапуску програми.")
+
+    def on_admin_switch_changed(self, state: int) -> None:
+        if self.is_admin:
+            return
+        if state:
+            self.admin_mode_switch.blockSignals(True)
+            self.admin_mode_switch.setChecked(False)
+            self.admin_mode_switch.blockSignals(False)
+            self.restart_as_admin()
+
+    def show_toast(self, text: str, tone: str = "success") -> None:
+        log_app(f"toast[{tone}]: {text}")
+        if hasattr(self, "toast"):
+            self.toast.show_message(text, tone)
+
+    def open_config_folder(self) -> None:
+        folder = os.path.dirname(CONFIG_PATH) or get_user_data_dir(create=True)
+        os.makedirs(folder, exist_ok=True)
+        WindowsOps.open_in_file_manager(folder)
+
+    def open_logs_folder(self) -> None:
+        folder = get_logs_dir(create=True)
+        WindowsOps.open_in_file_manager(folder)
+        self.log(f"Logs folder: {folder}")
+
+    def open_about(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle(self.tr("about_title"))
+        dlg.resize(620, 430)
+        layout = QVBoxLayout(dlg)
+        title = QLabel(f"FreeCleaner {APP_VERSION}")
+        title.setObjectName("PageTitle")
+        layout.addWidget(title)
+        desc = QLabel("Windows cleaner with a full Qt/PySide6 frontend, safe file operations, registry backup, restore, diagnostics and gaming optimization toggles.")
+        desc.setObjectName("SectionSub")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        meta = QTextEdit()
+        meta.setReadOnly(True)
+        meta.setPlainText(
+            f"Version: {APP_VERSION_RAW}\n"
+            f"UI: Qt / PySide6\n"
+            f"Mode: {'Administrator' if self.is_admin else 'Restricted'}\n"
+            f"Config: {CONFIG_PATH}\n"
+            f"Data folder: {get_user_data_dir(create=True)}\n"
+            f"Logs: {get_logs_dir(create=True)}\n"
+            + "\n".join(f"{name.title()} log: {path}" for name, path in all_log_paths().items())
+        )
+        layout.addWidget(meta, 1)
+        actions = QHBoxLayout()
+        license_btn = QPushButton(self.tr("about_license") if self.tr("about_license") != "about_license" else "License")
+        license_btn.clicked.connect(lambda: QMessageBox.information(self, "License", self.read_project_text("LICENSE")[:5000] or "LICENSE file not found."))
+        privacy_btn = QPushButton("Privacy")
+        privacy_btn.clicked.connect(self.show_privacy_policy)
+        close_btn = QPushButton("OK")
+        close_btn.setObjectName("PrimaryButton")
+        close_btn.clicked.connect(dlg.accept)
+        actions.addWidget(license_btn)
+        actions.addWidget(privacy_btn)
+        actions.addStretch(1)
+        actions.addWidget(close_btn)
+        layout.addLayout(actions)
+        dlg.exec()
+
+    def show_privacy_policy(self) -> None:
+        text = self.read_project_text("PRIVACY_POLICY.txt") or "PRIVACY_POLICY.txt file not found."
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Privacy Policy")
+        dlg.resize(720, 520)
+        layout = QVBoxLayout(dlg)
+        box = QTextEdit()
+        box.setReadOnly(True)
+        box.setPlainText(text)
+        layout.addWidget(box, 1)
+        close = QPushButton("OK")
+        close.setObjectName("PrimaryButton")
+        close.clicked.connect(dlg.accept)
+        layout.addWidget(close, 0, Qt.AlignRight)
+        dlg.exec()
+
+    def restart_as_admin(self) -> None:
+        if self.is_admin:
+            QMessageBox.information(self, "FreeCleaner", "Програма вже запущена від адміністратора.")
+            return
+        if QMessageBox.question(self, "FreeCleaner", "Перезапустити FreeCleaner від адміністратора?") != QMessageBox.Yes:
+            return
+        WindowsOps.run_as_admin()
+        QApplication.quit()
+
+    def check_updates(self) -> None:
+        self.log(self.tr("checking_updates"))
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            info = fetch_latest_github_release("LihvoDruida", "FreeCleaner")
+            if info and compare_versions(APP_VERSION_RAW, info.version_text) < 0:
+                emit(100, self.trf("update_available_log", current=APP_VERSION, latest=info.version_text))
+                return {"total": self.analysis_total, "op": "update", "available": True, "latest": info.version_text}
+            emit(100, self.trf("update_up_to_date_log", version=APP_VERSION))
+            return {"total": self.analysis_total, "op": "update", "available": False}
+        self.run_background_worker(job)
+
+    def run_system_report(self) -> None:
+        report = {
+            "mode": "administrator" if self.is_admin else "restricted",
+            "registered_tasks": len(self.tasks),
+            "cleaner_tasks": len([t for t in self.tasks.values() if t.category != "optimizer"]),
+            "optimizer_toggles": len([t for t in self.tasks.values() if t.category == "optimizer"]),
+            "registry_backups": len(WindowsOps.list_registry_backups()),
+            "scan_workers": get_adaptive_workers("scan", SCAN_WORKERS),
+            "clean_workers": get_adaptive_workers("clean", CLEAN_WORKERS),
+            "system_drive": get_system_drive_info(),
+            "config_path": CONFIG_PATH,
+            "logs_dir": get_logs_dir(create=True),
+            "log_files": all_log_paths(),
+        }
+        self.log("System check:")
+        for key, value in report.items():
+            self.log(f"  {key}: {value}")
+        if hasattr(self, "diagnostic_cards"):
+            self.diagnostic_cards[0].set_status("done", "Blue")
+        self.show_toast("Системну перевірку завершено", "info")
+
+    def run_streaming_report(self) -> None:
+        report = WindowsOps.collect_streaming_diagnostics()
+        self.log("OBS/Streaming report:")
+        for key, value in report.items():
+            self.log(f"  {key}: {value}")
+        if hasattr(self, "diagnostic_cards"):
+            self.diagnostic_cards[2].set_status("done", "Blue")
+        self.show_toast("Streaming diagnostics зібрано", "info")
+
+    def run_gaming_report(self) -> None:
+        report = WindowsOps.collect_gaming_compat_report()
+        self.log("Gaming compatibility report:")
+        for key, value in report.items():
+            self.log(f"  {key}: {value}")
+        if hasattr(self, "diagnostic_cards"):
+            self.diagnostic_cards[1].set_status("done", "Blue")
+        self.show_toast("Gaming report зібрано", "info")
+
+    def run_onedrive_report(self) -> None:
+        report = WindowsOps.collect_onedrive_report()
+        self.log("OneDrive report:")
+        for key, value in report.items():
+            self.log(f"  {key}: {value}")
+        if hasattr(self, "diagnostic_cards"):
+            self.diagnostic_cards[3].set_status("done", "Blue")
+        self.show_toast("OneDrive report зібрано", "info")
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.cancel_event.set()
+        super().closeEvent(event)
+
+
+def configure_high_dpi() -> None:
+    # Warning-free Qt 6 startup: use QT_SCALE_FACTOR_ROUNDING_POLICY from the
+    # launcher/bootstrap instead of calling the Qt API at runtime.  Some Windows
+    # builds print a warning even when the call is guarded, so this is a no-op.
+    return
+
+
+def _prepare_qapplication(app: QApplication) -> Optional[str]:
+    app.setApplicationName("FreeCleaner")
+    app.setApplicationDisplayName("FreeCleaner")
+    app.setOrganizationName("FreeCleaner")
+    app.setStyleSheet(APP_QSS)
+    app.setQuitOnLastWindowClosed(True)
+    icon = find_icon_path("app.ico") or find_icon_path("app.png")
+    if icon:
+        app.setWindowIcon(QIcon(icon))
+    return icon
+
+
+def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> int:
+    if IS_WINDOWS:
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FreeCleaner.Qt")
+        except Exception:
+            pass
+    icon = _prepare_qapplication(app)
+    owned_splash = splash is None
+    if splash is None:
+        splash = SplashWindow(icon)
+        splash.show_centered()
+    if hasattr(splash, "set_progress"):
+        splash.set_progress(72, "Завантаження Qt інтерфейсу…")  # type: ignore[attr-defined]
+    app.processEvents()
+    window = FreeCleanerQt()
+    if hasattr(splash, "set_progress"):
+        splash.set_progress(100, "Запуск інтерфейсу…")  # type: ignore[attr-defined]
+    app.processEvents()
+
+    def show_main_window() -> None:
+        # Show the main window only after the splash is gone.  No startup
+        # windowOpacity animation here: on some Windows GPU drivers it creates
+        # a grey top-level window flash behind the splash.
+        if splash is not None:
+            try:
+                splash.close()
+            except Exception:
+                pass
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        log_startup("main window shown")
+
+    if splash is not None:
+        if hasattr(splash, "fade_out"):
+            splash.fade_out()  # type: ignore[attr-defined]
+            # Do not show the main window behind the splash.  This removes the
+            # grey pre-window flash visible on some Windows/driver setups.
+            QTimer.singleShot(360 if owned_splash else 320, show_main_window)
+        else:
+            splash.close()
+            QTimer.singleShot(0, show_main_window)
+    else:
+        QTimer.singleShot(0, show_main_window)
+    return app.exec()
+
+
+def main() -> int:
+    configure_high_dpi()
+    # High-DPI rounding is controlled by environment variables set before Qt.
+    # A direct Qt setter here is too late on some Windows/PySide6 builds and
+    # creates the startup warning the user sees in logs.
+    app = QApplication(sys.argv)
+    return launch_existing_app(app)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

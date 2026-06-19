@@ -19,6 +19,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import webbrowser
+import shlex
 try:
     import winreg  # type: ignore
 except Exception:  # pragma: no cover
@@ -34,6 +35,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional, Dict, List, Tuple, Union, Set
 
 from .default_lang_packs import DEFAULT_LANG_PACKS
+from .runtime_logging import log_app, log_error, log_action, log_security, log_system_response, log_qa_event
 
 
 APP_NAME = "FreeCleaner"
@@ -42,6 +44,7 @@ LANG_DIRNAME = "lang"
 ICONS_DIRNAME = os.path.join("assets", "icons")
 REGISTRY_BACKUP_DIRNAME = "registry_backups"
 UPDATES_DIRNAME = "updates"
+LOGS_DIRNAME = "logs"
 GITHUB_API_BASE = "https://api.github.com"
 
 
@@ -633,6 +636,86 @@ def get_updates_dir(create: bool = True) -> str:
     return fallback
 
 
+def get_logs_dir(create: bool = True) -> str:
+    """Return the per-user logs directory next to config, updates and backups."""
+    path = os.path.join(get_user_data_dir(create=create), LOGS_DIRNAME)
+    if create:
+        try:
+            os.makedirs(path, exist_ok=True)
+        except Exception:
+            pass
+    return path
+
+
+def _bytes_to_gb_text(value: int) -> str:
+    gb = float(value or 0) / (1024 ** 3)
+    text = f"{gb:.2f}" if gb < 10 else f"{gb:.0f}"
+    return text.replace(".", ",")
+
+
+def get_system_drive_info() -> Dict[str, Any]:
+    """Return label/size/free information for the Windows system drive.
+
+    Kept UI-safe: any WinAPI failure falls back to plain disk_usage data.
+    """
+    if IS_WINDOWS:
+        drive = os.environ.get("SystemDrive") or os.path.splitdrive(os.path.abspath(os.getcwd()))[0] or "C:"
+        root = drive + os.sep if len(drive) == 2 and drive[1] == ":" else drive
+    else:
+        root = os.path.abspath(os.sep)
+        drive = root
+    label = ""
+    fs = ""
+    if IS_WINDOWS:
+        try:
+            volume_name = ctypes.create_unicode_buffer(261)
+            file_system = ctypes.create_unicode_buffer(261)
+            serial = ctypes.c_ulong()
+            max_component = ctypes.c_ulong()
+            flags = ctypes.c_ulong()
+            ok = ctypes.windll.kernel32.GetVolumeInformationW(
+                ctypes.c_wchar_p(root),
+                volume_name,
+                len(volume_name),
+                ctypes.byref(serial),
+                ctypes.byref(max_component),
+                ctypes.byref(flags),
+                file_system,
+                len(file_system),
+            )
+            if ok:
+                label = str(volume_name.value or "").strip()
+                fs = str(file_system.value or "").strip()
+        except Exception as exc:
+            log_app(f"system drive label lookup failed: {exc}", level="WARNING")
+    try:
+        usage = shutil.disk_usage(root)
+        total = int(usage.total)
+        free = int(usage.free)
+        used = int(usage.used)
+        percent_used = round((used / total) * 100, 1) if total else 0.0
+    except Exception as exc:
+        log_app(f"system drive usage lookup failed: {exc}", level="ERROR")
+        total = free = used = 0
+        percent_used = 0.0
+    display_label = label or ("Windows" if IS_WINDOWS else "System")
+    short = f"{display_label} ({drive.upper()})" if drive else display_label
+    size_text = f"{_bytes_to_gb_text(free)} ГБ вільно з {_bytes_to_gb_text(total)} ГБ" if total else "невідомий розмір"
+    return {
+        "drive": drive.upper(),
+        "root": root,
+        "label": display_label,
+        "fs": fs,
+        "total": total,
+        "used": used,
+        "free": free,
+        "percent_used": percent_used,
+        "short": short,
+        "size_text": size_text,
+        "display": f"{short} • {size_text}",
+    }
+
+
 def _safe_update_filename(filename: str, fallback: str = "FreeCleaner-update.exe") -> str:
     name = os.path.basename((filename or "").strip()) or fallback
     name = urllib.parse.unquote(name)
@@ -732,6 +815,7 @@ def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str 
 
         if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)):
             err = ctypes.get_last_error()
+            log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb}, returncode=f"failed:{err}", stderr=f"ShellExecuteEx failed ({err})", context={"visible": True}, level="WARNING")
             return False, f"ShellExecuteEx failed ({err}).", None
 
         pid: Optional[int] = None
@@ -746,8 +830,10 @@ def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str 
                 ctypes.windll.kernel32.CloseHandle(handle)
             except Exception:
                 pass
+        log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb}, returncode="started", stdout={"pid": pid}, context={"visible": True})
         return True, "Installer started.", pid
     except Exception as exc:
+        log_system_response("shell_execute", command={"file": file_path, "parameters": parameters, "verb": verb}, returncode="exception", stderr=str(exc), context={"visible": True}, level="ERROR")
         return False, str(exc) or "Failed to start installer.", None
 
 
@@ -756,8 +842,18 @@ def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[in
     path = os.path.abspath(installer_path or "")
     if not path or not os.path.isfile(path):
         return False, "Update file was not found.", None
+    try:
+        updates_root = os.path.abspath(get_updates_dir(create=True))
+        if os.path.commonpath([updates_root, path]) != updates_root:
+            log_security(f"blocked update launch outside updates dir: {path}", level="WARNING")
+            return False, "Update file is outside the trusted updates folder.", None
+    except Exception:
+        return False, "Could not verify update file location.", None
 
     ext = os.path.splitext(path)[1].lower()
+    if ext not in {".exe", ".msi"}:
+        log_security(f"blocked non-installer update launch: {path}", level="WARNING")
+        return False, "Unsupported update installer type.", None
     if not IS_WINDOWS:
         try:
             webbrowser.open(path)
@@ -768,6 +864,7 @@ def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[in
     try:
         if ext == ".msi":
             proc = subprocess.Popen(["msiexec.exe", "/i", path], cwd=os.path.dirname(path) or None)
+            log_system_response("process.start", command=["msiexec.exe", "/i", path], returncode="started", stdout={"pid": int(proc.pid)}, context={"installer": True, "visible": True})
             return True, "MSI installer started.", int(proc.pid)
         if ext == ".exe":
             ok, message, pid = _shell_execute_with_process(path)
@@ -777,6 +874,7 @@ def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[in
             if ok:
                 return ok, message, pid
             proc = subprocess.Popen([path], cwd=os.path.dirname(path) or None)
+            log_system_response("process.start", command=[path], returncode="started", stdout={"pid": int(proc.pid)}, context={"installer": True, "visible": True})
             return True, "Installer started.", int(proc.pid)
         os.startfile(path)  # type: ignore[attr-defined]
         return True, "Update file opened.", None
@@ -854,6 +952,10 @@ def download_url_to_file(
     dest = (dest_path or "").strip()
     if not target_url:
         return False, "Empty download URL."
+    parsed_url = urllib.parse.urlparse(target_url)
+    if parsed_url.scheme.lower() != "https":
+        log_security(f"blocked non-HTTPS update download URL: {target_url}", level="WARNING")
+        return False, "Only HTTPS update downloads are allowed."
     if not dest:
         return False, "Empty destination path."
 
@@ -873,8 +975,21 @@ def download_url_to_file(
 
     downloaded = 0
     total: Optional[int] = None
+    log_action({"download_start": target_url, "dest": dest})
     try:
+        started_http = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response, open(temp_path, "wb") as fh:
+            status_code = getattr(response, "status", None) or getattr(response, "code", None)
+            headers_snapshot = {str(k): str(v) for k, v in getattr(response, "headers", {}).items()}
+            log_system_response(
+                "http.response",
+                command={"method": "GET", "url": target_url},
+                returncode=status_code,
+                stdout={"headers": headers_snapshot},
+                elapsed_ms=int((time.perf_counter() - started_http) * 1000),
+                timeout=timeout,
+                context={"dest": dest},
+            )
             length_header = response.headers.get("Content-Length")
             if length_header and str(length_header).isdigit():
                 total = int(length_header)
@@ -892,8 +1007,12 @@ def download_url_to_file(
                     except Exception:
                         pass
         os.replace(temp_path, dest)
+        log_action({"download_complete": dest, "bytes": downloaded})
+        log_system_response("http.download_complete", command={"url": target_url}, returncode="ok", stdout={"dest": dest, "bytes": downloaded, "expected_total": total}, context={"dest": dest})
         return True, dest
     except Exception as exc:
+        log_error(f"download failed: {target_url}: {exc}")
+        log_system_response("http.download_failed", command={"url": target_url}, returncode="exception", stderr=str(exc), timeout=timeout, context={"dest": dest}, level="ERROR")
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -1136,6 +1255,8 @@ class CleanerTask:
     registry_keys: Optional[List[str]] = None
     registry_values: Optional[List[RegistryValueSpec]] = None
     reboot_required: bool = False
+    # UI hint: cleanup actions should stay checkboxes, optimizer tweaks should be switches.
+    control: str = "auto"
 
 
 class PathFinder:
@@ -1349,6 +1470,10 @@ class PathFinder:
             ("delivery_opt_programdata", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(programdata, r"Microsoft\Windows\DeliveryOptimization\Cache"), True),
             ("delivery_opt_networkservice", "task.delivery_opt.title", "task.delivery_opt.desc", PathFinder._safe_join(network_service_local, r"Microsoft\Windows\DeliveryOptimization\Cache"), True),
             ("font_cache_user", "task.font_cache.title", "task.font_cache.desc", PathFinder._safe_join(local, "FontCache"), False),
+            ("programdata_temp", "task.programdata_temp.title", "task.programdata_temp.desc", PathFinder._safe_join(programdata, "Temp"), True),
+            ("windows_system_temp", "task.windows_system_temp.title", "task.windows_system_temp.desc", PathFinder._safe_join(windir, "SystemTemp"), True),
+            ("windows_programdata_caches", "task.windows_programdata_caches.title", "task.windows_programdata_caches.desc", PathFinder._safe_join(programdata, r"Microsoft\Windows\Caches"), True),
+            ("windows_device_metadata_cache", "task.windows_device_metadata_cache.title", "task.windows_device_metadata_cache.desc", PathFinder._safe_join(programdata, r"Microsoft\Windows\DeviceMetadataCache\dmrccache"), True),
             ("prefetch", "task.prefetch.title", "task.prefetch.desc", PathFinder._safe_join(windir, "Prefetch"), True),
         ]
         return [(k, t, d, p, a) for k, t, d, p, a in candidates if p and os.path.exists(p)]
@@ -1472,6 +1597,13 @@ class PathFinder:
             ("minecraft_launcher_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r".minecraft\webcache2"), {"app": "Minecraft Launcher"}),
             ("curseforge_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"CurseForge\Cache"), {"app": "CurseForge"}),
             ("overwolf_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Overwolf\BrowserCache"), {"app": "Overwolf"}),
+            ("whatsapp_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"WhatsApp\Cache"), {"app": "WhatsApp"}),
+            ("whatsapp_code_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"WhatsApp\Code Cache"), {"app": "WhatsApp"}),
+            ("github_desktop_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"GitHub Desktop\Cache"), {"app": "GitHub Desktop"}),
+            ("notion_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Notion\Cache"), {"app": "Notion"}),
+            ("figma_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(appdata, r"Figma\Cache"), {"app": "Figma"}),
+            ("microsoft_store_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\LocalCache"), {"app": "Microsoft Store"}),
+            ("widgets_webview_cache", "task.app_cache.title", "task.app_cache.desc", PathFinder._safe_join(local, r"Packages\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\AC\#!001\INetCache"), {"app": "Windows Widgets"}),
         ]
         return [(k, t, d, p, fmt) for k, t, d, p, fmt in candidates if p and os.path.exists(p)]
 
@@ -1611,6 +1743,28 @@ class WindowsOps:
             return False
 
     @staticmethod
+    def hidden_subprocess_kwargs(*, capture: bool = False, noisy: bool = False) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {}
+        if IS_WINDOWS:
+            # CREATE_NO_WINDOW keeps cmd/powershell/powercfg/bcdedit/reg helpers
+            # completely hidden.  Keep the numeric fallback for Python builds
+            # where subprocess.CREATE_NO_WINDOW is unavailable.
+            kwargs["creationflags"] = int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            try:
+                startupinfo.wShowWindow = 0
+            except Exception:
+                pass
+            kwargs["startupinfo"] = startupinfo
+        if capture:
+            kwargs.update({"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT})
+        elif not noisy:
+            kwargs.update({"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL})
+        kwargs.setdefault("stdin", subprocess.DEVNULL)
+        return kwargs
+
+    @staticmethod
     def run_as_admin() -> None:
         if not IS_WINDOWS:
             return
@@ -1630,79 +1784,189 @@ class WindowsOps:
 
     @staticmethod
     def run_command(cmd: str, timeout: int = 180, noisy: bool = False) -> bool:
-        try:
-            creationflags = 0x08000000 if IS_WINDOWS else 0
-            startupinfo = None
-            if IS_WINDOWS and not noisy:
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            completed = subprocess.run(
-                cmd,
-                shell=True,
-                stdout=None if noisy else subprocess.DEVNULL,
-                stderr=None if noisy else subprocess.DEVNULL,
-                timeout=timeout,
-                creationflags=creationflags,
-                startupinfo=startupinfo,
-            )
-            return completed.returncode == 0
-        except Exception:
+        """Run a legacy string command without shell interpolation.
+
+        Older FreeCleaner builds used shell=True here.  The method is retained
+        for compatibility but now tokenizes the string and delegates to
+        run_command_args so paths cannot be interpreted as shell operators.
+        """
+        text = (cmd or "").strip()
+        if not text:
             return False
+        try:
+            args = shlex.split(text, posix=False if IS_WINDOWS else True)
+        except Exception as exc:
+            log_error(f"command parse failed: {text}: {exc}")
+            return False
+        if not args:
+            return False
+        log_security(f"legacy string command routed through shell-free runner: {args}")
+        return WindowsOps.run_command_args(args, timeout=timeout, noisy=noisy)
 
     @staticmethod
-    def run_command_args(args: List[str], timeout: int = 180, noisy: bool = False) -> bool:
-        """Run a command without shell interpolation.
+    def run_command_args(
+        args: List[str],
+        timeout: int = 180,
+        noisy: bool = False,
+        *,
+        log_failure: bool = True,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Run a command without shell interpolation and log the full OS response.
 
-        Used for filesystem cleanup fallbacks where paths can contain spaces,
-        quotes, ampersands or non-Latin characters.  Keeping shell=False avoids
-        accidental command parsing bugs and makes cleanup errors much rarer.
+        Even commands that normally do not need stdout are captured so QA can
+        inspect the exact Windows answer later in system.log. CREATE_NO_WINDOW is
+        still used on Windows, so capture does not reintroduce console flashes.
         """
         if not args:
             return False
+        safe_args = [str(arg) for arg in args]
+        started = time.perf_counter()
         try:
-            creationflags = 0x08000000 if IS_WINDOWS else 0
-            startupinfo = None
-            if IS_WINDOWS and not noisy:
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            log_action({"run_args": safe_args, "timeout": timeout})
             completed = subprocess.run(
-                args,
+                safe_args,
                 shell=False,
-                stdout=None if noisy else subprocess.DEVNULL,
-                stderr=None if noisy else subprocess.DEVNULL,
-                timeout=timeout,
-                creationflags=creationflags,
-                startupinfo=startupinfo,
-            )
-            return completed.returncode == 0
-        except Exception:
-            return False
-
-    @staticmethod
-    def run_command_capture(args: List[str], timeout: int = 180) -> Tuple[int, str]:
-        """Run a command and return (returncode, combined_output) without shell parsing."""
-        if not args:
-            return (1, "")
-        try:
-            creationflags = 0x08000000 if IS_WINDOWS else 0
-            startupinfo = None
-            if IS_WINDOWS:
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            completed = subprocess.run(
-                args,
-                shell=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
                 timeout=timeout,
-                creationflags=creationflags,
-                startupinfo=startupinfo,
+                **WindowsOps.hidden_subprocess_kwargs(capture=True),
             )
-            return (int(completed.returncode), completed.stdout or "")
+            elapsed = int((time.perf_counter() - started) * 1000)
+            output = completed.stdout or ""
+            log_system_response(
+                "subprocess.run",
+                command=safe_args,
+                returncode=int(completed.returncode),
+                stdout=output,
+                stderr="",
+                elapsed_ms=elapsed,
+                timeout=timeout,
+                cwd=os.getcwd(),
+                context={"mode": "run_command_args", "noisy": bool(noisy), **(context or {})},
+                level="INFO" if int(completed.returncode) == 0 or not log_failure or bool((context or {}).get("optional")) else "WARNING",
+            )
+            log_qa_event("subprocess_completed", command=safe_args, rc=int(completed.returncode), elapsed_ms=elapsed, output_chars=len(output))
+            ok = completed.returncode == 0
+            if ok and safe_args and str(safe_args[0]).lower().endswith("powercfg.exe"):
+                command_tokens = {str(part).casefold() for part in safe_args[1:]}
+                if command_tokens.intersection({"/s", "-s", "/setactive", "-setactive", "/setacvalueindex", "-setacvalueindex", "/setdcvalueindex", "-setdcvalueindex", "-duplicatescheme"}):
+                    WindowsOps.invalidate_powercfg_cache(" ".join(safe_args[:3]))
+            if not ok and log_failure:
+                log_error(f"args failed rc={completed.returncode}: {safe_args}: {str(output)[:1000]}")
+            return ok
+        except subprocess.TimeoutExpired as exc:
+            elapsed = int((time.perf_counter() - started) * 1000)
+            stdout = getattr(exc, "stdout", "") or ""
+            stderr = getattr(exc, "stderr", "") or ""
+            log_system_response(
+                "subprocess.timeout",
+                command=safe_args,
+                returncode="timeout",
+                stdout=stdout,
+                stderr=stderr,
+                elapsed_ms=elapsed,
+                timeout=timeout,
+                cwd=os.getcwd(),
+                context={"mode": "run_command_args", **(context or {})},
+                level="ERROR",
+            )
+            log_error(f"args timeout after {timeout}s: {safe_args}")
+            return False
         except Exception as exc:
+            elapsed = int((time.perf_counter() - started) * 1000)
+            log_system_response(
+                "subprocess.exception",
+                command=safe_args,
+                returncode="exception",
+                stdout="",
+                stderr=str(exc),
+                elapsed_ms=elapsed,
+                timeout=timeout,
+                cwd=os.getcwd(),
+                context={"mode": "run_command_args", **(context or {})},
+                level="ERROR",
+            )
+            log_error(f"args exception: {safe_args}: {exc}")
+            return False
+
+    @staticmethod
+    def run_command_capture(
+        args: List[str],
+        timeout: int = 180,
+        *,
+        log_failure: bool = True,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[int, str]:
+        """Run a command and return (returncode, combined_output) without shell parsing."""
+        if not args:
+            return (1, "")
+        safe_args = [str(arg) for arg in args]
+        started = time.perf_counter()
+        try:
+            log_action({"capture_args": safe_args, "timeout": timeout})
+            completed = subprocess.run(
+                safe_args,
+                shell=False,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                **WindowsOps.hidden_subprocess_kwargs(capture=True),
+            )
+            elapsed = int((time.perf_counter() - started) * 1000)
+            output = completed.stdout or ""
+            log_system_response(
+                "subprocess.capture",
+                command=safe_args,
+                returncode=int(completed.returncode),
+                stdout=output,
+                stderr="",
+                elapsed_ms=elapsed,
+                timeout=timeout,
+                cwd=os.getcwd(),
+                context={"mode": "run_command_capture", **(context or {})},
+                level="INFO" if int(completed.returncode) == 0 or not log_failure or bool((context or {}).get("optional")) else "WARNING",
+            )
+            log_qa_event("subprocess_capture_completed", command=safe_args, rc=int(completed.returncode), elapsed_ms=elapsed, output_chars=len(output))
+            if int(completed.returncode) != 0 and log_failure:
+                log_error(f"capture failed rc={completed.returncode}: {safe_args}: {str(output)[:1000]}")
+            return (int(completed.returncode), output)
+        except subprocess.TimeoutExpired as exc:
+            elapsed = int((time.perf_counter() - started) * 1000)
+            stdout = getattr(exc, "stdout", "") or ""
+            stderr = getattr(exc, "stderr", "") or ""
+            combined = (str(stdout) + ("\n" + str(stderr) if stderr else "")).strip()
+            log_system_response(
+                "subprocess.capture_timeout",
+                command=safe_args,
+                returncode="timeout",
+                stdout=stdout,
+                stderr=stderr,
+                elapsed_ms=elapsed,
+                timeout=timeout,
+                cwd=os.getcwd(),
+                context={"mode": "run_command_capture", **(context or {})},
+                level="ERROR",
+            )
+            log_error(f"capture timeout after {timeout}s: {safe_args}")
+            return (1, combined or f"timeout after {timeout}s")
+        except Exception as exc:
+            elapsed = int((time.perf_counter() - started) * 1000)
+            log_system_response(
+                "subprocess.capture_exception",
+                command=safe_args,
+                returncode="exception",
+                stdout="",
+                stderr=str(exc),
+                elapsed_ms=elapsed,
+                timeout=timeout,
+                cwd=os.getcwd(),
+                context={"mode": "run_command_capture", **(context or {})},
+                level="ERROR",
+            )
+            log_error(f"capture exception: {safe_args}: {exc}")
             return (1, str(exc))
 
     @staticmethod
@@ -1712,7 +1976,39 @@ class WindowsOps:
         try:
             MOVEFILE_DELAY_UNTIL_REBOOT = 0x4
             normalized = os.path.abspath(path)
-            return bool(ctypes.windll.kernel32.MoveFileExW(str(normalized), None, MOVEFILE_DELAY_UNTIL_REBOOT))
+            candidates = [normalized]
+            # MoveFileExW handles long paths better with the extended prefix.
+            # Keep the normal path first so logs and Windows tools stay readable.
+            extended_prefix = "\\\\?\\"
+            unc_prefix = "\\\\?\\UNC\\"
+            if len(normalized) >= 248 and not normalized.startswith(extended_prefix):
+                if normalized.startswith("\\\\"):
+                    candidates.append(unc_prefix + normalized.lstrip("\\"))
+                else:
+                    candidates.append(extended_prefix + normalized)
+            for candidate in candidates:
+                try:
+                    ok = bool(ctypes.windll.kernel32.MoveFileExW(str(candidate), None, MOVEFILE_DELAY_UNTIL_REBOOT))
+                    log_system_response(
+                        "filesystem.schedule_delete_on_reboot",
+                        command={"path": normalized, "candidate": candidate},
+                        returncode="ok" if ok else "failed",
+                        stdout={"scheduled": ok},
+                        context={"api": "MoveFileExW"},
+                        level="INFO" if ok else "WARNING",
+                    )
+                    if ok:
+                        return True
+                except Exception as exc:
+                    log_system_response(
+                        "filesystem.schedule_delete_on_reboot",
+                        command={"path": normalized, "candidate": candidate},
+                        returncode="exception",
+                        stderr=str(exc),
+                        context={"api": "MoveFileExW"},
+                        level="WARNING",
+                    )
+            return False
         except Exception:
             return False
 
@@ -1796,6 +2092,7 @@ class WindowsOps:
         }
         parsed = WindowsOps._split_registry_path(spec.key_path)
         if not parsed:
+            log_system_response("registry.status", command=f"query {spec.key_path} {spec.name}", returncode="invalid_path", stdout=result, context={"registry_path": spec.key_path, "value": spec.name}, level="WARNING")
             return result
         hive, subkey, _short = parsed
         try:
@@ -1816,8 +2113,18 @@ class WindowsOps:
             result["status"] = "access_denied"
         except OSError:
             result["status"] = "missing"
-        except Exception:
+        except Exception as exc:
             result["status"] = "error"
+            result["error"] = str(exc)
+        log_system_response(
+            "registry.status",
+            command=f"query {spec.key_path} {spec.name}",
+            returncode=result.get("status"),
+            stdout=result,
+            stderr=result.get("error", ""),
+            context={"matches": result.get("matches"), "requires_admin": result.get("requires_admin")},
+            level="INFO" if result.get("status") in {"ok", "different", "missing"} else "WARNING",
+        )
         return result
 
     @staticmethod
@@ -1857,8 +2164,23 @@ class WindowsOps:
                         winreg.SetValueEx(key, name, 0, winreg.REG_EXPAND_SZ, str(value))  # type: ignore[union-attr]
                     else:
                         winreg.SetValueEx(key, name, 0, winreg.REG_SZ, str(value))  # type: ignore[union-attr]
+                log_system_response(
+                    "registry.write",
+                    command=f"set {path} {name}",
+                    returncode="ok",
+                    stdout={"path": path, "name": name, "value": value, "type": value_type, "api": "winreg"},
+                    context={"api": "winreg"},
+                )
                 return True
-            except Exception:
+            except Exception as exc:
+                log_system_response(
+                    "registry.write",
+                    command=f"set {path} {name}",
+                    returncode="winreg_exception",
+                    stderr=str(exc),
+                    context={"api": "winreg", "fallback": "reg.exe"},
+                    level="WARNING",
+                )
                 # Fall through to reg.exe. Some locked-down systems allow the
                 # command-line tool when direct API calls are restricted.
                 pass
@@ -2514,7 +2836,7 @@ class WindowsOps:
             # /shutdown is supported by the sync client on current builds; if it
             # is ignored, taskkill below is the fallback.
             try:
-                subprocess.run([exe, "/shutdown"], shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=12)
+                subprocess.run([exe, "/shutdown"], shell=False, timeout=12, **WindowsOps.hidden_subprocess_kwargs())
                 ok = True
             except Exception:
                 pass
@@ -2547,7 +2869,7 @@ class WindowsOps:
             result["policy_removed"] = WindowsOps._delete_registry_value(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\OneDrive", "DisableFileSyncNGSC")
         for exe in WindowsOps.find_onedrive_executables():
             try:
-                subprocess.Popen([exe, "/background"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.Popen([exe, "/background"], **WindowsOps.hidden_subprocess_kwargs())
                 result["started"] = True
                 break
             except Exception:
@@ -2654,9 +2976,9 @@ class WindowsOps:
         report["gpu_preferences"] = gpu_preferences
         report["gpu_preference_summary"] = WindowsOps.summarize_gpu_preferences(gpu_preferences)
 
-        rc, output = WindowsOps.run_command_capture(["powercfg.exe", "/getactivescheme"], timeout=30)
-        if rc == 0 and output:
-            report["active_power_scheme"] = " ".join(output.strip().split())
+        active_scheme = WindowsOps.active_power_scheme_guid(timeout=30)
+        if active_scheme:
+            report["active_power_scheme"] = active_scheme
 
         # Game Mode is controlled per user by GameBar keys.  Missing keys mean
         # Windows will use defaults, so we avoid claiming a hard enabled state.
@@ -2709,7 +3031,7 @@ class WindowsOps:
         else:
             report["power_throttling"] = "unknown"
 
-        rc, output = WindowsOps.run_command_capture(["bcdedit.exe", "/enum", "{current}"], timeout=30)
+        rc, output = WindowsOps.bcdedit_current_output(timeout=30)
         lowered = (output or "").casefold()
         if rc == 0 and "disabledynamictick" in lowered:
             if re.search(r"disabledynamictick\s+yes", lowered):
@@ -2961,6 +3283,84 @@ class WindowsOps:
         return WindowsOps.supports_windows_10_or_11()
 
     @staticmethod
+    def parse_powercfg_numeric_value(output: str) -> Optional[int]:
+        """Extract the current numeric value from powercfg output.
+
+        Supports both `/GETACVALUEINDEX` and `/QUERY` output.  The parser is
+        intentionally tolerant because Windows localizes some labels while the
+        numeric values remain hexadecimal/decimal.
+        """
+        text = str(output or "")
+        if not text.strip():
+            return None
+        patterns = (
+            r"Current\s+AC\s+Power\s+Setting\s+Index\s*:\s*(0x[0-9a-fA-F]+|\d+)",
+            r"AC\s+Power\s+Setting\s+Index\s*:\s*(0x[0-9a-fA-F]+|\d+)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                raw = match.group(1)
+                try:
+                    return int(raw, 16) if raw.lower().startswith("0x") else int(raw)
+                except Exception:
+                    return None
+        matches = re.findall(r"0x[0-9a-fA-F]+|\b\d+\b", text)
+        if not matches:
+            return None
+        raw = matches[-1]
+        try:
+            return int(raw, 16) if raw.lower().startswith("0x") else int(raw)
+        except Exception:
+            return None
+
+    @staticmethod
+    def bcdedit_current_output(*, timeout: int = 45) -> Tuple[int, str]:
+        """Return BCDEdit output for the current/default boot entry.
+
+        Some Windows 11/localized builds reject `/enum {current}` with
+        "specified entry type is invalid" even though plain `/enum` works.  For
+        status detection this is optional, so failures are fully captured in
+        system.log but do not pollute errors.log.
+        """
+        attempts = (
+            ["bcdedit.exe", "/enum", "{current}"],
+            ["bcdedit.exe", "/enum"],
+            ["bcdedit.exe", "/enum", "all"],
+        )
+        last_rc, last_output = 1, ""
+        for index, args in enumerate(attempts, 1):
+            rc, output = WindowsOps.run_command_capture(
+                args,
+                timeout=timeout,
+                log_failure=False,
+                context={"feature": "bcdedit_status", "attempt": index, "optional": True},
+            )
+            last_rc, last_output = rc, output
+            if rc == 0 and output:
+                log_action({"bcdedit_status_probe_ok": {"attempt": index, "args": args}})
+                return rc, output
+            log_action({"bcdedit_status_probe_failed": {"attempt": index, "args": args, "rc": rc}})
+        return last_rc, last_output
+
+    @staticmethod
+    def dynamic_tick_disabled_status() -> Optional[bool]:
+        if not IS_WINDOWS or not WindowsOps.supports_dynamic_tick_toggle():
+            return None
+        rc, output = WindowsOps.bcdedit_current_output(timeout=45)
+        if rc != 0 or not output:
+            return None
+        low = output.casefold()
+        if "disabledynamictick" not in low:
+            return False
+        return any(marker in low for marker in (
+            "disabledynamictick yes",
+            "disabledynamictick    yes",
+            "disabledynamictick true",
+            "disabledynamictick так",
+        ))
+
+    @staticmethod
     def set_dynamic_tick_disabled(disabled: bool) -> bool:
         """Toggle the dynamic tick boot option for latency experiments.
 
@@ -2970,15 +3370,26 @@ class WindowsOps:
         """
         if not IS_WINDOWS or not WindowsOps.supports_dynamic_tick_toggle():
             return False
+        current = WindowsOps.dynamic_tick_disabled_status()
+        if current is not None and bool(current) == bool(disabled):
+            log_action({"dynamic_tick_set_skipped_already_desired": {"disabled": bool(disabled)}})
+            log_system_response(
+                "bcdedit.dynamic_tick_noop",
+                command=["bcdedit.exe", "/set", "disabledynamictick", "yes" if disabled else "no"],
+                returncode="already_applied",
+                stdout={"current": current, "desired": bool(disabled)},
+                context={"feature": "dynamic_tick_set", "noop": True},
+            )
+            return True
         value = "yes" if disabled else "no"
-        return WindowsOps.run_command_args(["bcdedit.exe", "/set", "disabledynamictick", value], timeout=90, noisy=True)
+        return WindowsOps.run_command_args(["bcdedit.exe", "/set", "disabledynamictick", value], timeout=90, noisy=False, context={"feature": "dynamic_tick_set", "disabled": bool(disabled)})
 
     @staticmethod
     def restore_dynamic_tick_default() -> bool:
         """Remove the custom dynamic tick boot option and return to Windows default."""
         if not IS_WINDOWS or not WindowsOps.supports_dynamic_tick_toggle():
             return False
-        rc, output = WindowsOps.run_command_capture(["bcdedit.exe", "/deletevalue", "disabledynamictick"], timeout=90)
+        rc, output = WindowsOps.run_command_capture(["bcdedit.exe", "/deletevalue", "disabledynamictick"], timeout=90, log_failure=False, context={"feature": "dynamic_tick_restore", "optional_absent_ok": True})
         if rc == 0:
             return True
         lowered = (output or "").casefold()
@@ -2992,8 +3403,110 @@ class WindowsOps:
             "не найден",
             "не знайден",
         )
-        return any(marker in lowered for marker in absent_markers)
+        absent = any(marker in lowered for marker in absent_markers)
+        if not absent:
+            log_error(f"dynamic tick restore failed rc={rc}: {str(output)[:1000]}")
+        return absent
 
+
+    POWERCFG_ALIAS_MAP: Dict[str, str] = {
+        # Microsoft powercfg aliases are not guaranteed to be accepted on every
+        # localized/OEM Windows image. Use official GUIDs internally, while still
+        # allowing old call sites to pass friendly aliases.
+        "SCHEME_CURRENT": "SCHEME_CURRENT",
+        "SCHEME_BALANCED": "SCHEME_BALANCED",
+        "SCHEME_MIN": "SCHEME_MIN",
+        "SCHEME_MAX": "SCHEME_MAX",
+        "SUB_PROCESSOR": "54533251-82be-4824-96c1-47b60b740d00",
+        "SUB_PCIEXPRESS": "501a4d13-42af-4429-9fd1-a8218c268e20",
+        "PERFEPP": "36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+        "PERFBOOSTMODE": "be337238-0d82-4146-a960-4f3749d470c7",
+        "CPMINCORES": "0cc5b647-c1df-4637-891a-dec35c318583",
+        "ASPM": "ee12f906-d277-404b-b6da-e5fa1a576df5",
+        "PERFINCPOL": "465e1f50-b610-473a-ab58-00d1077dc418",
+        "PERFDECPOL": "40fbefc7-2e9d-4d25-a185-0cf891d08c1e",
+        "PERFINCTHRESHOLD": "06cadf0e-64ed-448a-8927-ce7bf90eb35d",
+        "PERFDECTHRESHOLD": "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6",
+        "DISTRIBUTEUTIL": "e0007330-f589-42ed-a401-5ddb10e785d3",
+    }
+
+    @staticmethod
+    def powercfg_token(name_or_guid: str) -> str:
+        text = str(name_or_guid or "").strip()
+        return WindowsOps.POWERCFG_ALIAS_MAP.get(text.upper(), text)
+
+    @staticmethod
+    def powercfg_args(*parts: str) -> List[str]:
+        return ["powercfg.exe", *[WindowsOps.powercfg_token(part) for part in parts]]
+
+    POWERCFG_UNSUPPORTED_CACHE: Dict[Tuple[str, str, str], float] = {}
+    POWERCFG_ACTIVE_SCHEME_CACHE: Tuple[Optional[str], float] = (None, 0.0)
+    POWERCFG_ACTIVE_SCHEME_TTL_SECONDS = 8.0
+
+    @staticmethod
+    def invalidate_powercfg_cache(reason: str = "") -> None:
+        """Drop short-lived powercfg caches after a power policy write."""
+        try:
+            WindowsOps.POWERCFG_ACTIVE_SCHEME_CACHE = (None, 0.0)
+            WindowsOps.POWERCFG_UNSUPPORTED_CACHE.clear()
+            log_action({"powercfg_cache_invalidated": {"reason": reason or "manual"}})
+        except Exception:
+            pass
+
+    @staticmethod
+    def parse_active_power_scheme_guid(output: str) -> Optional[str]:
+        match = re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", str(output or ""))
+        return match.group(1).lower() if match else None
+
+    @staticmethod
+    def active_power_scheme_guid(*, timeout: int = 30, force_refresh: bool = False) -> Optional[str]:
+        if not IS_WINDOWS:
+            return None
+        now = time.monotonic()
+        cached_guid, cached_at = WindowsOps.POWERCFG_ACTIVE_SCHEME_CACHE
+        if cached_guid and not force_refresh and now - cached_at < WindowsOps.POWERCFG_ACTIVE_SCHEME_TTL_SECONDS:
+            log_action({"powercfg_active_scheme_cache_hit": {"scheme": cached_guid, "age_ms": int((now - cached_at) * 1000)}})
+            return cached_guid
+        rc, output = WindowsOps.run_command_capture(
+            WindowsOps.powercfg_args("/getactivescheme"),
+            timeout=timeout,
+            log_failure=False,
+            context={"feature": "powercfg_active_scheme", "optional": True, "cache": "refresh"},
+        )
+        if rc != 0:
+            return cached_guid
+        guid = WindowsOps.parse_active_power_scheme_guid(output)
+        if guid:
+            WindowsOps.POWERCFG_ACTIVE_SCHEME_CACHE = (guid, now)
+        return guid
+
+    @staticmethod
+    def powercfg_current_scheme_token() -> str:
+        # Some Windows 11/OEM builds reject SCHEME_CURRENT for query/value-index
+        # calls.  The active scheme GUID is more stable and still points at the
+        # same policy FreeCleaner is about to inspect or edit.
+        return WindowsOps.active_power_scheme_guid() or "SCHEME_CURRENT"
+
+    @staticmethod
+    def powercfg_set_ac_value(subgroup: str, setting: str, value: Any, *, timeout: int = 90) -> bool:
+        if not IS_WINDOWS:
+            return False
+        scheme = WindowsOps.powercfg_current_scheme_token()
+        args = WindowsOps.powercfg_args("/setacvalueindex", scheme, subgroup, setting, str(value))
+        return WindowsOps.run_command_args(args, timeout=timeout, noisy=False, log_failure=False, context={"feature": "powercfg_set_ac_value", "scheme": scheme, "subgroup": subgroup, "setting": setting, "value": value, "optional": True})
+
+    @staticmethod
+    def _translate_powercfg_command(args: List[str], scheme: Optional[str] = None) -> List[str]:
+        translated = list(args)
+        if translated and translated[0].lower() == "powercfg.exe":
+            out = ["powercfg.exe"]
+            for part in translated[1:]:
+                token = WindowsOps.powercfg_token(part)
+                if scheme and token.upper() == "SCHEME_CURRENT":
+                    token = scheme
+                out.append(token)
+            translated = out
+        return translated
 
     @staticmethod
     def _run_powercfg_commands(commands: List[List[str]], timeout: int = 90) -> int:
@@ -3004,10 +3517,90 @@ class WindowsOps:
         soft failure so one missing setting does not break the whole optimizer.
         """
         ok_count = 0
+        scheme = WindowsOps.powercfg_current_scheme_token()
         for args in commands:
-            if WindowsOps.run_command_args(args, timeout=timeout):
+            translated = WindowsOps._translate_powercfg_command(args, scheme=scheme)
+            if WindowsOps.run_command_args(translated, timeout=timeout, log_failure=False, context={"feature": "powercfg_profile_apply", "scheme": scheme, "optional": True}):
                 ok_count += 1
         return ok_count
+
+    @staticmethod
+    def powercfg_get_ac_value(subgroup: str, setting: str, scheme: Optional[str] = None) -> Optional[int]:
+        """Read a Windows power AC setting without console flashes.
+
+        Uses `/QUERY` first and only falls back when the query contains a real
+        setting block but no parseable value.  If Windows/OEM returns only the
+        scheme header, the setting is treated as unsupported immediately to avoid
+        noisy `/GETACVALUEINDEX` calls. Unsupported settings are optional: full
+        stdout/stderr stays in system.log, while errors.log is reserved for real
+        application failures.
+        """
+        if not IS_WINDOWS:
+            return None
+        subgroup_token = WindowsOps.powercfg_token(subgroup)
+        setting_token = WindowsOps.powercfg_token(setting)
+        scheme = scheme or WindowsOps.powercfg_current_scheme_token()
+        cache_key = (str(scheme).lower(), str(subgroup_token).lower(), str(setting_token).lower())
+        now = time.monotonic()
+        cached_at = WindowsOps.POWERCFG_UNSUPPORTED_CACHE.get(cache_key)
+        if cached_at and now - cached_at < 90:
+            log_action({"powercfg_optional_cached_unavailable": {"scheme": scheme, "subgroup": subgroup, "setting": setting}})
+            return None
+
+        # Query first. On Windows 11/OEM images a hidden setting can return only
+        # the scheme header.  That is not a valid value source, and falling back to
+        # `/GETACVALUEINDEX` only adds "Invalid Parameters" noise and latency.
+        query_args = WindowsOps.powercfg_args("/QUERY", scheme, subgroup_token, setting_token)
+        rc, output = WindowsOps.run_command_capture(
+            query_args,
+            timeout=45,
+            log_failure=False,
+            context={
+                "feature": "powercfg_ac_value",
+                "scheme": scheme,
+                "subgroup": subgroup,
+                "setting": setting,
+                "attempt": 1,
+                "optional": True,
+            },
+        )
+        last_rc = rc
+        if rc == 0 and output:
+            value = WindowsOps.parse_powercfg_numeric_value(output)
+            log_action({"powercfg_value_probe": {"scheme": scheme, "subgroup": subgroup, "setting": setting, "attempt": 1, "value": value}})
+            if value is not None:
+                return value
+            if "power setting guid" not in str(output).casefold():
+                WindowsOps.POWERCFG_UNSUPPORTED_CACHE[cache_key] = now
+                log_action({"powercfg_query_missing_setting_block": {"scheme": scheme, "subgroup": subgroup, "setting": setting, "fallback": "skipped_getacvalueindex"}})
+                return None
+
+        # Fallback only when QUERY clearly saw a setting record but the localized
+        # output did not contain a parseable AC index.
+        get_args = WindowsOps.powercfg_args("/GETACVALUEINDEX", scheme, subgroup_token, setting_token)
+        rc, output = WindowsOps.run_command_capture(
+            get_args,
+            timeout=45,
+            log_failure=False,
+            context={
+                "feature": "powercfg_ac_value",
+                "scheme": scheme,
+                "subgroup": subgroup,
+                "setting": setting,
+                "attempt": 2,
+                "optional": True,
+                "fallback_reason": "query_record_without_parseable_value",
+            },
+        )
+        last_rc = rc
+        if rc == 0 and output:
+            value = WindowsOps.parse_powercfg_numeric_value(output)
+            log_action({"powercfg_value_probe": {"scheme": scheme, "subgroup": subgroup, "setting": setting, "attempt": 2, "value": value}})
+            if value is not None:
+                return value
+        WindowsOps.POWERCFG_UNSUPPORTED_CACHE[cache_key] = now
+        log_action({"powercfg_optional_unavailable": {"scheme": scheme, "subgroup": subgroup, "setting": setting, "rc": last_rc}})
+        return None
 
     @staticmethod
     def apply_safe_gaming_power_profile() -> bool:
@@ -3024,7 +3617,7 @@ class WindowsOps:
         # that reduce power-saving latency while the machine is plugged in.  Do
         # not force CPU min/max state here; OEM Balanced/High Performance values
         # can be restored safely by switching back to Balanced.
-        switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
+        switched = WindowsOps.run_command_args(WindowsOps.powercfg_args("/S", "SCHEME_MIN"), timeout=90)
         optional_commands = [
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFEPP", "0"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "1"],
@@ -3049,7 +3642,7 @@ class WindowsOps:
         if not IS_WINDOWS:
             return False
 
-        switched = WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_MIN"], timeout=90)
+        switched = WindowsOps.run_command_args(WindowsOps.powercfg_args("/S", "SCHEME_MIN"), timeout=90)
         commands = [
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFEPP", "0"],
             ["powercfg.exe", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "2"],
@@ -3074,7 +3667,7 @@ class WindowsOps:
         """
         if not IS_WINDOWS:
             return False
-        return WindowsOps.run_command_args(["powercfg.exe", "/S", "SCHEME_BALANCED"], timeout=90)
+        return WindowsOps.run_command_args(WindowsOps.powercfg_args("/S", "SCHEME_BALANCED"), timeout=90)
 
     @staticmethod
     def purge_standby_memory() -> bool:
@@ -3499,6 +4092,55 @@ class SafeFS:
         return False
 
     @staticmethod
+    def _is_obviously_locked(path: str) -> bool:
+        if not IS_WINDOWS:
+            return False
+        try:
+            GENERIC_READ = 0x80000000
+            FILE_SHARE_READ = 0x00000001
+            FILE_SHARE_WRITE = 0x00000002
+            OPEN_EXISTING = 3
+            FILE_ATTRIBUTE_NORMAL = 0x80
+            handle = ctypes.windll.kernel32.CreateFileW(
+                str(path),
+                GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            )
+            if int(handle) in (-1, 0xFFFFFFFF):
+                err = int(ctypes.get_last_error() or 0)
+                return err in (32, 33)
+            ctypes.windll.kernel32.CloseHandle(handle)
+        except Exception:
+            return False
+        return False
+
+    @staticmethod
+    def _remove_file_powershell_literal(path: str) -> bool:
+        """Last-resort literal-path fallback without `$args[0]`.
+
+        Previous builds passed the target path through `$args[0]`; on some
+        PowerShell hosts this became null and generated hundreds of false errors.
+        Keep this fallback available for rare quoting/attribute edge-cases, but
+        do not call it for obviously locked temp files.
+        """
+        if not IS_WINDOWS or not path or not os.path.exists(path):
+            return not os.path.exists(path)
+        literal = _powershell_literal(path)
+        script = "$ErrorActionPreference='Stop'; $p=" + literal + "; if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop }"
+        ok = WindowsOps.run_command_args(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            timeout=60,
+            noisy=False,
+            log_failure=False,
+            context={"feature": "filesystem_file_literal_fallback", "optional": True},
+        )
+        return ok and not os.path.exists(path)
+
+    @staticmethod
     def _remove_dir_native(path: str) -> bool:
         for candidate in (path, SafeFS._extended_path(path)):
             try:
@@ -3512,62 +4154,24 @@ class SafeFS:
 
     @staticmethod
     def _remove_file_shell(path: str) -> bool:
-        if not IS_WINDOWS:
-            return False
-        if not os.path.exists(path):
-            return True
+        """Compatibility wrapper for the safe literal-path fallback.
 
-        commands = [
-            ["cmd.exe", "/c", "del", "/f", "/q", "/a", os.path.abspath(path)],
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "$ErrorActionPreference='Stop'; if (Test-Path -LiteralPath $args[0]) { Remove-Item -LiteralPath $args[0] -Force -ErrorAction Stop }",
-                os.path.abspath(path),
-            ],
-        ]
-        for args in commands:
-            if WindowsOps.run_command_args(args, timeout=120):
-                if not os.path.exists(path):
-                    return True
-        return not os.path.exists(path)
+        It is intentionally skipped for locked/in-use files and never uses
+        `$args[0]`, so it cannot recreate the old null LiteralPath error spam.
+        """
+        if SafeFS._is_obviously_locked(path):
+            return False
+        return SafeFS._remove_file_powershell_literal(path)
 
     @staticmethod
     def _remove_dir_shell(path: str) -> bool:
-        """Last-resort non-recursive directory removal.
+        """Deprecated external directory-removal fallback.
 
-        Do not use ``rd /s`` or PowerShell ``Remove-Item -Recurse`` here.  The
-        cleaner already walks the tree manually while filtering reparse points;
-        handing a whole directory back to shell recursion can bypass that guard
-        when a cache folder contains a junction/symlink.
+        Directory cleanup is now handled by os.rmdir/extended paths and optional
+        delete-on-reboot scheduling.  No cmd.exe/PowerShell recursion is used, so
+        junction filtering cannot be bypassed.
         """
-        if not IS_WINDOWS:
-            return False
-        if not os.path.exists(path):
-            return True
-        if SafeFS._is_reparse_point(path):
-            return SafeFS._remove_dir_native(path)
-
-        commands = [
-            ["cmd.exe", "/c", "rd", os.path.abspath(path)],
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "$ErrorActionPreference='Stop'; if (Test-Path -LiteralPath $args[0]) { Remove-Item -LiteralPath $args[0] -Force -ErrorAction Stop }",
-                os.path.abspath(path),
-            ],
-        ]
-        for args in commands:
-            if WindowsOps.run_command_args(args, timeout=60):
-                if not os.path.exists(path):
-                    return True
-        return not os.path.exists(path)
+        return False
 
     @staticmethod
     def _dir_is_empty(path: str) -> bool:
@@ -3686,6 +4290,7 @@ class SafeFS:
             "remaining_files": 0,
             "remaining_dirs": 0,
             "skipped_links": 0,
+            "skipped_busy": 0,
             "errors": 0,
         }
         for path in PathFinder.unique_existing(paths):
@@ -3706,15 +4311,20 @@ class SafeFS:
             "remaining_files": 0,
             "remaining_dirs": 0,
             "skipped_links": 0,
+            "skipped_busy": 0,
             "errors": 0,
         }
         if not path or not os.path.exists(path):
             return result
 
         if not SafeFS.is_safe_clean_target(path):
+            log_security(f"blocked unsafe cleanup target: {path}", level="WARNING")
+            log_system_response("filesystem.clean_blocked", command={"path": path}, returncode="unsafe_target", stdout=result, context={"safe_guard": True}, level="WARNING")
             result["errors"] = 1
             return result
 
+        clean_started = time.perf_counter()
+        log_system_response("filesystem.clean_start", command={"path": path}, returncode="start", stdout={"path": path}, context={"safe_target": True})
         pending_progress_bytes = 0
         last_flush = time.monotonic()
 
@@ -3748,17 +4358,33 @@ class SafeFS:
                 removed = SafeFS._remove_file_native(file_path)
                 if not removed:
                     SafeFS._clear_attributes(file_path, is_dir=False)
-                    removed = SafeFS._remove_file_native(file_path) or SafeFS._remove_file_shell(file_path)
+                    removed = SafeFS._remove_file_native(file_path)
                 if removed:
                     mark_file_removed(size)
                     return True
+                if not SafeFS._is_obviously_locked(file_path):
+                    removed = SafeFS._remove_file_shell(file_path)
+                    if removed:
+                        mark_file_removed(size)
+                        return True
                 if SafeFS._schedule_for_delete(file_path):
                     result["scheduled_reboot"] += 1
                     return True
-                result["errors"] += 1
+                # Locked/in-use temp files are normal on Windows.  Keep them out of
+                # errors.log and report them as skipped so QA can still see the
+                # remaining count without treating it as an app failure.
+                result["skipped_busy"] += 1
                 return False
-            except Exception:
-                result["errors"] += 1
+            except Exception as exc:
+                result["skipped_busy"] += 1
+                log_system_response(
+                    "filesystem.file_skip_exception",
+                    command={"path": file_path},
+                    returncode="skipped",
+                    stderr=str(exc),
+                    context={"phase": "file_delete"},
+                    level="INFO",
+                )
                 return False
 
         try:
@@ -3830,8 +4456,6 @@ class SafeFS:
 
                 SafeFS._clear_attributes(dir_path, is_dir=True)
                 removed = SafeFS._remove_dir_native(dir_path)
-                if not removed and SafeFS._dir_is_empty(dir_path):
-                    removed = SafeFS._remove_dir_shell(dir_path)
 
                 if removed:
                     result["dirs_removed"] += 1
@@ -3845,7 +4469,7 @@ class SafeFS:
                     result["scheduled_reboot"] += 1
                     continue
 
-                result["errors"] += 1
+                result["skipped_busy"] += 1
 
             remaining_files, remaining_dirs = SafeFS._count_remaining_entries(path)
             result["remaining_files"] = remaining_files
@@ -3854,11 +4478,23 @@ class SafeFS:
             # Keep scheduled-on-reboot items visible in the separate counter but
             # do not double-count every remaining child as a new failure.
             if remaining_files or remaining_dirs:
-                expected_remaining = result["scheduled_reboot"] + result.get("skipped_links", 0)
+                expected_remaining = result["scheduled_reboot"] + result.get("skipped_links", 0) + result.get("skipped_busy", 0)
                 result["errors"] += max(0, (remaining_files + remaining_dirs) - expected_remaining)
 
             flush_progress(True)
             return result
         finally:
             flush_progress(True)
+            try:
+                log_system_response(
+                    "filesystem.clean_complete",
+                    command={"path": path},
+                    returncode="ok" if int(result.get("errors", 0) or 0) == 0 else "partial",
+                    stdout=result,
+                    elapsed_ms=int((time.perf_counter() - clean_started) * 1000),
+                    context={"path": path, "skipped_busy_is_normal": True},
+                    level="INFO" if int(result.get("errors", 0) or 0) == 0 else "WARNING",
+                )
+            except Exception:
+                pass
 

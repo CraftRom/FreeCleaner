@@ -11,10 +11,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'about_close': 'Schließen',
         'about_copied': 'In die Zwischenablage kopiert.',
         'about_copy': 'Kopieren',
-        'about_desc': 'FreeCleaner hilft dir, temporäre Dateien und kleine Reste sicher zu entfernen – für mehr freien Speicher und ein leichteres Windows.',
+        'about_desc': 'FreeCleaner hilft dir, temporäre Dateien und kleine Reste sicher zu entfernen – für mehr freien '
+                      'Speicher und ein leichteres Windows.',
         'about_doc_missing': 'Datei nicht gefunden: {name}',
-        'about_hint_body': '• FreeCleaner arbeitet lokal auf deinem PC.\\n• Wir laden deine Dateien nirgendwo hoch.\\n• Dokumente kannst du direkt in der App '
-                           'lesen und kopieren.',
+        'about_hint_body': '• FreeCleaner arbeitet lokal auf deinem PC.\\n• Wir laden deine Dateien nirgendwo '
+                           'hoch.\\n• Dokumente kannst du direkt in der App lesen und kopieren.',
         'about_hint_title': 'Gut zu wissen',
         'about_license': 'Lizenz',
         'about_license_sub': 'Wie du FreeCleaner nutzen und weitergeben darfst.',
@@ -34,7 +35,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'all_files': 'All files',
         'analysis_done_estimate_fmt': 'Analyse abgeschlossen. Geschätzt: {mb:.2f} MB',
         'analysis_done_no_delete': 'Analyse abgeschlossen. Es wurden keine Dateien gelöscht.',
-        'analysis_idle': 'Die Analyse wurde noch nicht gestartet. Du kannst zuerst prüfen, wie viel Datenmüll gefunden wurde.',
+        'analysis_idle': 'Die Analyse wurde noch nicht gestartet. Du kannst zuerst prüfen, wie viel Datenmüll gefunden '
+                         'wurde.',
         'analysis_item_fmt': 'Analyse: {title} -> {mb:.2f} MB',
         'analysis_summary_header': '----- ANALYSEZUSAMMENFASSUNG -----',
         'analyze_clean': 'Analysieren + bereinigen',
@@ -66,21 +68,22 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'cleanup_reboot_scheduled_fmt': 'Zur Löschung nach dem Neustart geplant: {title} -> {count}',
         'cleanup_remaining_fmt': 'Nach der Bereinigung noch vorhanden: {title} -> Dateien: {files}, Ordner: {dirs}',
         'cleanup_skipped_links_fmt': 'Geschützte Links/Junctions übersprungen: {title} -> {count}',
-        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: {scheduled}, links skipped: {skipped}, '
-                               'errors/skipped: {errors}',
+        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: '
+                               '{scheduled}, links skipped: {skipped}, errors/skipped: {errors}',
         'cleanup_target_failed_fmt': 'Cleanup error: {title}',
         'cleanup_target_ok_fmt': 'Cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}',
-        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}',
+        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, '
+                                      'skipped: {errors}',
         'clear_log': 'Protokoll löschen',
         'clear_search': 'Suche löschen',
         'copy_log': 'Protokoll kopieren',
         'core_isolation_page_fail': 'Failed to open Windows Security / Core isolation page.',
         'core_isolation_page_ok': 'Opened Windows Security / Core isolation page.',
-        'cpu_latency_power_fail': 'CPU-Latenz/Leistungsprofil konnte nicht angewendet werden. OEM-Image, Treiber oder Energiesparplan unterstützt eventuell '
-                                  'einige powercfg-Aliasse nicht.',
+        'cpu_latency_power_fail': 'CPU-Latenz/Leistungsprofil konnte nicht angewendet werden. OEM-Image, Treiber oder '
+                                  'Energiesparplan unterstützt eventuell einige powercfg-Aliasse nicht.',
         'cpu_latency_power_ok': 'CPU-Latenz/Leistungsprofil angewendet. Temperaturen und Spielstabilität prüfen.',
-        'cpu_latency_redundant_skipped': 'Sicheres High-Performance/Gaming-Power-Profil wurde übersprungen, weil das maximale CPU-Profil diese Aktionen '
-                                         'bereits enthält.',
+        'cpu_latency_redundant_skipped': 'Sicheres High-Performance/Gaming-Power-Profil wurde übersprungen, weil das '
+                                         'maximale CPU-Profil diese Aktionen bereits enthält.',
         'custom_language_label': 'Benutzerdefiniert [{name}]',
         'deep_profile': 'Deep cleanup',
         'deep_profile_on': 'Deep cleanup profile enabled.',
@@ -100,16 +103,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_disk_ok_fmt': 'Тест запису: {mbps:.1f} MB/s у “{folder}” ({size} MB).',
         'diag_gpu_pref_header': 'GPU preference:',
         'diag_gpu_pref_line': '• {app}: {pref}',
-        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків краще виставити High performance вручну.',
+        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків '
+                                 'краще виставити High performance вручну.',
         'diag_label_captures': 'Captures/Game DVR',
         'diag_label_game_mode': 'Game Mode',
         'diag_label_hags': 'HAGS',
         'diag_label_power_plan': 'Power plan',
         'diag_more_items_fmt': '…ще {count}',
         'diag_network_activity_fmt': 'Останні логи: stream={stream}, record={record}, Replay Buffer={replay}',
-        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest server, а не “сміття Windows”.',
+        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest '
+                                    'server, а не “сміття Windows”.',
         'diag_network_no_drops': 'У свіжих OBS logs dropped frames не знайдено.',
-        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати CPU/GPU/диск.',
+        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати '
+                                    'CPU/GPU/диск.',
         'diag_obs_issues_line': 'У логах OBS знайдено: {issues}',
         'diag_obs_logs_clean': 'У свіжих OBS logs явних overload/dropped/NVENC помилок не знайдено.',
         'diag_obs_no_profiles': 'OBS профілі не знайдено або OBS ще не створив basic.ini.',
@@ -121,14 +127,21 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_onedrive_running': 'Läuft',
         'diag_onedrive_state_line': '{label}: {value}',
         'diag_rec_all_good': 'Критичних проблем не видно. Не треба застосовувати випадкові інтернет-твіки.',
-        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати запис.',
-        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance GPU.',
-        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо він доступний.',
+        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати '
+                                     'запис.',
+        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance '
+                                         'GPU.',
+        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо '
+                                     'він доступний.',
         'diag_rec_mkv': 'Для запису краще MKV або Hybrid MP4, щоб зменшити ризик втрати файлу після крашу.',
-        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть Windows без причини.',
-        'diag_rec_onedrive_disable': 'OneDrive ist aktiv: Autostart/Synchronisierung deaktivieren, wenn es beim Gaming oder Streaming nicht benötigt wird.',
-        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації OneDrive.',
-        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або обмеж FPS у грі.',
+        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть '
+                                    'Windows без причини.',
+        'diag_rec_onedrive_disable': 'OneDrive ist aktiv: Autostart/Synchronisierung deaktivieren, wenn es beim Gaming '
+                                     'oder Streaming nicht benötigt wird.',
+        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації '
+                                   'OneDrive.',
+        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або '
+                                    'обмеж FPS у грі.',
         'diag_status_error': 'Помилка',
         'diag_status_info': 'Інфо',
         'diag_status_loading': 'Перевірка',
@@ -144,10 +157,12 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diagnostics_not_run': 'Натисни “Оновити діагностику”, щоб побачити реальний стан.',
         'diagnostics_refresh': 'Оновити діагностику',
         'diagnostics_running': 'Перевіряю…',
-        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. Налаштування не змінюються автоматично.',
+        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. '
+                                'Налаштування не змінюються автоматично.',
         'diagnostics_title': 'Діагностика стрімінгу та геймінгу',
         'disk_write_fail_fmt': 'Schreibtest konnte für {folder} nicht ausgeführt werden.',
-        'disk_write_low_warn': '⚠ Schreibgeschwindigkeit ist niedrig für stabile Aufnahmen mit hoher Bitrate. Besser SSD oder anderen Datenträger nutzen.',
+        'disk_write_low_warn': '⚠ Schreibgeschwindigkeit ist niedrig für stabile Aufnahmen mit hoher Bitrate. Besser '
+                               'SSD oder anderen Datenträger nutzen.',
         'disk_write_ok_fmt': 'Schreibtest: {mbps:.1f} MB/s in {folder}.',
         'dism_busy_close_blocked': 'DISM läuft noch. Schließen ist blockiert, bis es fertig ist.',
         'dism_fail': 'DISM wurde mit Fehlern beendet.',
@@ -156,10 +171,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'dns_fail': 'DNS-Cache konnte nicht geleert werden.',
         'dns_ok': 'DNS-Cache geleert.',
         'done_clean_sequence': 'Fertig. Bereinigungssequenz abgeschlossen.',
-        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected together. Choose only one action.',
+        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected '
+                                         'together. Choose only one action.',
         'dynamic_tick_off_fail': 'Failed to disable dynamic tick through BCDEdit.',
-        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the default if timing, sleep or battery '
-                               'behavior gets worse.',
+        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the '
+                               'default if timing, sleep or battery behavior gets worse.',
         'dynamic_tick_restore_fail': 'Failed to restore dynamic tick default through BCDEdit.',
         'dynamic_tick_restore_ok': 'Dynamic tick returned to Windows default. Restart Windows.',
         'event_log': 'Ereignisprotokoll',
@@ -184,12 +200,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'gaming_report_hags': 'Hardwarebeschleunigte GPU-Planung',
         'gaming_report_item_fmt': '{item}: {state}.',
         'gaming_report_no_critical_notes': 'Keine kritischen Inkompatibilitäten im Schnellbericht gefunden.',
-        'gaming_report_note_admin_limited': '• Ohne Administratorrechte können einige HKLM/powercfg/BCDEdit-Statuswerte unvollständig sein.',
-        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR ist aktiviert. Bei OBS kann das zusätzliche Ressourcen verbrauchen.',
-        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic Tick wurde per BCDEdit geändert. Das ist kein universeller Boost; Rollback bereithalten.',
+        'gaming_report_note_admin_limited': '• Ohne Administratorrechte können einige '
+                                            'HKLM/powercfg/BCDEdit-Statuswerte unvollständig sein.',
+        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR ist aktiviert. Bei OBS kann das zusätzliche '
+                                              'Ressourcen verbrauchen.',
+        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic Tick wurde per BCDEdit geändert. Das ist kein '
+                                                  'universeller Boost; Rollback bereithalten.',
         'gaming_report_note_hags_unsupported': '• HAGS ist für diese Windows-/Treiberkombination nicht verfügbar.',
         'gaming_report_note_windows_only': '⚠ Dieser Bericht ist nur unter Windows 10/11 sinnvoll.',
-        'gaming_report_note_wow64': '• 32-Bit-Prozess auf 64-Bit-Windows: FreeCleaner nutzt die 64-Bit-Registry-Ansicht für HKLM\\SOFTWARE.',
+        'gaming_report_note_wow64': '• 32-Bit-Prozess auf 64-Bit-Windows: FreeCleaner nutzt die '
+                                    '64-Bit-Registry-Ansicht für HKLM\\SOFTWARE.',
         'gaming_report_power_fmt': 'Aktiver Energiesparplan: {plan}.',
         'gaming_report_power_throttling': 'Power Throttling',
         'gaming_report_started': 'Kompatibilitätsbericht gestartet. Einstellungen werden nicht geändert.',
@@ -204,14 +224,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'graphics_apps_ok': 'Opened per-app Graphics settings.',
         'graphics_defaults_fail': 'Failed to open Graphics default settings.',
         'graphics_defaults_ok': 'Opened Graphics default settings.',
-        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose only one after testing.',
+        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose '
+                                 'only one after testing.',
         'hags_off_fail': 'Failed to disable HAGS through the registry.',
         'hags_off_ok': 'HAGS disabled. Restart Windows and test WoW for stutter or hitching.',
         'hags_on_fail': 'Failed to enable HAGS through the registry.',
         'hags_on_ok': 'HAGS enabled. Restart Windows and test your games for stability and stutter.',
         'high_perf_fail': 'Energieplan konnte nicht geändert werden.',
         'high_perf_ok': 'High Performance aktiviert.',
-        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power profile already includes it.',
+        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power '
+                                       'profile already includes it.',
         'junk_found': 'Gefundener Datenmüll',
         'lang_auto': 'Auto',
         'lang_en': 'English',
@@ -236,8 +258,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'no': 'Nein',
         'no_noticeable_junk': 'In den ausgewählten Ordnern wurde kein nennenswerter Datenmüll gefunden.',
         'nothing_selected': 'Nichts ausgewählt.',
-        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — CPU-Encoder. Für Spiel+Stream verursacht das oft Framedrops; besser NVENC/QSV/AMF nutzen, wenn '
-                                    'verfügbar.',
+        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — CPU-Encoder. Für Spiel+Stream verursacht das oft '
+                                    'Framedrops; besser NVENC/QSV/AMF nutzen, wenn verfügbar.',
         'obs_encoder_hw_ok_fmt': '✓ {label}: {encoder} — Hardware-Encoder, gute Richtung für Streaming.',
         'obs_encoder_unknown_fmt': '• {label}: {encoder} — Encodertyp konnte nicht sicher erkannt werden.',
         'obs_log_issue_dropped_frames': 'Dropped Frames durch Netzwerk oder Bandbreite',
@@ -247,18 +269,24 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'obs_log_issue_recording_failure': 'Fehler beim Start oder Betrieb der Aufnahme',
         'obs_log_issue_rendering_lag': 'Rendering-Lag / Render-Stalls der Szene',
         'obs_log_issue_unknown': 'unbekanntes OBS-Logproblem',
-        'obs_log_triple_activity_warn': '⚠ Aktuelle OBS-Logs zeigen Stream, Aufnahme und Replay Buffer zusammen. Das kann Encoder oder Datenträger überlasten.',
-        'obs_logs_clean': 'OBS-Logprüfung: keine kritischen Encoding-/Render-/Netzwerk-Lag-Hinweise in aktuellen Logs gefunden.',
-        'obs_profile_missing': 'Keine OBS-Profile gefunden. Bei portablem OBS kann die Standard-AppData-Prüfung leer sein.',
-        'obs_profile_summary_fmt': 'OBS-Profil [{profile}]: Modus {mode}, Stream {stream}, Aufnahme {record}, Format {format}, Replay Buffer: {replay}.',
-        'obs_rec_format_ok_fmt': '✓ OBS-Profil [{profile}]: Aufnahmeformat {format} ist für sichere Aufnahmen geeignet.',
-        'obs_rec_format_warn_fmt': '⚠ OBS-Profil [{profile}]: Aufnahmeformat {format}. Besser MKV/Hybrid MP4 verwenden, damit ein Crash die Datei nicht '
-                                   'verliert.',
+        'obs_log_triple_activity_warn': '⚠ Aktuelle OBS-Logs zeigen Stream, Aufnahme und Replay Buffer zusammen. Das '
+                                        'kann Encoder oder Datenträger überlasten.',
+        'obs_logs_clean': 'OBS-Logprüfung: keine kritischen Encoding-/Render-/Netzwerk-Lag-Hinweise in aktuellen Logs '
+                          'gefunden.',
+        'obs_profile_missing': 'Keine OBS-Profile gefunden. Bei portablem OBS kann die Standard-AppData-Prüfung leer '
+                               'sein.',
+        'obs_profile_summary_fmt': 'OBS-Profil [{profile}]: Modus {mode}, Stream {stream}, Aufnahme {record}, Format '
+                                   '{format}, Replay Buffer: {replay}.',
+        'obs_rec_format_ok_fmt': '✓ OBS-Profil [{profile}]: Aufnahmeformat {format} ist für sichere Aufnahmen '
+                                 'geeignet.',
+        'obs_rec_format_warn_fmt': '⚠ OBS-Profil [{profile}]: Aufnahmeformat {format}. Besser MKV/Hybrid MP4 '
+                                   'verwenden, damit ein Crash die Datei nicht verliert.',
         'obs_record_encoder': 'Aufnahme-Encoder',
-        'obs_replay_combo_warn': '⚠ Replay Buffer ist aktiv. Stream + Aufnahme + Replay Buffer nicht gleichzeitig nutzen, wenn GPU/Datenträger keinen '
-                                 'Spielraum haben.',
+        'obs_replay_combo_warn': '⚠ Replay Buffer ist aktiv. Stream + Aufnahme + Replay Buffer nicht gleichzeitig '
+                                 'nutzen, wenn GPU/Datenträger keinen Spielraum haben.',
         'obs_stream_encoder': 'Stream-Encoder',
-        'onedrive_autostart_remove_fail': 'OneDrive: Autostart-Eintrag nicht gefunden oder konnte nicht entfernt werden.',
+        'onedrive_autostart_remove_fail': 'OneDrive: Autostart-Eintrag nicht gefunden oder konnte nicht entfernt '
+                                          'werden.',
         'onedrive_autostart_removed': 'OneDrive: Autostart des aktuellen Benutzers entfernt.',
         'onedrive_disable_done': 'OneDrive: Deaktivierung abgeschlossen. Neustart wird empfohlen.',
         'onedrive_disable_failed': 'OneDrive: Hintergrundaktivität konnte nicht deaktiviert werden.',
@@ -273,10 +301,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'onedrive_report_cleanup_fmt': 'OneDrive: {targets} sichere Bereinigungsziele gefunden, ca. {mb:.1f} MB.',
         'onedrive_report_done': 'OneDrive: Bericht abgeschlossen.',
         'onedrive_report_failed': 'OneDrive: Bericht konnte nicht erstellt werden.',
-        'onedrive_report_policy_note': 'OneDrive: Sync-Blockierungsrichtlinie ist nicht aktiv. Für vollständiges Deaktivieren sind Adminrechte nötig.',
-        'onedrive_report_running_warn': 'OneDrive: Prozess ist aktiv und kann Datenträger, Netzwerk und Autosync belasten.',
+        'onedrive_report_policy_note': 'OneDrive: Sync-Blockierungsrichtlinie ist nicht aktiv. Für vollständiges '
+                                       'Deaktivieren sind Adminrechte nötig.',
+        'onedrive_report_running_warn': 'OneDrive: Prozess ist aktiv und kann Datenträger, Netzwerk und Autosync '
+                                        'belasten.',
         'onedrive_report_started': 'OneDrive: Bericht wird erstellt...',
-        'onedrive_report_status_fmt': 'OneDrive: installiert={installed}, läuft={running}, Autostart={autostart}, Sync-Richtlinie={policy}.',
+        'onedrive_report_status_fmt': 'OneDrive: installiert={installed}, läuft={running}, Autostart={autostart}, '
+                                      'Sync-Richtlinie={policy}.',
         'onedrive_restore_done': 'OneDrive: Wiederherstellung abgeschlossen.',
         'onedrive_restore_failed': 'OneDrive: Hintergrundaktivität konnte nicht wiederhergestellt werden.',
         'onedrive_restore_started': 'OneDrive: Hintergrundaktivität wird wiederhergestellt...',
@@ -287,10 +318,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'pick_one_module': 'Wähle zuerst mindestens ein Modul aus.',
         'power_mode_page_fail': 'Failed to open Windows power settings.',
         'power_mode_page_ok': 'Opened Windows power settings.',
-        'power_profile_conflict_skipped': 'Power-Profil-Änderungen wurden übersprungen, weil maximales CPU-Profil und Balanced-Restore gleichzeitig gewählt '
-                                          'wurden.',
-        'power_restore_conflict_skipped': 'Energieplan-Konflikt: Balanced-Wiederherstellung wurde zusammen mit Leistungsprofilen ausgewählt. Leistungsprofile '
-                                          'wurden übersprungen.',
+        'power_profile_conflict_skipped': 'Power-Profil-Änderungen wurden übersprungen, weil maximales CPU-Profil und '
+                                          'Balanced-Restore gleichzeitig gewählt wurden.',
+        'power_restore_conflict_skipped': 'Energieplan-Konflikt: Balanced-Wiederherstellung wurde zusammen mit '
+                                          'Leistungsprofilen ausgewählt. Leistungsprofile wurden übersprungen.',
         'power_throttling_fail': 'Failed to disable Power Throttling.',
         'power_throttling_ok': 'Power Throttling disabled.',
         'pre_cleanup_actions': 'Vorbereitende Aktionen werden ausgeführt, um gesperrte Dateien zu vermeiden.',
@@ -300,17 +331,18 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'profile_manual': 'Manuell',
         'profile_streamer': 'Streamer',
         'queued_actions_fmt': 'Befehlsaktionen in der Warteschlange: {count}',
-        'quick_profiles': 'Schnellprofile',
         'reboot_recommended': 'A system restart is recommended for this change to fully apply.',
         'recycle_fail': 'Papierkorb konnte nicht geleert werden oder ist bereits leer.',
         'recycle_ok': 'Papierkorb geleert.',
-        'registry_admin_values_skipped': 'Einige systemweite Registrierungswerte wurden übersprungen, weil Administratorrechte erforderlich sind.',
+        'registry_admin_values_skipped': 'Einige systemweite Registrierungswerte wurden übersprungen, weil '
+                                         'Administratorrechte erforderlich sind.',
         'registry_backup_created': 'Registry backup created: {path}',
         'registry_backup_failed': 'Failed to create a registry backup. Changes were not applied.',
-        'registry_leftovers_done_fmt': 'Registry-Reste bereinigt: gefunden {found}, entfernt {removed} ({keys} Schlüssel, {values} Werte), fehlgeschlagen '
-                                       '{failed}.',
-        'registry_leftovers_limited_mode': 'Eingeschränkter Modus: Es wurden nur Einträge des aktuellen Benutzers geprüft. Als Administrator starten, um '
-                                           'systemweite HKLM-Einträge einzubeziehen.',
+        'registry_leftovers_done_fmt': 'Registry-Reste bereinigt: gefunden {found}, entfernt {removed} ({keys} '
+                                       'Schlüssel, {values} Werte), fehlgeschlagen {failed}.',
+        'registry_leftovers_limited_mode': 'Eingeschränkter Modus: Es wurden nur Einträge des aktuellen Benutzers '
+                                           'geprüft. Als Administrator starten, um systemweite HKLM-Einträge '
+                                           'einzubeziehen.',
         'registry_leftovers_none': 'Keine sicheren Registry-Reste gefunden.',
         'registry_restore_fail': 'Failed to restore registry backup: {name}',
         'registry_restore_missing': 'No registry backup was found.',
@@ -333,10 +365,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'restore_dialog_backups': 'Available backups',
         'restore_dialog_manifest_empty': 'No manifest data found for this backup.',
         'restore_dialog_meta': 'Created: {created}\nFiles: {count}\nType: {kind}',
-        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new pre-restore snapshot before import, so you can '
-                               'undo the undo if needed.',
-        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the current state will be created '
-                              'automatically.',
+        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new '
+                               'pre-restore snapshot before import, so you can undo the undo if needed.',
+        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the '
+                              'current state will be created automatically.',
         'restore_dialog_title': 'Restore registry backup',
         'restore_registry_admin_required': 'Run FreeCleaner as administrator to restore the registry backup.',
         'restore_registry_backup': 'Restore registry backup',
@@ -356,13 +388,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'sec_net_title': 'Browser und Netzwerk',
         'sec_onedrive_sub': 'Hintergrundlast deaktivieren, Diagnose und sichere Cache-/Log-Bereinigung',
         'sec_onedrive_title': 'OneDrive',
-        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target value, and FreeCleaner creates a backup '
-                                      'before applying changes.',
+        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target '
+                                      'value, and FreeCleaner creates a backup before applying changes.',
         'sec_optimizer_registry_title': 'Additional registry gaming tweaks',
-        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, standby RAM and graphics settings without '
-                             'overclocking.',
+        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, '
+                             'standby RAM and graphics settings without overclocking.',
         'sec_optimizer_title': 'Windows gaming optimizer',
-        'sec_optimizer_tools_sub': 'Helpful shortcuts to the official graphics pages for windowed optimizations, VRR, app GPU choice and other gaming options.',
+        'sec_optimizer_tools_sub': 'Helpful shortcuts to the official graphics pages for windowed optimizations, VRR, '
+                                   'app GPU choice and other gaming options.',
         'sec_optimizer_tools_title': 'Graphics and guided Windows settings',
         'sec_system_sub': 'Sichere Kernorte für eine schnelle Bereinigung.',
         'sec_system_title': 'Temporäre Systemdateien',
@@ -388,11 +421,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'stop_update_services': 'Windows-Update-Dienste werden zum Leeren des Caches gestoppt...',
         'streamer': 'Streamer-Modus',
         'streamer_profile_on': 'Streamer-Profil aktiviert.',
-        'streaming_cpu_high_warn': '⚠ CPU ist aktuell stark ausgelastet. Für Streaming Hintergrundprozesse prüfen oder Encoding auf die GPU verlagern.',
+        'streaming_cpu_high_warn': '⚠ CPU ist aktuell stark ausgelastet. Für Streaming Hintergrundprozesse prüfen oder '
+                                   'Encoding auf die GPU verlagern.',
         'streaming_diag_done': 'Streamingdiagnose abgeschlossen.',
         'streaming_diag_failed': 'Streamingdiagnose konnte nicht ausgeführt werden.',
         'streaming_diag_started': 'Streamingdiagnose gestartet. Einstellungen werden nicht geändert.',
-        'streaming_gpu_high_warn': '⚠ GPU ist fast ausgelastet. Für Spiel+Stream Preset/Qualität, FPS oder schwere OBS-Filter reduzieren.',
+        'streaming_gpu_high_warn': '⚠ GPU ist fast ausgelastet. Für Spiel+Stream Preset/Qualität, FPS oder schwere '
+                                   'OBS-Filter reduzieren.',
         'streaming_load_fmt': 'Aktuelle Last: CPU {cpu}, RAM {ram}, GPU {gpu}.',
         'tab_cleaner': 'Cleaner',
         'tab_cleaner_sub': 'Cleanup caches, temp files and launcher leftovers.',
@@ -420,35 +455,41 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.browser_generic.title': '{browser} Cache ({profile})',
         'task.browser_opera.desc': 'Temporäre Dateien und Cache des Opera-Browsers.',
         'task.browser_opera.title': 'Opera Cache',
-        'task.cpu_latency_power_profile.desc': 'Erweitertes AC-only Profil für alte und moderne CPUs: High Performance, EPP=0, aggressiverer Boost, '
-                                               'schnelleres Hochtakten, entparkte Kerne und PCIe ASPM aus. Kein Overclocking, kann aber Wärme und '
-                                               'Stromverbrauch erhöhen; separat testen.',
+        'task.cpu_latency_power_profile.desc': 'Erweitertes AC-only Profil für alte und moderne CPUs: High '
+                                               'Performance, EPP=0, aggressiverer Boost, schnelleres Hochtakten, '
+                                               'entparkte Kerne und PCIe ASPM aus. Kein Overclocking, kann aber Wärme '
+                                               'und Stromverbrauch erhöhen; separat testen.',
         'task.cpu_latency_power_profile.title': 'Maximales CPU-Latenz/Leistungsprofil',
         'task.crash_dumps.desc': 'Application crash dump files from the current user profile.',
         'task.crash_dumps.title': 'User Crash Dumps',
-        'task.cryptnet_cache.desc': 'Zwischengespeicherte Zertifikat-URL-Metadaten/Inhalte. Windows erstellt sie automatisch neu.',
+        'task.cryptnet_cache.desc': 'Zwischengespeicherte Zertifikat-URL-Metadaten/Inhalte. Windows erstellt sie '
+                                    'automatisch neu.',
         'task.cryptnet_cache.title': 'Cryptnet-URL-Zertifikatcache',
         'task.delivery_opt.desc': 'Cache für Update-Verteilungsdateien.',
         'task.delivery_opt.title': 'Delivery Optimization Cache',
-        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs with frametime jitter, but Microsoft '
-                                                  'documents this boot option mainly for debugging. Manual advanced action; restart required.',
+        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs '
+                                                  'with frametime jitter, but Microsoft documents this boot option '
+                                                  'mainly for debugging. Manual advanced action; restart required.',
         'task.disable_dynamic_tick_latency.title': 'Disable dynamic tick (latency test)',
-        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and related fullscreen compatibility flags to '
-                                     'reduce recording overhead while playing.',
+        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and '
+                                     'related fullscreen compatibility flags to reduce recording overhead while '
+                                     'playing.',
         'task.disable_gamedvr.title': 'Disable Xbox Game Bar & DVR',
-        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if HAGS causes stutter, hitching or driver '
-                                  'issues. Restart required.',
+        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if '
+                                  'HAGS causes stutter, hitching or driver issues. Restart required.',
         'task.disable_hags.title': 'Disable HAGS (stutter fallback)',
-        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable mouse input in games. A sign-out or app '
-                                                'restart may be needed.',
+        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable '
+                                                'mouse input in games. A sign-out or app restart may be needed.',
         'task.disable_mouse_acceleration.title': 'Disable mouse acceleration',
-        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and interruptions during gaming sessions.',
+        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and '
+                                           'interruptions during gaming sessions.',
         'task.disable_notifications.title': 'Open Do Not Disturb / Focus Assist',
-        'task.disable_onedrive_background.desc': 'Beendet OneDrive, entfernt den Autostart und aktiviert mit Adminrechten die Richtlinie zum Blockieren der '
-                                                 'Synchronisierung.',
+        'task.disable_onedrive_background.desc': 'Beendet OneDrive, entfernt den Autostart und aktiviert mit '
+                                                 'Adminrechten die Richtlinie zum Blockieren der Synchronisierung.',
         'task.disable_onedrive_background.title': 'OneDrive im Hintergrund deaktivieren',
-        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry setting. This may reduce unwanted '
-                                              'throttling of game-related workloads. Restart required.',
+        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry '
+                                              'setting. This may reduce unwanted throttling of game-related workloads. '
+                                              'Restart required.',
         'task.disable_power_throttling.title': 'Disable Power Throttling',
         'task.discord_cache.desc': 'Web-Cache von Discord.',
         'task.discord_cache.title': 'Discord Cache',
@@ -458,12 +499,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.dism_clean.title': 'DISM Component Cleanup',
         'task.dns_flush.desc': 'Leert den DNS-Cache. Nützlich bei seltsamen Netzwerkproblemen.',
         'task.dns_flush.title': 'Flush DNS Cache',
-        'task.dx_shader_cache.desc': 'DirectX-Shader-Cache. Der erste Spielstart nach der Bereinigung kann kurz ruckeln.',
+        'task.dx_shader_cache.desc': 'DirectX-Shader-Cache. Der erste Spielstart nach der Bereinigung kann kurz '
+                                     'ruckeln.',
         'task.dx_shader_cache.title': 'DirectX Shader Cache',
         'task.enable_game_mode.desc': 'Enables Windows Game Mode to reduce background interference while gaming.',
         'task.enable_game_mode.title': 'Enable Windows Game Mode',
-        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver combinations. This is optional: test games '
-                                 'after reboot and restore if stutters appear.',
+        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver '
+                                 'combinations. This is optional: test games after reboot and restore if stutters '
+                                 'appear.',
         'task.enable_hags.title': 'Enable HAGS (optional GPU scheduling)',
         'task.epic_webcache.desc': 'Chromium-Cache des Epic-Games-Launchers.',
         'task.epic_webcache.title': 'Epic Games Web Cache',
@@ -475,8 +518,9 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.firefox_startupCache.title': 'Firefox Startup Cache ({profile})',
         'task.font_cache.desc': 'Font rendering cache. Windows recreates it automatically.',
         'task.font_cache.title': 'Font Cache',
-        'task.gaming_compat_report.desc': 'Schreibgeschützte Prüfung von Windows-Version, Game Mode, Game DVR/Captures, HAGS, Power Throttling, Energieschema '
-                                          'und Dynamic Tick vor Tweaks.',
+        'task.gaming_compat_report.desc': 'Schreibgeschützte Prüfung von Windows-Version, Game Mode, Game '
+                                          'DVR/Captures, HAGS, Power Throttling, Energieschema und Dynamic Tick vor '
+                                          'Tweaks.',
         'task.gaming_compat_report.title': 'Kompatibilitätsbericht für Gaming-Tweaks',
         'task.high_perf_plan.desc': 'Wechselt zu High Performance. Am besten für PCs am Stromnetz.',
         'task.high_perf_plan.title': 'High Performance Power Plan',
@@ -492,10 +536,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.launcher_cache.title': '{app} Launcher Cache',
         'task.memory_dumps.desc': 'Old BSOD and crash dump files. Keep them only if you are diagnosing crashes.',
         'task.memory_dumps.title': 'Windows Memory Dumps',
-        'task.mmcss_gaming_profile.desc': 'Wendet dokumentierte Multimedia-Scheduler-Werte für Spiele an und vermeidet alte wirkungslose Tweaks.',
+        'task.mmcss_gaming_profile.desc': 'Wendet dokumentierte Multimedia-Scheduler-Werte für Spiele an und vermeidet '
+                                          'alte wirkungslose Tweaks.',
         'task.mmcss_gaming_profile.title': 'Sicheres MMCSS-Spieleprofil anwenden',
-        'task.network_throttling_off.desc': 'Setzt NetworkThrottlingIndex auf 0xffffffff für weniger Netzwerk-Drosselung bei Multimedia-/Gaming-Workloads. '
-                                            'Neustart empfohlen.',
+        'task.network_throttling_off.desc': 'Setzt NetworkThrottlingIndex auf 0xffffffff für weniger '
+                                            'Netzwerk-Drosselung bei Multimedia-/Gaming-Workloads. Neustart empfohlen.',
         'task.network_throttling_off.title': 'MMCSS NetworkThrottlingIndex deaktivieren',
         'task.nvidia_compute_cache.desc': 'NVIDIA CUDA/compute cache. It can be rebuilt automatically.',
         'task.nvidia_compute_cache.title': 'NVIDIA Compute Cache',
@@ -515,50 +560,64 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.onedrive_report.title': 'OneDrive-Bericht',
         'task.onedrive_setup_logs.desc': 'Bereinigt OneDrive-Installations- und Update-Protokolle.',
         'task.onedrive_setup_logs.title': 'OneDrive-Setup-Protokolle',
-        'task.onedrive_webview_cache.desc': 'Bereinigt Cache, Code Cache, GPUCache und Shader-Caches von OneDrive WebView.',
+        'task.onedrive_webview_cache.desc': 'Bereinigt Cache, Code Cache, GPUCache und Shader-Caches von OneDrive '
+                                            'WebView.',
         'task.onedrive_webview_cache.title': 'OneDrive WebView-/GPU-Cache',
-        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game DVR settings.',
+        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game '
+                                           'DVR settings.',
         'task.open_capture_settings.title': 'Open Captures / DVR settings',
-        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. FreeCleaner does not disable this '
-                                         'automatically because it is a security trade-off.',
+        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. '
+                                         'FreeCleaner does not disable this automatically because it is a security '
+                                         'trade-off.',
         'task.open_core_isolation.title': 'Open Core isolation / Memory integrity',
-        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the setting manually.',
+        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the '
+                                             'setting manually.',
         'task.open_game_mode_settings.title': 'Open Game Mode settings',
-        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High performance on systems with multiple GPUs.',
+        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High '
+                                        'performance on systems with multiple GPUs.',
         'task.open_graphics_apps.title': 'Open per-app graphics settings',
-        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed games, Variable Refresh Rate and hardware '
-                                            'GPU features when supported.',
+        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed '
+                                            'games, Variable Refresh Rate and hardware GPU features when supported.',
         'task.open_graphics_defaults.title': 'Open Graphics default settings',
-        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM '
-                                              'power modes override classic power plans.',
+        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best '
+                                              'performance on Windows 10/11 systems where OEM power modes override '
+                                              'classic power plans.',
         'task.open_power_mode_settings.title': 'Open Power mode settings',
-        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual effects to best performance.',
+        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual '
+                                         'effects to best performance.',
         'task.open_visual_effects.title': 'Open Visual Effects performance options',
         'task.prefetch.desc': 'Startspuren von Programmen. Windows erstellt sie nach der Bereinigung neu.',
         'task.prefetch.title': 'Windows Prefetch',
-        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does not close apps or change RAM timings.',
+        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does '
+                                       'not close apps or change RAM timings.',
         'task.purge_standby_ram.title': 'Purge standby RAM cache',
         'task.recent_docs.desc': 'Löscht den Verlauf kürzlich geöffneter Dateien im Explorer.',
         'task.recent_docs.title': 'Recent Items',
         'task.recycle.desc': 'Leert den Papierkorb dauerhaft.',
         'task.recycle.title': 'Empty Recycle Bin',
-        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target status lines without applying changes.',
+        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target '
+                                               'status lines without applying changes.',
         'task.refresh_registry_statuses.title': 'Refresh registry statuses',
-        'task.registry_leftovers.desc': 'Entfernt nur eindeutig defekte Open-With/Application-, App-Paths- und Autostart-Einträge, die auf fehlende '
-                                        'ausführbare Dateien zeigen. Erstellt vorher ein Registry-Backup.',
+        'task.registry_leftovers.desc': 'Entfernt nur eindeutig defekte Open-With/Application-, App-Paths- und '
+                                        'Autostart-Einträge, die auf fehlende ausführbare Dateien zeigen. Erstellt '
+                                        'vorher ein Registry-Backup.',
         'task.registry_leftovers.title': 'Konservative Bereinigung von Registry-Resten',
-        'task.reset_winsock.desc': 'Setzt den Netzwerk-Stack zurück. Nützlich bei seltsamen Socket-Problemen. Ein Neustart wird danach empfohlen.',
+        'task.reset_winsock.desc': 'Setzt den Netzwerk-Stack zurück. Nützlich bei seltsamen Socket-Problemen. Ein '
+                                   'Neustart wird danach empfohlen.',
         'task.reset_winsock.title': 'Reset Winsock',
-        'task.restore_balanced_power_profile.desc': 'Sicherer Rollback nach Gaming-Power-Tweaks: schaltet Windows zurück auf Balanced, ohne benutzerdefinierte '
-                                                    'OEM-Pläne zu löschen.',
+        'task.restore_balanced_power_profile.desc': 'Sicherer Rollback nach Gaming-Power-Tweaks: schaltet Windows '
+                                                    'zurück auf Balanced, ohne benutzerdefinierte OEM-Pläne zu '
+                                                    'löschen.',
         'task.restore_balanced_power_profile.title': 'Balanced-Energiesparplan wiederherstellen',
-        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows manage timer ticks normally again. '
-                                                  'Restart required.',
+        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows '
+                                                  'manage timer ticks normally again. Restart required.',
         'task.restore_dynamic_tick_default.title': 'Restore dynamic tick default',
-        'task.restore_onedrive_background.desc': 'Entfernt mit Adminrechten die OneDrive-Blockierungsrichtlinie und startet den Client im Hintergrund.',
+        'task.restore_onedrive_background.desc': 'Entfernt mit Adminrechten die OneDrive-Blockierungsrichtlinie und '
+                                                 'startet den Client im Hintergrund.',
         'task.restore_onedrive_background.title': 'OneDrive wiederherstellen',
-        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only CPU/PCIe latency settings. It does not '
-                                               'change voltage, clocks, fan curves or thermal protection.',
+        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only '
+                                               'CPU/PCIe latency settings. It does not change voltage, clocks, fan '
+                                               'curves or thermal protection.',
         'task.safe_gaming_power_profile.title': 'Safe CPU/GPU gaming power profile',
         'task.steam_appcache.desc': 'Steam client HTTP/app cache.',
         'task.steam_appcache.title': 'Steam App Cache',
@@ -568,14 +627,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.steam_shadercache.title': 'Steam Shader Cache',
         'task.streaming_app_cache.desc': 'Temporary cache for streaming tools. App settings and scenes are preserved.',
         'task.streaming_app_cache.title': 'Streaming App Cache ({app})',
-        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting history.',
+        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting '
+                                        'history.',
         'task.streaming_app_logs.title': 'Streaming App Logs ({app})',
-        'task.streaming_diagnostics.desc': 'Prüft OBS-Profile, Encoder, aktuelle OBS-Logs, CPU/GPU/RAM-Last und Schreibgeschwindigkeit des Datenträgers. '
-                                           'Ändert nichts automatisch.',
+        'task.streaming_diagnostics.desc': 'Prüft OBS-Profile, Encoder, aktuelle OBS-Logs, CPU/GPU/RAM-Last und '
+                                           'Schreibgeschwindigkeit des Datenträgers. Ändert nichts automatisch.',
         'task.streaming_diagnostics.title': 'OBS-/System-Streamingdiagnose',
         'task.streaming_obs_cache.desc': 'OBS temporary cache only. Scenes, sources and profiles are not removed.',
         'task.streaming_obs_cache.title': 'OBS Studio Cache ({app})',
-        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues right now.',
+        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues '
+                                        'right now.',
         'task.streaming_obs_logs.title': 'OBS Studio Logs / Crashes ({app})',
         'task.system_temp.desc': 'Windows-System-Temp. Am besten mit Administratorrechten bereinigen.',
         'task.system_temp.title': 'System Temp ({path})',
@@ -589,32 +650,38 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.update_cache_files.title': 'Windows Update Cache',
         'task.user_temp.desc': 'Temporäre Dateien des aktuellen Benutzers. Fast immer eine sichere Wahl.',
         'task.user_temp.title': 'User Temp ({path})',
-        'task.uwp_temp_caches.desc': 'Konservative Bereinigung von {count} TempState/AC-Temp-Ordnern paketierter Apps. LocalState-Appdaten bleiben erhalten.',
+        'task.uwp_temp_caches.desc': 'Konservative Bereinigung von {count} TempState/AC-Temp-Ordnern paketierter Apps. '
+                                     'LocalState-Appdaten bleiben erhalten.',
         'task.uwp_temp_caches.title': 'Temporäre Caches von Microsoft-Store-Apps',
         'task.web_cache.desc': 'Windows WebCache database leftovers and browser-control cache files.',
         'task.web_cache.title': 'Windows WebCache',
-        'task.windows_caches_user.desc': 'Kleine Windows-Cacheordner im Benutzerprofil. Windows erstellt sie bei Bedarf neu.',
+        'task.windows_caches_user.desc': 'Kleine Windows-Cacheordner im Benutzerprofil. Windows erstellt sie bei '
+                                         'Bedarf neu.',
         'task.windows_caches_user.title': 'Windows-Benutzercaches',
-        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting update/component issues.',
+        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting '
+                                            'update/component issues.',
         'task.windows_component_logs.title': 'Windows Component Logs',
         'task.windows_old.desc': 'Windows.old from a previous upgrade. Cleaning it removes the easy rollback files.',
         'task.windows_old.title': 'Previous Windows Installation',
-        'task.windows_setup_logs.desc': 'Alte Panther-, MoSetup- und Setup-Cleanup-Protokolle. Nur behalten, wenn Windows-Update-/Installationsfehler '
-                                        'untersucht werden.',
+        'task.windows_setup_logs.desc': 'Alte Panther-, MoSetup- und Setup-Cleanup-Protokolle. Nur behalten, wenn '
+                                        'Windows-Update-/Installationsfehler untersucht werden.',
         'task.windows_setup_logs.title': 'Windows-Setup- und Upgrade-Protokolle',
-        'task.windows_update_etl_logs.desc': 'Alte WaaSMedic-ETL-Protokolle. Gesperrte aktive Dateien werden übersprungen.',
+        'task.windows_update_etl_logs.desc': 'Alte WaaSMedic-ETL-Protokolle. Gesperrte aktive Dateien werden '
+                                             'übersprungen.',
         'task.windows_update_etl_logs.title': 'Windows Update Medic-Protokolle',
-        'task.windows_wmi_etl_logs.desc': 'Diagnose-ETL-Protokolle wie DiagTrack-Listenerdateien. Aktive gesperrte Protokolle werden übersprungen.',
+        'task.windows_wmi_etl_logs.desc': 'Diagnose-ETL-Protokolle wie DiagTrack-Listenerdateien. Aktive gesperrte '
+                                          'Protokolle werden übersprungen.',
         'task.windows_wmi_etl_logs.title': 'WMI- und Diagnose-ETL-Protokolle',
         'threads_info': 'Scannen: {scan} Threads | Bereinigen: {clean} Threads',
         'top_consumers': 'Größte Speicherfresser:',
         'ultimate_perf_fail': 'Ultimate Performance konnte nicht aktiviert werden.',
         'ultimate_perf_ok': 'Ultimate Performance aktiviert.',
-        'ultimate_power_redundant_skipped': 'Doppelter Energieplan: Ultimate Performance hat höhere Priorität, schwächere Energieumschaltungen wurden '
-                                            'übersprungen.',
+        'ultimate_power_redundant_skipped': 'Doppelter Energieplan: Ultimate Performance hat höhere Priorität, '
+                                            'schwächere Energieumschaltungen wurden übersprungen.',
         'unavailable_short': 'n/v',
         'unknown': 'Unknown',
-        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest version: {latest}.',
+        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest '
+                                 'version: {latest}.',
         'update_available_log': 'Update found: {current} → {latest}',
         'update_changelog': 'What changed',
         'update_check_failed': 'Could not check for updates right now.',
@@ -626,16 +693,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'update_download_complete': 'Update heruntergeladen:\n{path}',
         'update_download_failed': 'Could not download the update.',
         'update_download_failed_reason': 'Could not download the update: {reason}',
-        'update_download_idle': 'Der Installer wird im lokalen FreeCleaner-Benutzerordner gespeichert und nach dem Download automatisch gestartet. Wenn '
-                                'FreeCleaner unter Program Files installiert ist, kann Windows erst beim Start des Installers Administratorrechte anfordern.',
+        'update_download_idle': 'Der Installer wird im lokalen FreeCleaner-Benutzerordner gespeichert und nach dem '
+                                'Download automatisch gestartet. Wenn FreeCleaner unter Program Files installiert ist, '
+                                'kann Windows erst beim Start des Installers Administratorrechte anfordern.',
         'update_download_location': 'Update-Ordner: {path}',
         'update_download_progress': 'Downloading: {progress}',
         'update_download_saved': 'Update gespeichert unter: {path}',
         'update_download_section': 'Update download',
         'update_download_started': 'Starting download for update {version}...',
         'update_downloading': 'Downloading...',
-        'update_install_cleanup_scheduled': 'Alte Update-Dateien werden nach der Installation aus dem updates-Ordner entfernt.',
-        'update_install_closing_app': 'Installer gestartet. FreeCleaner wird geschlossen, damit das Update installiert werden kann.',
+        'update_install_cleanup_scheduled': 'Alte Update-Dateien werden nach der Installation aus dem updates-Ordner '
+                                            'entfernt.',
+        'update_install_closing_app': 'Installer gestartet. FreeCleaner wird geschlossen, damit das Update installiert '
+                                      'werden kann.',
         'update_install_failed_reason': 'Update-Installer konnte nicht gestartet werden: {reason}',
         'update_install_started': 'Update-Installer gestartet: {path}',
         'update_install_started_button': 'Installer gestartet',
@@ -658,10 +728,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'about_close': 'Close',
         'about_copied': 'Copied to clipboard.',
         'about_copy': 'Copy',
-        'about_desc': 'FreeCleaner helps you safely remove temporary files and small leftovers to free space and make Windows feel lighter.',
+        'about_desc': 'FreeCleaner helps you safely remove temporary files and small leftovers to free space and make '
+                      'Windows feel lighter.',
         'about_doc_missing': 'File not found: {name}',
-        'about_hint_body': '• FreeCleaner works locally on your PC.\\n• We do not upload your files anywhere.\\n• You can read and copy documents right in the '
-                           'app.',
+        'about_hint_body': '• FreeCleaner works locally on your PC.\\n• We do not upload your files anywhere.\\n• You '
+                           'can read and copy documents right in the app.',
         'about_hint_title': 'Good to know',
         'about_license': 'License',
         'about_license_sub': 'How you may use and distribute FreeCleaner.',
@@ -713,21 +784,22 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'cleanup_reboot_scheduled_fmt': 'Scheduled for deletion after reboot: {title} -> {count}',
         'cleanup_remaining_fmt': 'Still left after cleanup: {title} -> files: {files}, folders: {dirs}',
         'cleanup_skipped_links_fmt': 'Skipped protected links/junctions: {title} -> {count}',
-        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: {scheduled}, links skipped: {skipped}, '
-                               'errors/skipped: {errors}',
+        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: '
+                               '{scheduled}, links skipped: {skipped}, errors/skipped: {errors}',
         'cleanup_target_failed_fmt': 'Cleanup error: {title}',
         'cleanup_target_ok_fmt': 'Cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}',
-        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}',
+        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, '
+                                      'skipped: {errors}',
         'clear_log': 'Clear log',
         'clear_search': 'Clear search',
         'copy_log': 'Copy log',
         'core_isolation_page_fail': 'Failed to open Windows Security / Core isolation page.',
         'core_isolation_page_ok': 'Opened Windows Security / Core isolation page.',
-        'cpu_latency_power_fail': 'Failed to apply the CPU latency/performance profile. Your OEM image, driver, or power plan may not support some powercfg '
-                                  'aliases.',
+        'cpu_latency_power_fail': 'Failed to apply the CPU latency/performance profile. Your OEM image, driver, or '
+                                  'power plan may not support some powercfg aliases.',
         'cpu_latency_power_ok': 'CPU latency/performance profile applied. Check temperatures and game stability.',
-        'cpu_latency_redundant_skipped': 'Safe High Performance/gaming power profile was skipped because the maximum CPU profile already includes those '
-                                         'actions.',
+        'cpu_latency_redundant_skipped': 'Safe High Performance/gaming power profile was skipped because the maximum '
+                                         'CPU profile already includes those actions.',
         'custom_language_label': 'Custom [{name}]',
         'deep_profile': 'Deep cleanup',
         'deep_profile_on': 'Deep cleanup profile enabled.',
@@ -747,15 +819,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_disk_ok_fmt': 'Write test: {mbps:.1f} MB/s in “{folder}” ({size} MB).',
         'diag_gpu_pref_header': 'GPU preference:',
         'diag_gpu_pref_line': '• {app}: {pref}',
-        'diag_gpu_pref_missing': 'No per-app GPU preference was found for OBS/games. This is not an error, but laptops should usually set High performance '
-                                 'manually.',
+        'diag_gpu_pref_missing': 'No per-app GPU preference was found for OBS/games. This is not an error, but laptops '
+                                 'should usually set High performance manually.',
         'diag_label_captures': 'Captures/Game DVR',
         'diag_label_game_mode': 'Game Mode',
         'diag_label_hags': 'HAGS',
         'diag_label_power_plan': 'Power plan',
         'diag_more_items_fmt': '…and {count} more',
         'diag_network_activity_fmt': 'Recent logs: stream={stream}, record={record}, Replay Buffer={replay}',
-        'diag_network_dropped_fmt': 'OBS logs show dropped frames: {count}. This is usually network/bitrate/ingest server, not “Windows junk”.',
+        'diag_network_dropped_fmt': 'OBS logs show dropped frames: {count}. This is usually network/bitrate/ingest '
+                                    'server, not “Windows junk”.',
         'diag_network_no_drops': 'No dropped frames found in recent OBS logs.',
         'diag_network_triple_warn': 'Stream + Recording + Replay Buffer together can heavily load CPU/GPU/disk.',
         'diag_obs_issues_line': 'OBS logs contain: {issues}',
@@ -773,10 +846,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_rec_gpu_high_performance': 'Set OBS and the game to High performance GPU in Windows Graphics settings.',
         'diag_rec_hardware_encoder': 'Use a hardware encoder on the main GPU for streaming/recording when available.',
         'diag_rec_mkv': 'Prefer MKV or Hybrid MP4 for recording to reduce file-loss risk after a crash.',
-        'diag_rec_network_bitrate': 'If there are dropped frames, lower bitrate or change OBS ingest server instead of blindly cleaning Windows.',
-        'diag_rec_onedrive_disable': 'OneDrive is active: disable startup/sync if you do not need it while gaming or streaming.',
+        'diag_rec_network_bitrate': 'If there are dropped frames, lower bitrate or change OBS ingest server instead of '
+                                    'blindly cleaning Windows.',
+        'diag_rec_onedrive_disable': 'OneDrive is active: disable startup/sync if you do not need it while gaming or '
+                                     'streaming.',
         'diag_rec_recording_disk': 'Recording disk is slow: use an SSD or a different folder without OneDrive sync.',
-        'diag_rec_reduce_gpu_load': 'Rendering lag usually means GPU overload: reduce FPS/scene/filters or cap game FPS.',
+        'diag_rec_reduce_gpu_load': 'Rendering lag usually means GPU overload: reduce FPS/scene/filters or cap game '
+                                    'FPS.',
         'diag_status_error': 'Error',
         'diag_status_info': 'Info',
         'diag_status_loading': 'Checking',
@@ -792,11 +868,12 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diagnostics_not_run': 'Press “Refresh diagnostics” to see the real state.',
         'diagnostics_refresh': 'Refresh diagnostics',
         'diagnostics_running': 'Checking…',
-        'diagnostics_subtitle': 'Read-only check: FreeCleaner reads OBS/Windows/logs and shows card-based findings. Settings are not changed automatically.',
+        'diagnostics_subtitle': 'Read-only check: FreeCleaner reads OBS/Windows/logs and shows card-based findings. '
+                                'Settings are not changed automatically.',
         'diagnostics_title': 'Streaming and gaming diagnostics',
         'disk_write_fail_fmt': 'Disk write test could not run for {folder}.',
-        'disk_write_low_warn': '⚠ Write speed is low for stable high-bitrate recording. Prefer an SSD or another drive, not the same one heavily used by the '
-                               'game.',
+        'disk_write_low_warn': '⚠ Write speed is low for stable high-bitrate recording. Prefer an SSD or another '
+                               'drive, not the same one heavily used by the game.',
         'disk_write_ok_fmt': 'Disk write test: {mbps:.1f} MB/s in {folder}.',
         'dism_busy_close_blocked': 'DISM is still running. Closing is blocked until it finishes.',
         'dism_fail': 'DISM finished with errors.',
@@ -805,10 +882,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'dns_fail': 'Failed to clear DNS cache.',
         'dns_ok': 'DNS cache cleared.',
         'done_clean_sequence': 'Done. Cleanup sequence finished.',
-        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected together. Choose only one action.',
+        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected '
+                                         'together. Choose only one action.',
         'dynamic_tick_off_fail': 'Failed to disable dynamic tick through BCDEdit.',
-        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the default if timing, sleep or battery '
-                               'behavior gets worse.',
+        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the '
+                               'default if timing, sleep or battery behavior gets worse.',
         'dynamic_tick_restore_fail': 'Failed to restore dynamic tick default through BCDEdit.',
         'dynamic_tick_restore_ok': 'Dynamic tick returned to Windows default. Restart Windows.',
         'event_log': 'Event log',
@@ -833,14 +911,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'gaming_report_hags': 'Hardware-Accelerated GPU Scheduling',
         'gaming_report_item_fmt': '{item}: {state}.',
         'gaming_report_no_critical_notes': 'No critical incompatibilities were found in the quick report.',
-        'gaming_report_note_admin_limited': '• Without administrator rights, some HKLM/powercfg/BCDEdit statuses can be incomplete.',
-        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR is enabled. If you record/stream with OBS, it can duplicate capture work and '
-                                              'consume resources.',
-        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick was changed through BCDEdit. This is not a universal boost; keep the rollback action nearby.',
-        'gaming_report_note_hags_unsupported': '• HAGS is unavailable or unsupported by this Windows/driver combination.',
+        'gaming_report_note_admin_limited': '• Without administrator rights, some HKLM/powercfg/BCDEdit statuses can '
+                                            'be incomplete.',
+        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR is enabled. If you record/stream with OBS, '
+                                              'it can duplicate capture work and consume resources.',
+        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick was changed through BCDEdit. This is not a universal '
+                                                  'boost; keep the rollback action nearby.',
+        'gaming_report_note_hags_unsupported': '• HAGS is unavailable or unsupported by this Windows/driver '
+                                               'combination.',
         'gaming_report_note_windows_only': '⚠ This report is useful only on Windows 10/11.',
-        'gaming_report_note_wow64': '• Running a 32-bit process on 64-bit Windows: FreeCleaner reads HKLM\\SOFTWARE through the 64-bit registry view to avoid '
-                                    'WOW6432Node mistakes.',
+        'gaming_report_note_wow64': '• Running a 32-bit process on 64-bit Windows: FreeCleaner reads HKLM\\SOFTWARE '
+                                    'through the 64-bit registry view to avoid WOW6432Node mistakes.',
         'gaming_report_power_fmt': 'Active power plan: {plan}.',
         'gaming_report_power_throttling': 'Power Throttling',
         'gaming_report_started': 'Gaming tweak compatibility report started. No settings will be changed.',
@@ -855,14 +936,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'graphics_apps_ok': 'Opened per-app Graphics settings.',
         'graphics_defaults_fail': 'Failed to open Graphics default settings.',
         'graphics_defaults_ok': 'Opened Graphics default settings.',
-        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose only one after testing.',
+        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose '
+                                 'only one after testing.',
         'hags_off_fail': 'Failed to disable HAGS through the registry.',
         'hags_off_ok': 'HAGS disabled. Restart Windows and test WoW for stutter or hitching.',
         'hags_on_fail': 'Failed to enable HAGS through the registry.',
         'hags_on_ok': 'HAGS enabled. Restart Windows and test your games for stability and stutter.',
         'high_perf_fail': 'Failed to change the power plan.',
         'high_perf_ok': 'High Performance enabled.',
-        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power profile already includes it.',
+        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power '
+                                       'profile already includes it.',
         'junk_found': 'Junk found',
         'lang_auto': 'Auto',
         'lang_en': 'English',
@@ -887,7 +970,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'no': 'No',
         'no_noticeable_junk': 'No noticeable junk was found in the selected folders.',
         'nothing_selected': 'Nothing selected.',
-        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — CPU encoder. For game+stream this often causes frame drops; prefer NVENC/QSV/AMF when available.',
+        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — CPU encoder. For game+stream this often causes frame '
+                                    'drops; prefer NVENC/QSV/AMF when available.',
         'obs_encoder_hw_ok_fmt': '✓ {label}: {encoder} — hardware encoder, the right direction for streaming.',
         'obs_encoder_unknown_fmt': '• {label}: {encoder} — encoder type could not be determined reliably.',
         'obs_log_issue_dropped_frames': 'dropped frames due to network or bandwidth',
@@ -897,14 +981,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'obs_log_issue_recording_failure': 'recording start/runtime errors',
         'obs_log_issue_rendering_lag': 'rendering lag / scene render stalls',
         'obs_log_issue_unknown': 'unknown OBS log issue',
-        'obs_log_triple_activity_warn': '⚠ Recent OBS logs show stream, recording and Replay Buffer activity together. This can overload the encoder or disk.',
+        'obs_log_triple_activity_warn': '⚠ Recent OBS logs show stream, recording and Replay Buffer activity together. '
+                                        'This can overload the encoder or disk.',
         'obs_logs_clean': 'OBS log checker: no critical encoding/render/network lag signs were found in recent logs.',
-        'obs_profile_missing': 'No OBS profiles were found. If OBS is portable, the standard AppData profile check may be empty.',
-        'obs_profile_summary_fmt': 'OBS profile [{profile}]: mode {mode}, stream {stream}, recording {record}, format {format}, Replay Buffer: {replay}.',
+        'obs_profile_missing': 'No OBS profiles were found. If OBS is portable, the standard AppData profile check may '
+                               'be empty.',
+        'obs_profile_summary_fmt': 'OBS profile [{profile}]: mode {mode}, stream {stream}, recording {record}, format '
+                                   '{format}, Replay Buffer: {replay}.',
         'obs_rec_format_ok_fmt': '✓ OBS profile [{profile}]: recording format {format} is fine for safer recording.',
-        'obs_rec_format_warn_fmt': '⚠ OBS profile [{profile}]: recording format {format}. Prefer MKV/Hybrid MP4 so a crash does not lose the file.',
+        'obs_rec_format_warn_fmt': '⚠ OBS profile [{profile}]: recording format {format}. Prefer MKV/Hybrid MP4 so a '
+                                   'crash does not lose the file.',
         'obs_record_encoder': 'Recording encoder',
-        'obs_replay_combo_warn': '⚠ Replay Buffer is enabled. Do not keep Stream + Recording + Replay Buffer together without GPU/disk headroom.',
+        'obs_replay_combo_warn': '⚠ Replay Buffer is enabled. Do not keep Stream + Recording + Replay Buffer together '
+                                 'without GPU/disk headroom.',
         'obs_stream_encoder': 'Stream encoder',
         'onedrive_autostart_remove_fail': 'OneDrive: startup entry was not found or could not be removed.',
         'onedrive_autostart_removed': 'OneDrive: current-user startup removed.',
@@ -921,10 +1010,12 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'onedrive_report_cleanup_fmt': 'OneDrive: found {targets} safe cleanup targets, about {mb:.1f} MB.',
         'onedrive_report_done': 'OneDrive: report finished.',
         'onedrive_report_failed': 'OneDrive: failed to collect report.',
-        'onedrive_report_policy_note': 'OneDrive: sync blocking policy is not active. Admin rights are needed for full disabling.',
+        'onedrive_report_policy_note': 'OneDrive: sync blocking policy is not active. Admin rights are needed for full '
+                                       'disabling.',
         'onedrive_report_running_warn': 'OneDrive: process is active and may affect disk, network, and autosync.',
         'onedrive_report_started': 'OneDrive: collecting report...',
-        'onedrive_report_status_fmt': 'OneDrive: installed={installed}, running={running}, autostart={autostart}, sync policy={policy}.',
+        'onedrive_report_status_fmt': 'OneDrive: installed={installed}, running={running}, autostart={autostart}, sync '
+                                      'policy={policy}.',
         'onedrive_restore_done': 'OneDrive: restore finished.',
         'onedrive_restore_failed': 'OneDrive: failed to restore background activity.',
         'onedrive_restore_started': 'OneDrive: restoring background activity...',
@@ -935,9 +1026,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'pick_one_module': 'First select at least one module.',
         'power_mode_page_fail': 'Failed to open Windows power settings.',
         'power_mode_page_ok': 'Opened Windows power settings.',
-        'power_profile_conflict_skipped': 'Power profile changes were skipped because maximum CPU profile and Balanced restore were selected together.',
-        'power_restore_conflict_skipped': 'Power plan conflict: Balanced restore was selected together with performance profiles. Performance profiles were '
-                                          'skipped.',
+        'power_profile_conflict_skipped': 'Power profile changes were skipped because maximum CPU profile and Balanced '
+                                          'restore were selected together.',
+        'power_restore_conflict_skipped': 'Power plan conflict: Balanced restore was selected together with '
+                                          'performance profiles. Performance profiles were skipped.',
         'power_throttling_fail': 'Failed to disable Power Throttling.',
         'power_throttling_ok': 'Power Throttling disabled.',
         'pre_cleanup_actions': 'Running pre-cleanup actions to avoid locked files.',
@@ -947,16 +1039,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'profile_manual': 'Manual',
         'profile_streamer': 'Gaming + streaming',
         'queued_actions_fmt': 'Queued command actions: {count}',
-        'quick_profiles': 'Quick profiles',
         'reboot_recommended': 'A system restart is recommended for this change to fully apply.',
         'recycle_fail': 'Failed to empty Recycle Bin or it is already empty.',
         'recycle_ok': 'Recycle Bin emptied.',
-        'registry_admin_values_skipped': 'Some system registry values were skipped because administrator rights are required.',
+        'registry_admin_values_skipped': 'Some system registry values were skipped because administrator rights are '
+                                         'required.',
         'registry_backup_created': 'Registry backup created: {path}',
         'registry_backup_failed': 'Failed to create a registry backup. Changes were not applied.',
-        'registry_leftovers_done_fmt': 'Registry leftovers cleanup: found {found}, removed {removed} ({keys} keys, {values} values), failed {failed}.',
-        'registry_leftovers_limited_mode': 'Limited mode: only current-user registry leftovers were checked. Run as administrator to include machine-wide HKLM '
-                                           'entries.',
+        'registry_leftovers_done_fmt': 'Registry leftovers cleanup: found {found}, removed {removed} ({keys} keys, '
+                                       '{values} values), failed {failed}.',
+        'registry_leftovers_limited_mode': 'Limited mode: only current-user registry leftovers were checked. Run as '
+                                           'administrator to include machine-wide HKLM entries.',
         'registry_leftovers_none': 'No safe registry leftovers were found.',
         'registry_restore_fail': 'Failed to restore registry backup: {name}',
         'registry_restore_missing': 'No registry backup was found.',
@@ -979,10 +1072,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'restore_dialog_backups': 'Available backups',
         'restore_dialog_manifest_empty': 'No manifest data found for this backup.',
         'restore_dialog_meta': 'Created: {created}\nFiles: {count}\nType: {kind}',
-        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new pre-restore snapshot before import, so you can '
-                               'undo the undo if needed.',
-        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the current state will be created '
-                              'automatically.',
+        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new '
+                               'pre-restore snapshot before import, so you can undo the undo if needed.',
+        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the '
+                              'current state will be created automatically.',
         'restore_dialog_title': 'Restore registry backup',
         'restore_registry_admin_required': 'Run FreeCleaner as administrator to restore the registry backup.',
         'restore_registry_backup': 'Restore registry backup',
@@ -1002,14 +1095,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'sec_net_title': 'Browsers and network',
         'sec_onedrive_sub': 'Disable background impact, diagnostics, and safe cache/log cleanup',
         'sec_onedrive_title': 'OneDrive',
-        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target value, and FreeCleaner creates a backup '
-                                      'before applying changes.',
+        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target '
+                                      'value, and FreeCleaner creates a backup before applying changes.',
         'sec_optimizer_registry_title': 'Additional registry gaming tweaks',
-        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, standby RAM and graphics settings without '
-                             'overclocking.',
+        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, '
+                             'standby RAM and graphics settings without overclocking.',
         'sec_optimizer_title': 'Windows gaming optimizer',
-        'sec_optimizer_tools_sub': 'Everything below only opens official Windows settings pages: graphics, Captures, Game Mode, visual effects, and other '
-                                   'useful gaming pages.',
+        'sec_optimizer_tools_sub': 'Everything below only opens official Windows settings pages: graphics, Captures, '
+                                   'Game Mode, visual effects, and other useful gaming pages.',
         'sec_optimizer_tools_title': 'Open Windows settings',
         'sec_system_sub': 'Safe core locations for quick cleanup.',
         'sec_system_title': 'System temporary files',
@@ -1035,11 +1128,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'stop_update_services': 'Stopping Windows Update services to clean cache...',
         'streamer': 'Gaming + streaming',
         'streamer_profile_on': 'Gaming + streaming profile enabled.',
-        'streaming_cpu_high_warn': '⚠ CPU is heavily loaded right now. For streaming, check background processes or move encoding to the GPU.',
+        'streaming_cpu_high_warn': '⚠ CPU is heavily loaded right now. For streaming, check background processes or '
+                                   'move encoding to the GPU.',
         'streaming_diag_done': 'Streaming diagnostics finished.',
         'streaming_diag_failed': 'Failed to run streaming diagnostics.',
         'streaming_diag_started': 'Streaming diagnostics started. No settings will be changed.',
-        'streaming_gpu_high_warn': '⚠ GPU is nearly saturated. For game+stream, reduce preset/quality, FPS or heavy OBS filters.',
+        'streaming_gpu_high_warn': '⚠ GPU is nearly saturated. For game+stream, reduce preset/quality, FPS or heavy '
+                                   'OBS filters.',
         'streaming_load_fmt': 'Current load: CPU {cpu}, RAM {ram}, GPU {gpu}.',
         'tab_cleaner': 'Cleaner',
         'tab_cleaner_sub': 'Cleanup caches, temp files and launcher leftovers.',
@@ -1063,38 +1158,46 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.browser_chrome.title': 'Google Chrome Cache',
         'task.browser_edge.desc': 'Cached pages, media and temporary network files.',
         'task.browser_edge.title': 'Microsoft Edge Cache',
-        'task.browser_generic.desc': 'Real cache folders for this browser profile: network cache, code cache, GPU cache and service worker cache.',
+        'task.browser_generic.desc': 'Real cache folders for this browser profile: network cache, code cache, GPU '
+                                     'cache and service worker cache.',
         'task.browser_generic.title': '{browser} Cache ({profile})',
         'task.browser_opera.desc': 'Temporary files and Opera browser cache.',
         'task.browser_opera.title': 'Opera Cache',
-        'task.cpu_latency_power_profile.desc': 'Advanced AC-only profile for old and modern CPUs: High Performance, EPP=0, more aggressive boost, faster '
-                                               'frequency ramp-up, unparked cores, and PCIe ASPM off. Not overclocking, but it can increase heat and power '
-                                               'use; test it separately.',
+        'task.cpu_latency_power_profile.desc': 'Advanced AC-only profile for old and modern CPUs: High Performance, '
+                                               'EPP=0, more aggressive boost, faster frequency ramp-up, unparked '
+                                               'cores, and PCIe ASPM off. Not overclocking, but it can increase heat '
+                                               'and power use; test it separately.',
         'task.cpu_latency_power_profile.title': 'Maximum CPU latency/performance profile',
         'task.crash_dumps.desc': 'Application crash dump files from the current user profile.',
         'task.crash_dumps.title': 'User Crash Dumps',
-        'task.cryptnet_cache.desc': 'Cached certificate URL metadata/content. Windows recreates it automatically when certificates are checked.',
+        'task.cryptnet_cache.desc': 'Cached certificate URL metadata/content. Windows recreates it automatically when '
+                                    'certificates are checked.',
         'task.cryptnet_cache.title': 'Cryptnet URL certificate cache',
         'task.delivery_opt.desc': 'Cache of update delivery files.',
         'task.delivery_opt.title': 'Delivery Optimization Cache',
-        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs with frametime jitter, but Microsoft '
-                                                  'documents this boot option mainly for debugging. Manual advanced action; restart required.',
+        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs '
+                                                  'with frametime jitter, but Microsoft documents this boot option '
+                                                  'mainly for debugging. Manual advanced action; restart required.',
         'task.disable_dynamic_tick_latency.title': 'Disable dynamic tick (latency test)',
-        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and related fullscreen compatibility flags to '
-                                     'reduce recording overhead while playing.',
+        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and '
+                                     'related fullscreen compatibility flags to reduce recording overhead while '
+                                     'playing.',
         'task.disable_gamedvr.title': 'Disable Xbox Game Bar & DVR',
-        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if HAGS causes stutter, hitching or driver '
-                                  'issues. Restart required.',
+        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if '
+                                  'HAGS causes stutter, hitching or driver issues. Restart required.',
         'task.disable_hags.title': 'Disable HAGS (stutter fallback)',
-        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable mouse input in games. A sign-out or app '
-                                                'restart may be needed.',
+        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable '
+                                                'mouse input in games. A sign-out or app restart may be needed.',
         'task.disable_mouse_acceleration.title': 'Disable mouse acceleration',
-        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and interruptions during gaming sessions.',
+        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and '
+                                           'interruptions during gaming sessions.',
         'task.disable_notifications.title': 'Open Do Not Disturb / Focus Assist',
-        'task.disable_onedrive_background.desc': 'Quits OneDrive, removes startup, and with admin rights enables the policy that blocks sync.',
+        'task.disable_onedrive_background.desc': 'Quits OneDrive, removes startup, and with admin rights enables the '
+                                                 'policy that blocks sync.',
         'task.disable_onedrive_background.title': 'Disable background OneDrive',
-        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry setting. This may reduce unwanted '
-                                              'throttling of game-related workloads. Restart required.',
+        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry '
+                                              'setting. This may reduce unwanted throttling of game-related workloads. '
+                                              'Restart required.',
         'task.disable_power_throttling.title': 'Disable Power Throttling',
         'task.discord_cache.desc': 'Discord web cache.',
         'task.discord_cache.title': 'Discord Cache',
@@ -1108,8 +1211,9 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.dx_shader_cache.title': 'DirectX Shader Cache',
         'task.enable_game_mode.desc': 'Enables Windows Game Mode to reduce background interference while gaming.',
         'task.enable_game_mode.title': 'Enable Windows Game Mode',
-        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver combinations. This is optional: test games '
-                                 'after reboot and restore if stutters appear.',
+        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver '
+                                 'combinations. This is optional: test games after reboot and restore if stutters '
+                                 'appear.',
         'task.enable_hags.title': 'Enable HAGS (optional GPU scheduling)',
         'task.epic_webcache.desc': 'Chromium cache of the Epic Games launcher.',
         'task.epic_webcache.title': 'Epic Games Web Cache',
@@ -1121,8 +1225,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.firefox_startupCache.title': 'Firefox Startup Cache ({profile})',
         'task.font_cache.desc': 'Font rendering cache. Windows recreates it automatically.',
         'task.font_cache.title': 'Font Cache',
-        'task.gaming_compat_report.desc': 'Read-only check of Windows version, Game Mode, Game DVR/Captures, HAGS, Power Throttling, power plan and dynamic '
-                                          'tick before applying tweaks.',
+        'task.gaming_compat_report.desc': 'Read-only check of Windows version, Game Mode, Game DVR/Captures, HAGS, '
+                                          'Power Throttling, power plan and dynamic tick before applying tweaks.',
         'task.gaming_compat_report.title': 'Gaming tweak compatibility report',
         'task.high_perf_plan.desc': 'Switches to High Performance. Best for plugged-in PCs.',
         'task.high_perf_plan.title': 'High Performance Power Plan',
@@ -1138,11 +1242,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.launcher_cache.title': '{app} Launcher Cache',
         'task.memory_dumps.desc': 'Old BSOD and crash dump files. Keep them only if you are diagnosing crashes.',
         'task.memory_dumps.title': 'Windows Memory Dumps',
-        'task.mmcss_gaming_profile.desc': 'Applies documented multimedia scheduler values for games. It avoids old fake tweaks that do not affect modern '
-                                          'Windows.',
+        'task.mmcss_gaming_profile.desc': 'Applies documented multimedia scheduler values for games. It avoids old '
+                                          'fake tweaks that do not affect modern Windows.',
         'task.mmcss_gaming_profile.title': 'Apply safe MMCSS gaming profile',
-        'task.network_throttling_off.desc': 'Sets NetworkThrottlingIndex to 0xffffffff for lower network throttling in multimedia/game workloads. Restart '
-                                            'recommended.',
+        'task.network_throttling_off.desc': 'Sets NetworkThrottlingIndex to 0xffffffff for lower network throttling in '
+                                            'multimedia/game workloads. Restart recommended.',
         'task.network_throttling_off.title': 'Disable MMCSS NetworkThrottlingIndex',
         'task.nvidia_compute_cache.desc': 'NVIDIA CUDA/compute cache. It can be rebuilt automatically.',
         'task.nvidia_compute_cache.title': 'NVIDIA Compute Cache',
@@ -1164,48 +1268,59 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.onedrive_setup_logs.title': 'OneDrive setup logs',
         'task.onedrive_webview_cache.desc': 'Cleans OneDrive WebView Cache, Code Cache, GPUCache, and shader caches.',
         'task.onedrive_webview_cache.title': 'OneDrive WebView/GPU cache',
-        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game DVR settings.',
+        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game '
+                                           'DVR settings.',
         'task.open_capture_settings.title': 'Open Captures / DVR settings',
-        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. FreeCleaner does not disable this '
-                                         'automatically because it is a security trade-off.',
+        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. '
+                                         'FreeCleaner does not disable this automatically because it is a security '
+                                         'trade-off.',
         'task.open_core_isolation.title': 'Open Core isolation / Memory integrity',
-        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the setting manually.',
+        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the '
+                                             'setting manually.',
         'task.open_game_mode_settings.title': 'Open Game Mode settings',
-        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High performance on systems with multiple GPUs.',
+        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High '
+                                        'performance on systems with multiple GPUs.',
         'task.open_graphics_apps.title': 'Open per-app graphics settings',
-        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed games, Variable Refresh Rate and hardware '
-                                            'GPU features when supported.',
+        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed '
+                                            'games, Variable Refresh Rate and hardware GPU features when supported.',
         'task.open_graphics_defaults.title': 'Open Graphics default settings',
-        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM '
-                                              'power modes override classic power plans.',
+        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best '
+                                              'performance on Windows 10/11 systems where OEM power modes override '
+                                              'classic power plans.',
         'task.open_power_mode_settings.title': 'Open Power mode settings',
-        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual effects to best performance.',
+        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual '
+                                         'effects to best performance.',
         'task.open_visual_effects.title': 'Open Visual Effects performance options',
         'task.prefetch.desc': 'Program launch traces. Windows will rebuild them after cleanup.',
         'task.prefetch.title': 'Windows Prefetch',
-        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does not close apps or change RAM timings.',
+        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does '
+                                       'not close apps or change RAM timings.',
         'task.purge_standby_ram.title': 'Purge standby RAM cache',
         'task.recent_docs.desc': 'Clears Explorer history of recently opened files.',
         'task.recent_docs.title': 'Recent Items',
         'task.recycle.desc': 'Permanently empties the Recycle Bin.',
         'task.recycle.title': 'Empty Recycle Bin',
-        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target status lines without applying changes.',
+        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target '
+                                               'status lines without applying changes.',
         'task.refresh_registry_statuses.title': 'Refresh registry statuses',
-        'task.registry_leftovers.desc': 'Removes only clearly broken Open With/Application, App Paths and startup entries that point to missing executables. '
-                                        'Creates a registry backup first.',
+        'task.registry_leftovers.desc': 'Removes only clearly broken Open With/Application, App Paths and startup '
+                                        'entries that point to missing executables. Creates a registry backup first.',
         'task.registry_leftovers.title': 'Conservative registry leftovers cleanup',
-        'task.reset_winsock.desc': 'Resets the network stack. Useful for odd socket issues. A restart is recommended afterward.',
+        'task.reset_winsock.desc': 'Resets the network stack. Useful for odd socket issues. A restart is recommended '
+                                   'afterward.',
         'task.reset_winsock.title': 'Reset Winsock',
-        'task.restore_balanced_power_profile.desc': 'Safe rollback after gaming power tweaks: switches Windows back to Balanced without deleting custom OEM '
-                                                    'power plans.',
+        'task.restore_balanced_power_profile.desc': 'Safe rollback after gaming power tweaks: switches Windows back to '
+                                                    'Balanced without deleting custom OEM power plans.',
         'task.restore_balanced_power_profile.title': 'Restore Balanced power plan',
-        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows manage timer ticks normally again. '
-                                                  'Restart required.',
+        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows '
+                                                  'manage timer ticks normally again. Restart required.',
         'task.restore_dynamic_tick_default.title': 'Restore dynamic tick default',
-        'task.restore_onedrive_background.desc': 'Removes the OneDrive blocking policy with admin rights and starts the client in the background.',
+        'task.restore_onedrive_background.desc': 'Removes the OneDrive blocking policy with admin rights and starts '
+                                                 'the client in the background.',
         'task.restore_onedrive_background.title': 'Restore OneDrive',
-        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only CPU/PCIe latency settings. It does not '
-                                               'change voltage, clocks, fan curves or thermal protection.',
+        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only '
+                                               'CPU/PCIe latency settings. It does not change voltage, clocks, fan '
+                                               'curves or thermal protection.',
         'task.safe_gaming_power_profile.title': 'Safe CPU/GPU gaming power profile',
         'task.steam_appcache.desc': 'Steam client HTTP/app cache.',
         'task.steam_appcache.title': 'Steam App Cache',
@@ -1215,14 +1330,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.steam_shadercache.title': 'Steam Shader Cache',
         'task.streaming_app_cache.desc': 'Temporary cache for streaming tools. App settings and scenes are preserved.',
         'task.streaming_app_cache.title': 'Streaming App Cache ({app})',
-        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting history.',
+        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting '
+                                        'history.',
         'task.streaming_app_logs.title': 'Streaming App Logs ({app})',
-        'task.streaming_diagnostics.desc': 'Checks OBS profiles, encoders, recent OBS logs, current CPU/GPU/RAM load and disk write speed. It does not change '
-                                           'settings automatically.',
+        'task.streaming_diagnostics.desc': 'Checks OBS profiles, encoders, recent OBS logs, current CPU/GPU/RAM load '
+                                           'and disk write speed. It does not change settings automatically.',
         'task.streaming_diagnostics.title': 'OBS/system streaming diagnostics',
         'task.streaming_obs_cache.desc': 'OBS temporary cache only. Scenes, sources and profiles are not removed.',
         'task.streaming_obs_cache.title': 'OBS Studio Cache ({app})',
-        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues right now.',
+        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues '
+                                        'right now.',
         'task.streaming_obs_logs.title': 'OBS Studio Logs / Crashes ({app})',
         'task.system_temp.desc': 'Windows system temp. Best cleaned with administrator rights.',
         'task.system_temp.title': 'System Temp ({path})',
@@ -1236,31 +1353,37 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.update_cache_files.title': 'Windows Update Cache',
         'task.user_temp.desc': 'Temporary files of the current user. Almost always a safe pick.',
         'task.user_temp.title': 'User Temp ({path})',
-        'task.uwp_temp_caches.desc': 'Conservative cleanup of {count} packaged-app TempState/AC Temp folders. It does not touch LocalState app data.',
+        'task.uwp_temp_caches.desc': 'Conservative cleanup of {count} packaged-app TempState/AC Temp folders. It does '
+                                     'not touch LocalState app data.',
         'task.uwp_temp_caches.title': 'Microsoft Store app temp caches',
         'task.web_cache.desc': 'Windows WebCache database leftovers and browser-control cache files.',
         'task.web_cache.title': 'Windows WebCache',
         'task.windows_caches_user.desc': 'Small Windows per-user cache folders. Safe to rebuild when needed.',
         'task.windows_caches_user.title': 'Windows user cache folders',
-        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting update/component issues.',
+        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting '
+                                            'update/component issues.',
         'task.windows_component_logs.title': 'Windows Component Logs',
         'task.windows_old.desc': 'Windows.old from a previous upgrade. Cleaning it removes the easy rollback files.',
         'task.windows_old.title': 'Previous Windows Installation',
-        'task.windows_setup_logs.desc': 'Old setup/upgrade logs such as Panther, MoSetup and setup cleanup logs. Keep only while diagnosing Windows '
-                                        'update/install issues.',
+        'task.windows_setup_logs.desc': 'Old setup/upgrade logs such as Panther, MoSetup and setup cleanup logs. Keep '
+                                        'only while diagnosing Windows update/install issues.',
         'task.windows_setup_logs.title': 'Windows setup and upgrade logs',
-        'task.windows_update_etl_logs.desc': 'Old WaaSMedic ETL logs from Windows Update troubleshooting. Locked active files are skipped.',
+        'task.windows_update_etl_logs.desc': 'Old WaaSMedic ETL logs from Windows Update troubleshooting. Locked '
+                                             'active files are skipped.',
         'task.windows_update_etl_logs.title': 'Windows Update Medic logs',
-        'task.windows_wmi_etl_logs.desc': 'Diagnostic ETL logs such as DiagTrack listener files. Active locked logs are skipped.',
+        'task.windows_wmi_etl_logs.desc': 'Diagnostic ETL logs such as DiagTrack listener files. Active locked logs '
+                                          'are skipped.',
         'task.windows_wmi_etl_logs.title': 'WMI and diagnostic ETL logs',
         'threads_info': 'Scanning: {scan} threads | cleaning: {clean} threads',
         'top_consumers': 'Largest space consumers:',
         'ultimate_perf_fail': 'Failed to enable Ultimate Performance.',
         'ultimate_perf_ok': 'Ultimate Performance enabled.',
-        'ultimate_power_redundant_skipped': 'Power plan duplication: Ultimate Performance has higher priority, weaker power switches were skipped.',
+        'ultimate_power_redundant_skipped': 'Power plan duplication: Ultimate Performance has higher priority, weaker '
+                                            'power switches were skipped.',
         'unavailable_short': 'n/a',
         'unknown': 'Unknown',
-        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest version: {latest}.',
+        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest '
+                                 'version: {latest}.',
         'update_available_log': 'Update found: {current} → {latest}',
         'update_changelog': 'What changed',
         'update_check_failed': 'Could not check for updates right now.',
@@ -1272,15 +1395,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'update_download_complete': 'Update downloaded:\n{path}',
         'update_download_failed': 'Could not download the update.',
         'update_download_failed_reason': 'Could not download the update: {reason}',
-        'update_download_idle': 'The installer will be saved to the local FreeCleaner user folder and started automatically after download. If FreeCleaner is '
-                                'installed under Program Files, Windows may request administrator permission only when the installer runs.',
+        'update_download_idle': 'The installer will be saved to the local FreeCleaner user folder and started '
+                                'automatically after download. If FreeCleaner is installed under Program Files, '
+                                'Windows may request administrator permission only when the installer runs.',
         'update_download_location': 'Update folder: {path}',
         'update_download_progress': 'Downloading: {progress}',
         'update_download_saved': 'Update saved to: {path}',
         'update_download_section': 'Update download',
         'update_download_started': 'Starting download for update {version}...',
         'update_downloading': 'Downloading...',
-        'update_install_cleanup_scheduled': 'Old update files will be removed from the updates folder after installation.',
+        'update_install_cleanup_scheduled': 'Old update files will be removed from the updates folder after '
+                                            'installation.',
         'update_install_closing_app': 'Installer started. FreeCleaner will close so the update can be installed.',
         'update_install_failed_reason': 'Could not start the update installer: {reason}',
         'update_install_started': 'Update installer started: {path}',
@@ -1304,10 +1429,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'about_close': 'Cerrar',
         'about_copied': 'Copiado al portapapeles.',
         'about_copy': 'Copiar',
-        'about_desc': 'FreeCleaner te ayuda a eliminar de forma segura archivos temporales y pequeños restos para liberar espacio y aligerar Windows.',
+        'about_desc': 'FreeCleaner te ayuda a eliminar de forma segura archivos temporales y pequeños restos para '
+                      'liberar espacio y aligerar Windows.',
         'about_doc_missing': 'Archivo no encontrado: {name}',
-        'about_hint_body': '• FreeCleaner funciona localmente en tu PC.\\n• No subimos tus archivos a ningún sitio.\\n• Puedes leer y copiar documentos desde '
-                           'la propia app.',
+        'about_hint_body': '• FreeCleaner funciona localmente en tu PC.\\n• No subimos tus archivos a ningún '
+                           'sitio.\\n• Puedes leer y copiar documentos desde la propia app.',
         'about_hint_title': 'Conviene saber',
         'about_license': 'Licencia',
         'about_license_sub': 'Cómo puedes usar y distribuir FreeCleaner.',
@@ -1357,22 +1483,26 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'cleaner_modules': ' CLEANER MODULES ',
         'cleaning_targets_fmt': 'Limpiando {count} objetivos usando {workers} hilos...',
         'cleanup_reboot_scheduled_fmt': 'Programado para eliminarse después del reinicio: {title} -> {count}',
-        'cleanup_remaining_fmt': 'Aún quedan elementos tras la limpieza: {title} -> archivos: {files}, carpetas: {dirs}',
+        'cleanup_remaining_fmt': 'Aún quedan elementos tras la limpieza: {title} -> archivos: {files}, carpetas: '
+                                 '{dirs}',
         'cleanup_skipped_links_fmt': 'Enlaces/junctions protegidos omitidos: {title} -> {count}',
-        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: {scheduled}, links skipped: {skipped}, '
-                               'errors/skipped: {errors}',
+        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: '
+                               '{scheduled}, links skipped: {skipped}, errors/skipped: {errors}',
         'cleanup_target_failed_fmt': 'Cleanup error: {title}',
         'cleanup_target_ok_fmt': 'Cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}',
-        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}',
+        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, '
+                                      'skipped: {errors}',
         'clear_log': 'Limpiar registro',
         'clear_search': 'Limpiar búsqueda',
         'copy_log': 'Copiar registro',
         'core_isolation_page_fail': 'Failed to open Windows Security / Core isolation page.',
         'core_isolation_page_ok': 'Opened Windows Security / Core isolation page.',
-        'cpu_latency_power_fail': 'No se pudo aplicar el perfil de CPU. Es posible que el OEM, el controlador o el plan de energía no soporte algunos alias de '
-                                  'powercfg.',
-        'cpu_latency_power_ok': 'Perfil de latencia/rendimiento de CPU aplicado. Revisa temperaturas y estabilidad en juegos.',
-        'cpu_latency_redundant_skipped': 'Se omitió el perfil seguro High Performance/gaming porque el perfil máximo de CPU ya incluye esas acciones.',
+        'cpu_latency_power_fail': 'No se pudo aplicar el perfil de CPU. Es posible que el OEM, el controlador o el '
+                                  'plan de energía no soporte algunos alias de powercfg.',
+        'cpu_latency_power_ok': 'Perfil de latencia/rendimiento de CPU aplicado. Revisa temperaturas y estabilidad en '
+                                'juegos.',
+        'cpu_latency_redundant_skipped': 'Se omitió el perfil seguro High Performance/gaming porque el perfil máximo '
+                                         'de CPU ya incluye esas acciones.',
         'custom_language_label': 'Personalizado [{name}]',
         'deep_profile': 'Deep cleanup',
         'deep_profile_on': 'Deep cleanup profile enabled.',
@@ -1392,16 +1522,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_disk_ok_fmt': 'Тест запису: {mbps:.1f} MB/s у “{folder}” ({size} MB).',
         'diag_gpu_pref_header': 'GPU preference:',
         'diag_gpu_pref_line': '• {app}: {pref}',
-        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків краще виставити High performance вручну.',
+        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків '
+                                 'краще виставити High performance вручну.',
         'diag_label_captures': 'Captures/Game DVR',
         'diag_label_game_mode': 'Game Mode',
         'diag_label_hags': 'HAGS',
         'diag_label_power_plan': 'Power plan',
         'diag_more_items_fmt': '…ще {count}',
         'diag_network_activity_fmt': 'Останні логи: stream={stream}, record={record}, Replay Buffer={replay}',
-        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest server, а не “сміття Windows”.',
+        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest '
+                                    'server, а не “сміття Windows”.',
         'diag_network_no_drops': 'У свіжих OBS logs dropped frames не знайдено.',
-        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати CPU/GPU/диск.',
+        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати '
+                                    'CPU/GPU/диск.',
         'diag_obs_issues_line': 'У логах OBS знайдено: {issues}',
         'diag_obs_logs_clean': 'У свіжих OBS logs явних overload/dropped/NVENC помилок не знайдено.',
         'diag_obs_no_profiles': 'OBS профілі не знайдено або OBS ще не створив basic.ini.',
@@ -1413,14 +1546,21 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_onedrive_running': 'Ejecutándose',
         'diag_onedrive_state_line': '{label}: {value}',
         'diag_rec_all_good': 'Критичних проблем не видно. Не треба застосовувати випадкові інтернет-твіки.',
-        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати запис.',
-        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance GPU.',
-        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо він доступний.',
+        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати '
+                                     'запис.',
+        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance '
+                                         'GPU.',
+        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо '
+                                     'він доступний.',
         'diag_rec_mkv': 'Для запису краще MKV або Hybrid MP4, щоб зменшити ризик втрати файлу після крашу.',
-        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть Windows без причини.',
-        'diag_rec_onedrive_disable': 'OneDrive está activo: desactiva inicio/sincronización si no lo necesitas al jugar o transmitir.',
-        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації OneDrive.',
-        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або обмеж FPS у грі.',
+        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть '
+                                    'Windows без причини.',
+        'diag_rec_onedrive_disable': 'OneDrive está activo: desactiva inicio/sincronización si no lo necesitas al '
+                                     'jugar o transmitir.',
+        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації '
+                                   'OneDrive.',
+        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або '
+                                    'обмеж FPS у грі.',
         'diag_status_error': 'Помилка',
         'diag_status_info': 'Інфо',
         'diag_status_loading': 'Перевірка',
@@ -1436,11 +1576,12 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diagnostics_not_run': 'Натисни “Оновити діагностику”, щоб побачити реальний стан.',
         'diagnostics_refresh': 'Оновити діагностику',
         'diagnostics_running': 'Перевіряю…',
-        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. Налаштування не змінюються автоматично.',
+        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. '
+                                'Налаштування не змінюються автоматично.',
         'diagnostics_title': 'Діагностика стрімінгу та геймінгу',
         'disk_write_fail_fmt': 'No se pudo ejecutar la prueba de escritura en {folder}.',
-        'disk_write_low_warn': '⚠ La velocidad de escritura es baja para grabación estable con bitrate alto. Mejor usar SSD u otro disco que no esté cargando '
-                               'el juego.',
+        'disk_write_low_warn': '⚠ La velocidad de escritura es baja para grabación estable con bitrate alto. Mejor '
+                               'usar SSD u otro disco que no esté cargando el juego.',
         'disk_write_ok_fmt': 'Prueba de escritura: {mbps:.1f} MB/s en {folder}.',
         'dism_busy_close_blocked': 'DISM todavía se está ejecutando. El cierre está bloqueado hasta que termine.',
         'dism_fail': 'DISM terminó con errores.',
@@ -1449,10 +1590,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'dns_fail': 'No se pudo limpiar la caché DNS.',
         'dns_ok': 'Caché DNS limpiada.',
         'done_clean_sequence': 'Hecho. Secuencia de limpieza finalizada.',
-        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected together. Choose only one action.',
+        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected '
+                                         'together. Choose only one action.',
         'dynamic_tick_off_fail': 'Failed to disable dynamic tick through BCDEdit.',
-        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the default if timing, sleep or battery '
-                               'behavior gets worse.',
+        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the '
+                               'default if timing, sleep or battery behavior gets worse.',
         'dynamic_tick_restore_fail': 'Failed to restore dynamic tick default through BCDEdit.',
         'dynamic_tick_restore_ok': 'Dynamic tick returned to Windows default. Restart Windows.',
         'event_log': 'Registro de eventos',
@@ -1477,12 +1619,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'gaming_report_hags': 'Programación GPU acelerada por hardware',
         'gaming_report_item_fmt': '{item}: {state}.',
         'gaming_report_no_critical_notes': 'No se encontraron incompatibilidades críticas en el informe rápido.',
-        'gaming_report_note_admin_limited': '• Sin permisos de administrador, algunos estados HKLM/powercfg/BCDEdit pueden estar incompletos.',
-        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR está activado. Con OBS puede duplicar trabajo y consumir recursos.',
-        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick fue cambiado con BCDEdit. No es un boost universal; conserva la acción de reversión.',
-        'gaming_report_note_hags_unsupported': '• HAGS no está disponible o no es compatible con esta combinación de Windows/controlador.',
+        'gaming_report_note_admin_limited': '• Sin permisos de administrador, algunos estados HKLM/powercfg/BCDEdit '
+                                            'pueden estar incompletos.',
+        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR está activado. Con OBS puede duplicar '
+                                              'trabajo y consumir recursos.',
+        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick fue cambiado con BCDEdit. No es un boost universal; '
+                                                  'conserva la acción de reversión.',
+        'gaming_report_note_hags_unsupported': '• HAGS no está disponible o no es compatible con esta combinación de '
+                                               'Windows/controlador.',
         'gaming_report_note_windows_only': '⚠ Este informe solo tiene sentido en Windows 10/11.',
-        'gaming_report_note_wow64': '• Proceso de 32 bits en Windows de 64 bits: FreeCleaner lee HKLM\\SOFTWARE con vista de registro de 64 bits.',
+        'gaming_report_note_wow64': '• Proceso de 32 bits en Windows de 64 bits: FreeCleaner lee HKLM\\SOFTWARE con '
+                                    'vista de registro de 64 bits.',
         'gaming_report_power_fmt': 'Plan de energía activo: {plan}.',
         'gaming_report_power_throttling': 'Power Throttling',
         'gaming_report_started': 'Informe de compatibilidad iniciado. No se cambiarán ajustes.',
@@ -1497,14 +1644,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'graphics_apps_ok': 'Opened per-app Graphics settings.',
         'graphics_defaults_fail': 'Failed to open Graphics default settings.',
         'graphics_defaults_ok': 'Opened Graphics default settings.',
-        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose only one after testing.',
+        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose '
+                                 'only one after testing.',
         'hags_off_fail': 'Failed to disable HAGS through the registry.',
         'hags_off_ok': 'HAGS disabled. Restart Windows and test WoW for stutter or hitching.',
         'hags_on_fail': 'Failed to enable HAGS through the registry.',
         'hags_on_ok': 'HAGS enabled. Restart Windows and test your games for stability and stutter.',
         'high_perf_fail': 'No se pudo cambiar el plan de energía.',
         'high_perf_ok': 'High Performance activado.',
-        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power profile already includes it.',
+        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power '
+                                       'profile already includes it.',
         'junk_found': 'Basura encontrada',
         'lang_auto': 'Auto',
         'lang_en': 'English',
@@ -1529,8 +1678,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'no': 'No',
         'no_noticeable_junk': 'No se encontró basura apreciable en las carpetas seleccionadas.',
         'nothing_selected': 'No se seleccionó nada.',
-        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — codificador por CPU. Para juego+stream suele causar caídas de frames; usa NVENC/QSV/AMF si está '
-                                    'disponible.',
+        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — codificador por CPU. Para juego+stream suele causar caídas '
+                                    'de frames; usa NVENC/QSV/AMF si está disponible.',
         'obs_encoder_hw_ok_fmt': '✓ {label}: {encoder} — codificador por hardware, la opción correcta para streaming.',
         'obs_encoder_unknown_fmt': '• {label}: {encoder} — no se pudo determinar con seguridad el tipo de codificador.',
         'obs_log_issue_dropped_frames': 'frames perdidos por red o ancho de banda',
@@ -1540,15 +1689,21 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'obs_log_issue_recording_failure': 'errores al iniciar o ejecutar la grabación',
         'obs_log_issue_rendering_lag': 'lag de renderizado / parones al renderizar la escena',
         'obs_log_issue_unknown': 'problema desconocido en el log de OBS',
-        'obs_log_triple_activity_warn': '⚠ Los logs recientes de OBS muestran stream, grabación y Replay Buffer juntos. Puede sobrecargar el codificador o el '
-                                        'disco.',
-        'obs_logs_clean': 'Comprobación de logs OBS: no se encontraron señales críticas de lag de codificación/render/red en los logs recientes.',
-        'obs_profile_missing': 'No se encontraron perfiles de OBS. Si OBS es portable, la comprobación estándar de AppData puede estar vacía.',
-        'obs_profile_summary_fmt': 'Perfil OBS [{profile}]: modo {mode}, stream {stream}, grabación {record}, formato {format}, Replay Buffer: {replay}.',
-        'obs_rec_format_ok_fmt': '✓ Perfil OBS [{profile}]: el formato de grabación {format} es correcto para una grabación más segura.',
-        'obs_rec_format_warn_fmt': '⚠ Perfil OBS [{profile}]: formato de grabación {format}. Es mejor MKV/Hybrid MP4 para no perder el archivo si OBS falla.',
+        'obs_log_triple_activity_warn': '⚠ Los logs recientes de OBS muestran stream, grabación y Replay Buffer '
+                                        'juntos. Puede sobrecargar el codificador o el disco.',
+        'obs_logs_clean': 'Comprobación de logs OBS: no se encontraron señales críticas de lag de '
+                          'codificación/render/red en los logs recientes.',
+        'obs_profile_missing': 'No se encontraron perfiles de OBS. Si OBS es portable, la comprobación estándar de '
+                               'AppData puede estar vacía.',
+        'obs_profile_summary_fmt': 'Perfil OBS [{profile}]: modo {mode}, stream {stream}, grabación {record}, formato '
+                                   '{format}, Replay Buffer: {replay}.',
+        'obs_rec_format_ok_fmt': '✓ Perfil OBS [{profile}]: el formato de grabación {format} es correcto para una '
+                                 'grabación más segura.',
+        'obs_rec_format_warn_fmt': '⚠ Perfil OBS [{profile}]: formato de grabación {format}. Es mejor MKV/Hybrid MP4 '
+                                   'para no perder el archivo si OBS falla.',
         'obs_record_encoder': 'Codificador de grabación',
-        'obs_replay_combo_warn': '⚠ Replay Buffer está activado. No mantengas Stream + Grabación + Replay Buffer a la vez sin margen de GPU/disco.',
+        'obs_replay_combo_warn': '⚠ Replay Buffer está activado. No mantengas Stream + Grabación + Replay Buffer a la '
+                                 'vez sin margen de GPU/disco.',
         'obs_stream_encoder': 'Codificador de stream',
         'onedrive_autostart_remove_fail': 'OneDrive: entrada de inicio no encontrada o no se pudo quitar.',
         'onedrive_autostart_removed': 'OneDrive: inicio automático del usuario actual eliminado.',
@@ -1562,14 +1717,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'onedrive_policy_restored': 'OneDrive: política de bloqueo eliminada.',
         'onedrive_quit_fail': 'OneDrive: no se pudo detener completamente el proceso.',
         'onedrive_quit_ok': 'OneDrive: proceso detenido o no estaba iniciado.',
-        'onedrive_report_cleanup_fmt': 'OneDrive: encontrados {targets} objetivos seguros de limpieza, aprox. {mb:.1f} MB.',
+        'onedrive_report_cleanup_fmt': 'OneDrive: encontrados {targets} objetivos seguros de limpieza, aprox. {mb:.1f} '
+                                       'MB.',
         'onedrive_report_done': 'OneDrive: informe finalizado.',
         'onedrive_report_failed': 'OneDrive: no se pudo recopilar el informe.',
-        'onedrive_report_policy_note': 'OneDrive: la política de bloqueo de sincronización no está activa. Se requieren permisos de admin para desactivación '
-                                       'completa.',
-        'onedrive_report_running_warn': 'OneDrive: el proceso está activo y puede afectar disco, red y autosincronización.',
+        'onedrive_report_policy_note': 'OneDrive: la política de bloqueo de sincronización no está activa. Se '
+                                       'requieren permisos de admin para desactivación completa.',
+        'onedrive_report_running_warn': 'OneDrive: el proceso está activo y puede afectar disco, red y '
+                                        'autosincronización.',
         'onedrive_report_started': 'OneDrive: recopilando informe...',
-        'onedrive_report_status_fmt': 'OneDrive: instalado={installed}, ejecutándose={running}, inicio={autostart}, política de sincronización={policy}.',
+        'onedrive_report_status_fmt': 'OneDrive: instalado={installed}, ejecutándose={running}, inicio={autostart}, '
+                                      'política de sincronización={policy}.',
         'onedrive_restore_done': 'OneDrive: restauración finalizada.',
         'onedrive_restore_failed': 'OneDrive: no se pudo restaurar la actividad en segundo plano.',
         'onedrive_restore_started': 'OneDrive: restaurando actividad en segundo plano...',
@@ -1580,10 +1738,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'pick_one_module': 'Primero selecciona al menos un módulo.',
         'power_mode_page_fail': 'Failed to open Windows power settings.',
         'power_mode_page_ok': 'Opened Windows power settings.',
-        'power_profile_conflict_skipped': 'Se omitieron cambios de energía porque se seleccionaron a la vez el perfil máximo de CPU y la restauración '
-                                          'Balanced.',
-        'power_restore_conflict_skipped': 'Conflicto de plan de energía: restaurar Balanced se seleccionó junto con perfiles de rendimiento. Se omitieron los '
-                                          'perfiles de rendimiento.',
+        'power_profile_conflict_skipped': 'Se omitieron cambios de energía porque se seleccionaron a la vez el perfil '
+                                          'máximo de CPU y la restauración Balanced.',
+        'power_restore_conflict_skipped': 'Conflicto de plan de energía: restaurar Balanced se seleccionó junto con '
+                                          'perfiles de rendimiento. Se omitieron los perfiles de rendimiento.',
         'power_throttling_fail': 'Failed to disable Power Throttling.',
         'power_throttling_ok': 'Power Throttling disabled.',
         'pre_cleanup_actions': 'Ejecutando acciones previas a la limpieza para evitar archivos bloqueados.',
@@ -1593,17 +1751,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'profile_manual': 'Manual',
         'profile_streamer': 'Streamer',
         'queued_actions_fmt': 'Acciones de comandos en cola: {count}',
-        'quick_profiles': 'Perfiles rápidos',
         'reboot_recommended': 'A system restart is recommended for this change to fully apply.',
         'recycle_fail': 'No se pudo vaciar la Papelera o ya está vacía.',
         'recycle_ok': 'Papelera vaciada.',
-        'registry_admin_values_skipped': 'Se omitieron algunos valores del registro del sistema porque se requieren permisos de administrador.',
+        'registry_admin_values_skipped': 'Se omitieron algunos valores del registro del sistema porque se requieren '
+                                         'permisos de administrador.',
         'registry_backup_created': 'Registry backup created: {path}',
         'registry_backup_failed': 'Failed to create a registry backup. Changes were not applied.',
-        'registry_leftovers_done_fmt': 'Limpieza de restos del registro: encontrados {found}, eliminados {removed} ({keys} claves, {values} valores), errores '
-                                       '{failed}.',
-        'registry_leftovers_limited_mode': 'Modo limitado: solo se revisaron entradas del usuario actual. Ejecuta como administrador para incluir entradas '
-                                           'HKLM del sistema.',
+        'registry_leftovers_done_fmt': 'Limpieza de restos del registro: encontrados {found}, eliminados {removed} '
+                                       '({keys} claves, {values} valores), errores {failed}.',
+        'registry_leftovers_limited_mode': 'Modo limitado: solo se revisaron entradas del usuario actual. Ejecuta como '
+                                           'administrador para incluir entradas HKLM del sistema.',
         'registry_leftovers_none': 'No se encontraron restos seguros del registro.',
         'registry_restore_fail': 'Failed to restore registry backup: {name}',
         'registry_restore_missing': 'No registry backup was found.',
@@ -1626,10 +1784,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'restore_dialog_backups': 'Available backups',
         'restore_dialog_manifest_empty': 'No manifest data found for this backup.',
         'restore_dialog_meta': 'Created: {created}\nFiles: {count}\nType: {kind}',
-        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new pre-restore snapshot before import, so you can '
-                               'undo the undo if needed.',
-        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the current state will be created '
-                              'automatically.',
+        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new '
+                               'pre-restore snapshot before import, so you can undo the undo if needed.',
+        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the '
+                              'current state will be created automatically.',
         'restore_dialog_title': 'Restore registry backup',
         'restore_registry_admin_required': 'Run FreeCleaner as administrator to restore the registry backup.',
         'restore_registry_backup': 'Restore registry backup',
@@ -1649,13 +1807,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'sec_net_title': 'Navegadores y red',
         'sec_onedrive_sub': 'Desactivar impacto en segundo plano, diagnóstico y limpieza segura de caché/registros',
         'sec_onedrive_title': 'OneDrive',
-        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target value, and FreeCleaner creates a backup '
-                                      'before applying changes.',
+        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target '
+                                      'value, and FreeCleaner creates a backup before applying changes.',
         'sec_optimizer_registry_title': 'Additional registry gaming tweaks',
-        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, standby RAM and graphics settings without '
-                             'overclocking.',
+        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, '
+                             'standby RAM and graphics settings without overclocking.',
         'sec_optimizer_title': 'Windows gaming optimizer',
-        'sec_optimizer_tools_sub': 'Helpful shortcuts to the official graphics pages for windowed optimizations, VRR, app GPU choice and other gaming options.',
+        'sec_optimizer_tools_sub': 'Helpful shortcuts to the official graphics pages for windowed optimizations, VRR, '
+                                   'app GPU choice and other gaming options.',
         'sec_optimizer_tools_title': 'Graphics and guided Windows settings',
         'sec_system_sub': 'Ubicaciones base seguras para una limpieza rápida.',
         'sec_system_title': 'Archivos temporales del sistema',
@@ -1681,11 +1840,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'stop_update_services': 'Deteniendo servicios de Windows Update para limpiar la caché...',
         'streamer': 'Modo streamer',
         'streamer_profile_on': 'Perfil streamer activado.',
-        'streaming_cpu_high_warn': '⚠ La CPU está muy cargada ahora. Para streaming, revisa procesos en segundo plano o usa codificación por GPU.',
+        'streaming_cpu_high_warn': '⚠ La CPU está muy cargada ahora. Para streaming, revisa procesos en segundo plano '
+                                   'o usa codificación por GPU.',
         'streaming_diag_done': 'Diagnóstico de streaming finalizado.',
         'streaming_diag_failed': 'No se pudo ejecutar el diagnóstico de streaming.',
         'streaming_diag_started': 'Diagnóstico de streaming iniciado. No se cambiarán ajustes.',
-        'streaming_gpu_high_warn': '⚠ La GPU está casi saturada. Para juego+stream, reduce preset/calidad, FPS o filtros pesados de OBS.',
+        'streaming_gpu_high_warn': '⚠ La GPU está casi saturada. Para juego+stream, reduce preset/calidad, FPS o '
+                                   'filtros pesados de OBS.',
         'streaming_load_fmt': 'Carga actual: CPU {cpu}, RAM {ram}, GPU {gpu}.',
         'tab_cleaner': 'Cleaner',
         'tab_cleaner_sub': 'Cleanup caches, temp files and launcher leftovers.',
@@ -1713,35 +1874,41 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.browser_generic.title': 'Caché de {browser} ({profile})',
         'task.browser_opera.desc': 'Archivos temporales y caché del navegador Opera.',
         'task.browser_opera.title': 'Opera Cache',
-        'task.cpu_latency_power_profile.desc': 'Perfil avanzado solo con corriente para CPU antiguas y modernas: High Performance, EPP=0, boost más agresivo, '
-                                               'subida de frecuencia más rápida, núcleos sin aparcar y PCIe ASPM desactivado. No es overclock, pero puede '
-                                               'aumentar temperatura y consumo; pruébalo por separado.',
+        'task.cpu_latency_power_profile.desc': 'Perfil avanzado solo con corriente para CPU antiguas y modernas: High '
+                                               'Performance, EPP=0, boost más agresivo, subida de frecuencia más '
+                                               'rápida, núcleos sin aparcar y PCIe ASPM desactivado. No es overclock, '
+                                               'pero puede aumentar temperatura y consumo; pruébalo por separado.',
         'task.cpu_latency_power_profile.title': 'Perfil máximo de latencia/rendimiento de CPU',
         'task.crash_dumps.desc': 'Application crash dump files from the current user profile.',
         'task.crash_dumps.title': 'User Crash Dumps',
-        'task.cryptnet_cache.desc': 'Metadatos/contenido en caché de comprobaciones de certificados. Windows lo recrea automáticamente.',
+        'task.cryptnet_cache.desc': 'Metadatos/contenido en caché de comprobaciones de certificados. Windows lo recrea '
+                                    'automáticamente.',
         'task.cryptnet_cache.title': 'Caché de certificados Cryptnet URL',
         'task.delivery_opt.desc': 'Caché de archivos de entrega de actualizaciones.',
         'task.delivery_opt.title': 'Delivery Optimization Cache',
-        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs with frametime jitter, but Microsoft '
-                                                  'documents this boot option mainly for debugging. Manual advanced action; restart required.',
+        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs '
+                                                  'with frametime jitter, but Microsoft documents this boot option '
+                                                  'mainly for debugging. Manual advanced action; restart required.',
         'task.disable_dynamic_tick_latency.title': 'Disable dynamic tick (latency test)',
-        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and related fullscreen compatibility flags to '
-                                     'reduce recording overhead while playing.',
+        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and '
+                                     'related fullscreen compatibility flags to reduce recording overhead while '
+                                     'playing.',
         'task.disable_gamedvr.title': 'Disable Xbox Game Bar & DVR',
-        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if HAGS causes stutter, hitching or driver '
-                                  'issues. Restart required.',
+        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if '
+                                  'HAGS causes stutter, hitching or driver issues. Restart required.',
         'task.disable_hags.title': 'Disable HAGS (stutter fallback)',
-        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable mouse input in games. A sign-out or app '
-                                                'restart may be needed.',
+        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable '
+                                                'mouse input in games. A sign-out or app restart may be needed.',
         'task.disable_mouse_acceleration.title': 'Disable mouse acceleration',
-        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and interruptions during gaming sessions.',
+        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and '
+                                           'interruptions during gaming sessions.',
         'task.disable_notifications.title': 'Open Do Not Disturb / Focus Assist',
-        'task.disable_onedrive_background.desc': 'Cierra OneDrive, quita el inicio automático y con permisos de admin activa la política que bloquea la '
-                                                 'sincronización.',
+        'task.disable_onedrive_background.desc': 'Cierra OneDrive, quita el inicio automático y con permisos de admin '
+                                                 'activa la política que bloquea la sincronización.',
         'task.disable_onedrive_background.title': 'Desactivar OneDrive en segundo plano',
-        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry setting. This may reduce unwanted '
-                                              'throttling of game-related workloads. Restart required.',
+        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry '
+                                              'setting. This may reduce unwanted throttling of game-related workloads. '
+                                              'Restart required.',
         'task.disable_power_throttling.title': 'Disable Power Throttling',
         'task.discord_cache.desc': 'Caché web de Discord.',
         'task.discord_cache.title': 'Discord Cache',
@@ -1751,12 +1918,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.dism_clean.title': 'DISM Component Cleanup',
         'task.dns_flush.desc': 'Limpia la caché DNS. Útil para problemas raros de red.',
         'task.dns_flush.title': 'Flush DNS Cache',
-        'task.dx_shader_cache.desc': 'Caché de shaders de DirectX. El primer inicio del juego tras la limpieza puede dar algún tirón.',
+        'task.dx_shader_cache.desc': 'Caché de shaders de DirectX. El primer inicio del juego tras la limpieza puede '
+                                     'dar algún tirón.',
         'task.dx_shader_cache.title': 'DirectX Shader Cache',
         'task.enable_game_mode.desc': 'Enables Windows Game Mode to reduce background interference while gaming.',
         'task.enable_game_mode.title': 'Enable Windows Game Mode',
-        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver combinations. This is optional: test games '
-                                 'after reboot and restore if stutters appear.',
+        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver '
+                                 'combinations. This is optional: test games after reboot and restore if stutters '
+                                 'appear.',
         'task.enable_hags.title': 'Enable HAGS (optional GPU scheduling)',
         'task.epic_webcache.desc': 'Caché Chromium del launcher de Epic Games.',
         'task.epic_webcache.title': 'Epic Games Web Cache',
@@ -1768,12 +1937,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.firefox_startupCache.title': 'Firefox Startup Cache ({profile})',
         'task.font_cache.desc': 'Font rendering cache. Windows recreates it automatically.',
         'task.font_cache.title': 'Font Cache',
-        'task.gaming_compat_report.desc': 'Comprobación de solo lectura de versión de Windows, Game Mode, Game DVR/Captures, HAGS, Power Throttling, plan de '
-                                          'energía y dynamic tick.',
+        'task.gaming_compat_report.desc': 'Comprobación de solo lectura de versión de Windows, Game Mode, Game '
+                                          'DVR/Captures, HAGS, Power Throttling, plan de energía y dynamic tick.',
         'task.gaming_compat_report.title': 'Informe de compatibilidad de ajustes gaming',
         'task.high_perf_plan.desc': 'Cambia a High Performance. Lo mejor para PCs conectados a la corriente.',
         'task.high_perf_plan.title': 'High Performance Power Plan',
-        'task.icon_cache_db.desc': 'Archivo IconCache.db individual. El Explorador de Windows lo reconstruye cuando sea necesario.',
+        'task.icon_cache_db.desc': 'Archivo IconCache.db individual. El Explorador de Windows lo reconstruye cuando '
+                                   'sea necesario.',
         'task.icon_cache_db.title': 'Base de caché de iconos de Windows',
         'task.inet_cache.desc': 'Legacy Windows web cache rebuilt automatically when needed.',
         'task.inet_cache.title': 'Windows Internet Cache',
@@ -1785,10 +1955,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.launcher_cache.title': '{app} Launcher Cache',
         'task.memory_dumps.desc': 'Old BSOD and crash dump files. Keep them only if you are diagnosing crashes.',
         'task.memory_dumps.title': 'Windows Memory Dumps',
-        'task.mmcss_gaming_profile.desc': 'Aplica valores documentados del planificador multimedia para juegos y evita ajustes antiguos sin efecto real.',
+        'task.mmcss_gaming_profile.desc': 'Aplica valores documentados del planificador multimedia para juegos y evita '
+                                          'ajustes antiguos sin efecto real.',
         'task.mmcss_gaming_profile.title': 'Aplicar perfil MMCSS seguro para juegos',
-        'task.network_throttling_off.desc': 'Establece NetworkThrottlingIndex en 0xffffffff para reducir la limitación de red en cargas multimedia/juegos. '
-                                            'Reinicio recomendado.',
+        'task.network_throttling_off.desc': 'Establece NetworkThrottlingIndex en 0xffffffff para reducir la limitación '
+                                            'de red en cargas multimedia/juegos. Reinicio recomendado.',
         'task.network_throttling_off.title': 'Desactivar MMCSS NetworkThrottlingIndex',
         'task.nvidia_compute_cache.desc': 'NVIDIA CUDA/compute cache. It can be rebuilt automatically.',
         'task.nvidia_compute_cache.title': 'NVIDIA Compute Cache',
@@ -1796,7 +1967,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.nvidia_dx.title': 'NVIDIA DXCache',
         'task.nvidia_gl.desc': 'Caché OpenGL del controlador NVIDIA.',
         'task.nvidia_gl.title': 'NVIDIA GLCache',
-        'task.nvidia_ngx_cache.desc': 'Caché NVIDIA NGX/DLSS. El controlador o el juego lo reconstruirá cuando haga falta.',
+        'task.nvidia_ngx_cache.desc': 'Caché NVIDIA NGX/DLSS. El controlador o el juego lo reconstruirá cuando haga '
+                                      'falta.',
         'task.nvidia_ngx_cache.title': 'NVIDIA NGX Cache',
         'task.nvidia_nv_cache.desc': 'Caché de canalización del controlador NVIDIA.',
         'task.nvidia_nv_cache.title': 'NVIDIA Driver Cache',
@@ -1804,54 +1976,68 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.onedrive_crash_reports.title': 'Informes de fallos de OneDrive',
         'task.onedrive_logs.desc': 'Elimina registros de OneDrive sin tocar archivos sincronizados.',
         'task.onedrive_logs.title': 'Registros de OneDrive',
-        'task.onedrive_report.desc': 'Muestra estado de OneDrive, inicio automático, política de sincronización y tamaño de caché.',
+        'task.onedrive_report.desc': 'Muestra estado de OneDrive, inicio automático, política de sincronización y '
+                                     'tamaño de caché.',
         'task.onedrive_report.title': 'Informe de OneDrive',
         'task.onedrive_setup_logs.desc': 'Limpia registros de instalación y actualización de OneDrive.',
         'task.onedrive_setup_logs.title': 'Registros de instalación de OneDrive',
-        'task.onedrive_webview_cache.desc': 'Limpia Cache, Code Cache, GPUCache y cachés de shaders de OneDrive WebView.',
+        'task.onedrive_webview_cache.desc': 'Limpia Cache, Code Cache, GPUCache y cachés de shaders de OneDrive '
+                                            'WebView.',
         'task.onedrive_webview_cache.title': 'Caché WebView/GPU de OneDrive',
-        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game DVR settings.',
+        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game '
+                                           'DVR settings.',
         'task.open_capture_settings.title': 'Open Captures / DVR settings',
-        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. FreeCleaner does not disable this '
-                                         'automatically because it is a security trade-off.',
+        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. '
+                                         'FreeCleaner does not disable this automatically because it is a security '
+                                         'trade-off.',
         'task.open_core_isolation.title': 'Open Core isolation / Memory integrity',
-        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the setting manually.',
+        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the '
+                                             'setting manually.',
         'task.open_game_mode_settings.title': 'Open Game Mode settings',
-        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High performance on systems with multiple GPUs.',
+        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High '
+                                        'performance on systems with multiple GPUs.',
         'task.open_graphics_apps.title': 'Open per-app graphics settings',
-        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed games, Variable Refresh Rate and hardware '
-                                            'GPU features when supported.',
+        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed '
+                                            'games, Variable Refresh Rate and hardware GPU features when supported.',
         'task.open_graphics_defaults.title': 'Open Graphics default settings',
-        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM '
-                                              'power modes override classic power plans.',
+        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best '
+                                              'performance on Windows 10/11 systems where OEM power modes override '
+                                              'classic power plans.',
         'task.open_power_mode_settings.title': 'Open Power mode settings',
-        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual effects to best performance.',
+        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual '
+                                         'effects to best performance.',
         'task.open_visual_effects.title': 'Open Visual Effects performance options',
         'task.prefetch.desc': 'Rastros de inicio de programas. Windows los reconstruirá tras la limpieza.',
         'task.prefetch.title': 'Windows Prefetch',
-        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does not close apps or change RAM timings.',
+        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does '
+                                       'not close apps or change RAM timings.',
         'task.purge_standby_ram.title': 'Purge standby RAM cache',
         'task.recent_docs.desc': 'Limpia el historial de archivos abiertos recientemente en el Explorador.',
         'task.recent_docs.title': 'Recent Items',
         'task.recycle.desc': 'Vacía permanentemente la Papelera.',
         'task.recycle.title': 'Empty Recycle Bin',
-        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target status lines without applying changes.',
+        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target '
+                                               'status lines without applying changes.',
         'task.refresh_registry_statuses.title': 'Refresh registry statuses',
-        'task.registry_leftovers.desc': 'Elimina solo entradas claramente rotas de Open With/Application, App Paths e inicio que apuntan a ejecutables '
-                                        'faltantes. Crea una copia del registro antes.',
+        'task.registry_leftovers.desc': 'Elimina solo entradas claramente rotas de Open With/Application, App Paths e '
+                                        'inicio que apuntan a ejecutables faltantes. Crea una copia del registro '
+                                        'antes.',
         'task.registry_leftovers.title': 'Limpieza conservadora de restos del registro',
-        'task.reset_winsock.desc': 'Restablece la pila de red. Útil para problemas extraños de sockets. Se recomienda reiniciar después.',
+        'task.reset_winsock.desc': 'Restablece la pila de red. Útil para problemas extraños de sockets. Se recomienda '
+                                   'reiniciar después.',
         'task.reset_winsock.title': 'Reset Winsock',
-        'task.restore_balanced_power_profile.desc': 'Reversión segura tras ajustes de energía para juegos: cambia Windows a Balanced sin borrar planes OEM '
-                                                    'personalizados.',
+        'task.restore_balanced_power_profile.desc': 'Reversión segura tras ajustes de energía para juegos: cambia '
+                                                    'Windows a Balanced sin borrar planes OEM personalizados.',
         'task.restore_balanced_power_profile.title': 'Restaurar plan Balanced',
-        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows manage timer ticks normally again. '
-                                                  'Restart required.',
+        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows '
+                                                  'manage timer ticks normally again. Restart required.',
         'task.restore_dynamic_tick_default.title': 'Restore dynamic tick default',
-        'task.restore_onedrive_background.desc': 'Quita la política de bloqueo de OneDrive con permisos de admin e inicia el cliente en segundo plano.',
+        'task.restore_onedrive_background.desc': 'Quita la política de bloqueo de OneDrive con permisos de admin e '
+                                                 'inicia el cliente en segundo plano.',
         'task.restore_onedrive_background.title': 'Restaurar OneDrive',
-        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only CPU/PCIe latency settings. It does not '
-                                               'change voltage, clocks, fan curves or thermal protection.',
+        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only '
+                                               'CPU/PCIe latency settings. It does not change voltage, clocks, fan '
+                                               'curves or thermal protection.',
         'task.safe_gaming_power_profile.title': 'Safe CPU/GPU gaming power profile',
         'task.steam_appcache.desc': 'Steam client HTTP/app cache.',
         'task.steam_appcache.title': 'Steam App Cache',
@@ -1861,14 +2047,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.steam_shadercache.title': 'Steam Shader Cache',
         'task.streaming_app_cache.desc': 'Temporary cache for streaming tools. App settings and scenes are preserved.',
         'task.streaming_app_cache.title': 'Streaming App Cache ({app})',
-        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting history.',
+        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting '
+                                        'history.',
         'task.streaming_app_logs.title': 'Streaming App Logs ({app})',
-        'task.streaming_diagnostics.desc': 'Comprueba perfiles de OBS, codificadores, logs recientes de OBS, carga actual de CPU/GPU/RAM y velocidad de '
-                                           'escritura del disco. No cambia ajustes automáticamente.',
+        'task.streaming_diagnostics.desc': 'Comprueba perfiles de OBS, codificadores, logs recientes de OBS, carga '
+                                           'actual de CPU/GPU/RAM y velocidad de escritura del disco. No cambia '
+                                           'ajustes automáticamente.',
         'task.streaming_diagnostics.title': 'Diagnóstico de streaming OBS/sistema',
         'task.streaming_obs_cache.desc': 'OBS temporary cache only. Scenes, sources and profiles are not removed.',
         'task.streaming_obs_cache.title': 'OBS Studio Cache ({app})',
-        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues right now.',
+        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues '
+                                        'right now.',
         'task.streaming_obs_logs.title': 'OBS Studio Logs / Crashes ({app})',
         'task.system_temp.desc': 'Temp del sistema de Windows. Mejor limpiarlo con permisos de administrador.',
         'task.system_temp.title': 'System Temp ({path})',
@@ -1882,32 +2071,38 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.update_cache_files.title': 'Windows Update Cache',
         'task.user_temp.desc': 'Archivos temporales del usuario actual. Casi siempre es una opción segura.',
         'task.user_temp.title': 'User Temp ({path})',
-        'task.uwp_temp_caches.desc': 'Limpieza conservadora de {count} carpetas TempState/AC Temp de apps empaquetadas. No toca datos LocalState.',
+        'task.uwp_temp_caches.desc': 'Limpieza conservadora de {count} carpetas TempState/AC Temp de apps '
+                                     'empaquetadas. No toca datos LocalState.',
         'task.uwp_temp_caches.title': 'Cachés temporales de apps de Microsoft Store',
         'task.web_cache.desc': 'Windows WebCache database leftovers and browser-control cache files.',
         'task.web_cache.title': 'Windows WebCache',
-        'task.windows_caches_user.desc': 'Pequeñas carpetas de caché de Windows en el perfil del usuario. Windows las recrea cuando las necesita.',
+        'task.windows_caches_user.desc': 'Pequeñas carpetas de caché de Windows en el perfil del usuario. Windows las '
+                                         'recrea cuando las necesita.',
         'task.windows_caches_user.title': 'Cachés de usuario de Windows',
-        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting update/component issues.',
+        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting '
+                                            'update/component issues.',
         'task.windows_component_logs.title': 'Windows Component Logs',
         'task.windows_old.desc': 'Windows.old from a previous upgrade. Cleaning it removes the easy rollback files.',
         'task.windows_old.title': 'Previous Windows Installation',
-        'task.windows_setup_logs.desc': 'Registros antiguos de Panther, MoSetup y setup cleanup. Conservar solo para diagnosticar errores de instalación o '
-                                        'actualización.',
+        'task.windows_setup_logs.desc': 'Registros antiguos de Panther, MoSetup y setup cleanup. Conservar solo para '
+                                        'diagnosticar errores de instalación o actualización.',
         'task.windows_setup_logs.title': 'Registros de instalación y actualización de Windows',
-        'task.windows_update_etl_logs.desc': 'Registros ETL antiguos de WaaSMedic. Los archivos activos bloqueados se omiten.',
+        'task.windows_update_etl_logs.desc': 'Registros ETL antiguos de WaaSMedic. Los archivos activos bloqueados se '
+                                             'omiten.',
         'task.windows_update_etl_logs.title': 'Registros de Windows Update Medic',
-        'task.windows_wmi_etl_logs.desc': 'Registros ETL de diagnóstico como DiagTrack. Los registros activos bloqueados se omiten.',
+        'task.windows_wmi_etl_logs.desc': 'Registros ETL de diagnóstico como DiagTrack. Los registros activos '
+                                          'bloqueados se omiten.',
         'task.windows_wmi_etl_logs.title': 'Registros ETL de WMI y diagnóstico',
         'threads_info': 'Escaneo: {scan} hilos | limpieza: {clean} hilos',
         'top_consumers': 'Mayores consumidores de espacio:',
         'ultimate_perf_fail': 'No se pudo activar Ultimate Performance.',
         'ultimate_perf_ok': 'Ultimate Performance activado.',
-        'ultimate_power_redundant_skipped': 'Duplicación de plan de energía: Ultimate Performance tiene mayor prioridad; se omitieron los cambios de energía '
-                                            'más débiles.',
+        'ultimate_power_redundant_skipped': 'Duplicación de plan de energía: Ultimate Performance tiene mayor '
+                                            'prioridad; se omitieron los cambios de energía más débiles.',
         'unavailable_short': 'n/d',
         'unknown': 'Unknown',
-        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest version: {latest}.',
+        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest '
+                                 'version: {latest}.',
         'update_available_log': 'Update found: {current} → {latest}',
         'update_changelog': 'What changed',
         'update_check_failed': 'Could not check for updates right now.',
@@ -1919,16 +2114,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'update_download_complete': 'Actualización descargada:\n{path}',
         'update_download_failed': 'Could not download the update.',
         'update_download_failed_reason': 'Could not download the update: {reason}',
-        'update_download_idle': 'El instalador se guardará en la carpeta local de usuario de FreeCleaner y se iniciará automáticamente al terminar la '
-                                'descarga. Si FreeCleaner está instalado en Program Files, Windows puede pedir permisos de administrador solo al ejecutar el '
-                                'instalador.',
+        'update_download_idle': 'El instalador se guardará en la carpeta local de usuario de FreeCleaner y se iniciará '
+                                'automáticamente al terminar la descarga. Si FreeCleaner está instalado en Program '
+                                'Files, Windows puede pedir permisos de administrador solo al ejecutar el instalador.',
         'update_download_location': 'Carpeta de actualizaciones: {path}',
         'update_download_progress': 'Downloading: {progress}',
         'update_download_saved': 'Actualización guardada en: {path}',
         'update_download_section': 'Update download',
         'update_download_started': 'Starting download for update {version}...',
         'update_downloading': 'Downloading...',
-        'update_install_cleanup_scheduled': 'Los archivos antiguos de actualización se eliminarán de la carpeta updates después de la instalación.',
+        'update_install_cleanup_scheduled': 'Los archivos antiguos de actualización se eliminarán de la carpeta '
+                                            'updates después de la instalación.',
         'update_install_closing_app': 'Instalador iniciado. FreeCleaner se cerrará para permitir la instalación.',
         'update_install_failed_reason': 'No se pudo iniciar el instalador de actualización: {reason}',
         'update_install_started': 'Instalador de actualización iniciado: {path}',
@@ -1952,10 +2148,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'about_close': 'Zamknij',
         'about_copied': 'Skopiowano do schowka.',
         'about_copy': 'Kopiuj',
-        'about_desc': 'FreeCleaner pomaga bezpiecznie usuwać pliki tymczasowe i drobne pozostałości, aby zwolnić miejsce i odciążyć Windows.',
+        'about_desc': 'FreeCleaner pomaga bezpiecznie usuwać pliki tymczasowe i drobne pozostałości, aby zwolnić '
+                      'miejsce i odciążyć Windows.',
         'about_doc_missing': 'Nie znaleziono pliku: {name}',
-        'about_hint_body': '• FreeCleaner działa lokalnie na Twoim komputerze.\\n• Nie wysyłamy Twoich plików nigdzie.\\n• Dokumenty możesz czytać i kopiować '
-                           'bezpośrednio w aplikacji.',
+        'about_hint_body': '• FreeCleaner działa lokalnie na Twoim komputerze.\\n• Nie wysyłamy Twoich plików '
+                           'nigdzie.\\n• Dokumenty możesz czytać i kopiować bezpośrednio w aplikacji.',
         'about_hint_title': 'Warto wiedzieć',
         'about_license': 'Licencja',
         'about_license_sub': 'Zasady korzystania i rozpowszechniania FreeCleaner.',
@@ -2007,19 +2204,22 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'cleanup_reboot_scheduled_fmt': 'Zaplanowano usunięcie po restarcie: {title} -> {count}',
         'cleanup_remaining_fmt': 'Po czyszczeniu nadal pozostało: {title} -> plików: {files}, folderów: {dirs}',
         'cleanup_skipped_links_fmt': 'Pominięto chronione linki/junctions: {title} -> {count}',
-        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: {scheduled}, links skipped: {skipped}, '
-                               'errors/skipped: {errors}',
+        'cleanup_summary_fmt': 'Cleanup summary: {mb:.2f} MB, files: {files}, folders: {dirs}, reboot queue: '
+                               '{scheduled}, links skipped: {skipped}, errors/skipped: {errors}',
         'cleanup_target_failed_fmt': 'Cleanup error: {title}',
         'cleanup_target_ok_fmt': 'Cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}',
-        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, skipped: {errors}',
+        'cleanup_target_partial_fmt': 'Partially cleaned: {title} -> {mb:.2f} MB, files: {files}, folders: {dirs}, '
+                                      'skipped: {errors}',
         'clear_log': 'Wyczyść dziennik',
         'clear_search': 'Wyczyść wyszukiwanie',
         'copy_log': 'Kopiuj dziennik',
         'core_isolation_page_fail': 'Failed to open Windows Security / Core isolation page.',
         'core_isolation_page_ok': 'Opened Windows Security / Core isolation page.',
-        'cpu_latency_power_fail': 'Nie udało się zastosować profilu CPU. Obraz OEM, sterownik lub plan zasilania może nie obsługiwać części aliasów powercfg.',
+        'cpu_latency_power_fail': 'Nie udało się zastosować profilu CPU. Obraz OEM, sterownik lub plan zasilania może '
+                                  'nie obsługiwać części aliasów powercfg.',
         'cpu_latency_power_ok': 'Profil opóźnień/wydajności CPU zastosowany. Sprawdź temperatury i stabilność w grze.',
-        'cpu_latency_redundant_skipped': 'Bezpieczny profil High Performance/gaming został pominięty, bo maksymalny profil CPU już zawiera te działania.',
+        'cpu_latency_redundant_skipped': 'Bezpieczny profil High Performance/gaming został pominięty, bo maksymalny '
+                                         'profil CPU już zawiera te działania.',
         'custom_language_label': 'Niestandardowy [{name}]',
         'deep_profile': 'Deep cleanup',
         'deep_profile_on': 'Deep cleanup profile enabled.',
@@ -2039,16 +2239,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_disk_ok_fmt': 'Тест запису: {mbps:.1f} MB/s у “{folder}” ({size} MB).',
         'diag_gpu_pref_header': 'GPU preference:',
         'diag_gpu_pref_line': '• {app}: {pref}',
-        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків краще виставити High performance вручну.',
+        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків '
+                                 'краще виставити High performance вручну.',
         'diag_label_captures': 'Captures/Game DVR',
         'diag_label_game_mode': 'Game Mode',
         'diag_label_hags': 'HAGS',
         'diag_label_power_plan': 'Power plan',
         'diag_more_items_fmt': '…ще {count}',
         'diag_network_activity_fmt': 'Останні логи: stream={stream}, record={record}, Replay Buffer={replay}',
-        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest server, а не “сміття Windows”.',
+        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest '
+                                    'server, а не “сміття Windows”.',
         'diag_network_no_drops': 'У свіжих OBS logs dropped frames не знайдено.',
-        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати CPU/GPU/диск.',
+        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати '
+                                    'CPU/GPU/диск.',
         'diag_obs_issues_line': 'У логах OBS знайдено: {issues}',
         'diag_obs_logs_clean': 'У свіжих OBS logs явних overload/dropped/NVENC помилок не знайдено.',
         'diag_obs_no_profiles': 'OBS профілі не знайдено або OBS ще не створив basic.ini.',
@@ -2060,14 +2263,21 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_onedrive_running': 'Uruchomiony',
         'diag_onedrive_state_line': '{label}: {value}',
         'diag_rec_all_good': 'Критичних проблем не видно. Не треба застосовувати випадкові інтернет-твіки.',
-        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати запис.',
-        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance GPU.',
-        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо він доступний.',
+        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати '
+                                     'запис.',
+        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance '
+                                         'GPU.',
+        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо '
+                                     'він доступний.',
         'diag_rec_mkv': 'Для запису краще MKV або Hybrid MP4, щоб зменшити ризик втрати файлу після крашу.',
-        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть Windows без причини.',
-        'diag_rec_onedrive_disable': 'OneDrive jest aktywny: wyłącz autostart/synchronizację, jeśli nie jest potrzebny podczas gry lub streamu.',
-        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації OneDrive.',
-        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або обмеж FPS у грі.',
+        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть '
+                                    'Windows без причини.',
+        'diag_rec_onedrive_disable': 'OneDrive jest aktywny: wyłącz autostart/synchronizację, jeśli nie jest potrzebny '
+                                     'podczas gry lub streamu.',
+        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації '
+                                   'OneDrive.',
+        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або '
+                                    'обмеж FPS у грі.',
         'diag_status_error': 'Помилка',
         'diag_status_info': 'Інфо',
         'diag_status_loading': 'Перевірка',
@@ -2083,11 +2293,12 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diagnostics_not_run': 'Натисни “Оновити діагностику”, щоб побачити реальний стан.',
         'diagnostics_refresh': 'Оновити діагностику',
         'diagnostics_running': 'Перевіряю…',
-        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. Налаштування не змінюються автоматично.',
+        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. '
+                                'Налаштування не змінюються автоматично.',
         'diagnostics_title': 'Діагностика стрімінгу та геймінгу',
         'disk_write_fail_fmt': 'Nie udało się wykonać testu zapisu w {folder}.',
-        'disk_write_low_warn': '⚠ Szybkość zapisu jest niska dla stabilnego nagrywania z wysokim bitrate. Lepiej użyć SSD lub innego dysku niż ten mocno '
-                               'używany przez grę.',
+        'disk_write_low_warn': '⚠ Szybkość zapisu jest niska dla stabilnego nagrywania z wysokim bitrate. Lepiej użyć '
+                               'SSD lub innego dysku niż ten mocno używany przez grę.',
         'disk_write_ok_fmt': 'Test zapisu: {mbps:.1f} MB/s w {folder}.',
         'dism_busy_close_blocked': 'DISM nadal działa. Zamknięcie jest zablokowane do czasu zakończenia.',
         'dism_fail': 'DISM zakończył się z błędami.',
@@ -2096,10 +2307,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'dns_fail': 'Nie udało się wyczyścić pamięci podręcznej DNS.',
         'dns_ok': 'Pamięć podręczna DNS wyczyszczona.',
         'done_clean_sequence': 'Gotowe. Sekwencja czyszczenia zakończona.',
-        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected together. Choose only one action.',
+        'dynamic_tick_conflict_skipped': 'Dynamic tick changes skipped because disable and restore were selected '
+                                         'together. Choose only one action.',
         'dynamic_tick_off_fail': 'Failed to disable dynamic tick through BCDEdit.',
-        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the default if timing, sleep or battery '
-                               'behavior gets worse.',
+        'dynamic_tick_off_ok': 'Dynamic tick disabled for latency testing. Restart Windows and test games; restore the '
+                               'default if timing, sleep or battery behavior gets worse.',
         'dynamic_tick_restore_fail': 'Failed to restore dynamic tick default through BCDEdit.',
         'dynamic_tick_restore_ok': 'Dynamic tick returned to Windows default. Restart Windows.',
         'event_log': 'Dziennik zdarzeń',
@@ -2124,12 +2336,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'gaming_report_hags': 'Sprzętowe planowanie GPU',
         'gaming_report_item_fmt': '{item}: {state}.',
         'gaming_report_no_critical_notes': 'Nie znaleziono krytycznych niezgodności w szybkim raporcie.',
-        'gaming_report_note_admin_limited': '• Bez administratora część statusów HKLM/powercfg/BCDEdit może być niepełna.',
-        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR jest włączony. Przy OBS może dublować przechwytywanie i zużywać zasoby.',
-        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick zmieniono przez BCDEdit. To nie jest uniwersalny boost; trzymaj opcję cofnięcia pod ręką.',
-        'gaming_report_note_hags_unsupported': '• HAGS jest niedostępny lub nieobsługiwany przez tę wersję Windows/sterownik.',
+        'gaming_report_note_admin_limited': '• Bez administratora część statusów HKLM/powercfg/BCDEdit może być '
+                                            'niepełna.',
+        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR jest włączony. Przy OBS może dublować '
+                                              'przechwytywanie i zużywać zasoby.',
+        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick zmieniono przez BCDEdit. To nie jest uniwersalny '
+                                                  'boost; trzymaj opcję cofnięcia pod ręką.',
+        'gaming_report_note_hags_unsupported': '• HAGS jest niedostępny lub nieobsługiwany przez tę wersję '
+                                               'Windows/sterownik.',
         'gaming_report_note_windows_only': '⚠ Ten raport ma sens tylko w Windows 10/11.',
-        'gaming_report_note_wow64': '• Proces 32-bit w 64-bit Windows: FreeCleaner czyta HKLM\\SOFTWARE przez 64-bitowy widok rejestru.',
+        'gaming_report_note_wow64': '• Proces 32-bit w 64-bit Windows: FreeCleaner czyta HKLM\\SOFTWARE przez '
+                                    '64-bitowy widok rejestru.',
         'gaming_report_power_fmt': 'Aktywny plan zasilania: {plan}.',
         'gaming_report_power_throttling': 'Power Throttling',
         'gaming_report_started': 'Raport zgodności uruchomiony. Ustawienia nie zostaną zmienione.',
@@ -2144,14 +2361,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'graphics_apps_ok': 'Opened per-app Graphics settings.',
         'graphics_defaults_fail': 'Failed to open Graphics default settings.',
         'graphics_defaults_ok': 'Opened Graphics default settings.',
-        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose only one after testing.',
+        'hags_conflict_skipped': 'Skipped HAGS changes because both Enable HAGS and Disable HAGS were selected. Choose '
+                                 'only one after testing.',
         'hags_off_fail': 'Failed to disable HAGS through the registry.',
         'hags_off_ok': 'HAGS disabled. Restart Windows and test WoW for stutter or hitching.',
         'hags_on_fail': 'Failed to enable HAGS through the registry.',
         'hags_on_ok': 'HAGS enabled. Restart Windows and test your games for stability and stutter.',
         'high_perf_fail': 'Nie udało się zmienić planu zasilania.',
         'high_perf_ok': 'Włączono High Performance.',
-        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power profile already includes it.',
+        'high_perf_redundant_skipped': 'Skipped the basic High Performance action because the safe gaming power '
+                                       'profile already includes it.',
         'junk_found': 'Znalezione śmieci',
         'lang_auto': 'Auto',
         'lang_en': 'English',
@@ -2176,7 +2395,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'no': 'Nie',
         'no_noticeable_junk': 'W wybranych folderach nie znaleziono zauważalnych śmieci.',
         'nothing_selected': 'Nic nie wybrano.',
-        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — enkoder CPU. Przy grze+streamie często powoduje spadki klatek; użyj NVENC/QSV/AMF, jeśli dostępne.',
+        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — enkoder CPU. Przy grze+streamie często powoduje spadki '
+                                    'klatek; użyj NVENC/QSV/AMF, jeśli dostępne.',
         'obs_encoder_hw_ok_fmt': '✓ {label}: {encoder} — enkoder sprzętowy, właściwy kierunek dla streamingu.',
         'obs_encoder_unknown_fmt': '• {label}: {encoder} — nie udało się pewnie określić typu enkodera.',
         'obs_log_issue_dropped_frames': 'dropped frames przez sieć lub przepustowość',
@@ -2186,14 +2406,21 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'obs_log_issue_recording_failure': 'błędy startu lub działania nagrywania',
         'obs_log_issue_rendering_lag': 'rendering lag / przycięcia renderowania sceny',
         'obs_log_issue_unknown': 'nieznany problem w logu OBS',
-        'obs_log_triple_activity_warn': '⚠ Ostatnie logi OBS pokazują stream, nagrywanie i Replay Buffer razem. Może to przeciążyć enkoder albo dysk.',
-        'obs_logs_clean': 'Sprawdzanie logów OBS: nie znaleziono krytycznych oznak lagów kodowania/renderowania/sieci w ostatnich logach.',
-        'obs_profile_missing': 'Nie znaleziono profili OBS. Jeśli OBS jest portable, standardowe sprawdzenie AppData może być puste.',
-        'obs_profile_summary_fmt': 'Profil OBS [{profile}]: tryb {mode}, stream {stream}, nagrywanie {record}, format {format}, Replay Buffer: {replay}.',
-        'obs_rec_format_ok_fmt': '✓ Profil OBS [{profile}]: format nagrywania {format} jest dobry dla bezpieczniejszego nagrywania.',
-        'obs_rec_format_warn_fmt': '⚠ Profil OBS [{profile}]: format nagrywania {format}. Lepiej użyć MKV/Hybrid MP4, żeby awaria nie zniszczyła pliku.',
+        'obs_log_triple_activity_warn': '⚠ Ostatnie logi OBS pokazują stream, nagrywanie i Replay Buffer razem. Może '
+                                        'to przeciążyć enkoder albo dysk.',
+        'obs_logs_clean': 'Sprawdzanie logów OBS: nie znaleziono krytycznych oznak lagów kodowania/renderowania/sieci '
+                          'w ostatnich logach.',
+        'obs_profile_missing': 'Nie znaleziono profili OBS. Jeśli OBS jest portable, standardowe sprawdzenie AppData '
+                               'może być puste.',
+        'obs_profile_summary_fmt': 'Profil OBS [{profile}]: tryb {mode}, stream {stream}, nagrywanie {record}, format '
+                                   '{format}, Replay Buffer: {replay}.',
+        'obs_rec_format_ok_fmt': '✓ Profil OBS [{profile}]: format nagrywania {format} jest dobry dla '
+                                 'bezpieczniejszego nagrywania.',
+        'obs_rec_format_warn_fmt': '⚠ Profil OBS [{profile}]: format nagrywania {format}. Lepiej użyć MKV/Hybrid MP4, '
+                                   'żeby awaria nie zniszczyła pliku.',
         'obs_record_encoder': 'Enkoder nagrywania',
-        'obs_replay_combo_warn': '⚠ Replay Buffer jest włączony. Nie trzymaj Stream + Nagrywanie + Replay Buffer jednocześnie bez zapasu GPU/dysku.',
+        'obs_replay_combo_warn': '⚠ Replay Buffer jest włączony. Nie trzymaj Stream + Nagrywanie + Replay Buffer '
+                                 'jednocześnie bez zapasu GPU/dysku.',
         'obs_stream_encoder': 'Enkoder streamu',
         'onedrive_autostart_remove_fail': 'OneDrive: wpis autostartu nie znaleziony albo nie można go usunąć.',
         'onedrive_autostart_removed': 'OneDrive: autostart bieżącego użytkownika usunięty.',
@@ -2207,14 +2434,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'onedrive_policy_restored': 'OneDrive: polityka blokowania usunięta.',
         'onedrive_quit_fail': 'OneDrive: procesu nie udało się całkowicie zatrzymać.',
         'onedrive_quit_ok': 'OneDrive: proces zatrzymany albo nie był uruchomiony.',
-        'onedrive_report_cleanup_fmt': 'OneDrive: znaleziono {targets} bezpiecznych celów czyszczenia, około {mb:.1f} MB.',
+        'onedrive_report_cleanup_fmt': 'OneDrive: znaleziono {targets} bezpiecznych celów czyszczenia, około {mb:.1f} '
+                                       'MB.',
         'onedrive_report_done': 'OneDrive: raport zakończony.',
         'onedrive_report_failed': 'OneDrive: nie udało się zebrać raportu.',
-        'onedrive_report_policy_note': 'OneDrive: polityka blokowania synchronizacji nie jest aktywna. Do pełnego wyłączenia potrzebne są uprawnienia '
-                                       'administratora.',
-        'onedrive_report_running_warn': 'OneDrive: proces jest aktywny i może wpływać na dysk, sieć oraz autosynchronizację.',
+        'onedrive_report_policy_note': 'OneDrive: polityka blokowania synchronizacji nie jest aktywna. Do pełnego '
+                                       'wyłączenia potrzebne są uprawnienia administratora.',
+        'onedrive_report_running_warn': 'OneDrive: proces jest aktywny i może wpływać na dysk, sieć oraz '
+                                        'autosynchronizację.',
         'onedrive_report_started': 'OneDrive: zbieram raport...',
-        'onedrive_report_status_fmt': 'OneDrive: zainstalowano={installed}, działa={running}, autostart={autostart}, polityka synchronizacji={policy}.',
+        'onedrive_report_status_fmt': 'OneDrive: zainstalowano={installed}, działa={running}, autostart={autostart}, '
+                                      'polityka synchronizacji={policy}.',
         'onedrive_restore_done': 'OneDrive: przywracanie zakończone.',
         'onedrive_restore_failed': 'OneDrive: nie udało się przywrócić aktywności w tle.',
         'onedrive_restore_started': 'OneDrive: przywracam aktywność w tle...',
@@ -2225,8 +2455,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'pick_one_module': 'Najpierw wybierz co najmniej jeden moduł.',
         'power_mode_page_fail': 'Failed to open Windows power settings.',
         'power_mode_page_ok': 'Opened Windows power settings.',
-        'power_profile_conflict_skipped': 'Zmiany profilu zasilania pominięto, bo jednocześnie wybrano maksymalny profil CPU i przywrócenie Balanced.',
-        'power_restore_conflict_skipped': 'Konflikt planu zasilania: przywrócenie Balanced wybrano razem z profilami wydajności. Profile wydajności pominięto.',
+        'power_profile_conflict_skipped': 'Zmiany profilu zasilania pominięto, bo jednocześnie wybrano maksymalny '
+                                          'profil CPU i przywrócenie Balanced.',
+        'power_restore_conflict_skipped': 'Konflikt planu zasilania: przywrócenie Balanced wybrano razem z profilami '
+                                          'wydajności. Profile wydajności pominięto.',
         'power_throttling_fail': 'Failed to disable Power Throttling.',
         'power_throttling_ok': 'Power Throttling disabled.',
         'pre_cleanup_actions': 'Wykonuję działania przed czyszczeniem, aby uniknąć zablokowanych plików.',
@@ -2236,17 +2468,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'profile_manual': 'Ręcznie',
         'profile_streamer': 'Streamer',
         'queued_actions_fmt': 'Działania poleceń w kolejce: {count}',
-        'quick_profiles': 'Szybkie profile',
         'reboot_recommended': 'A system restart is recommended for this change to fully apply.',
         'recycle_fail': 'Nie udało się opróżnić Kosza lub jest już pusty.',
         'recycle_ok': 'Kosz opróżniony.',
-        'registry_admin_values_skipped': 'Część systemowych wartości rejestru została pominięta, ponieważ wymagane są uprawnienia administratora.',
+        'registry_admin_values_skipped': 'Część systemowych wartości rejestru została pominięta, ponieważ wymagane są '
+                                         'uprawnienia administratora.',
         'registry_backup_created': 'Registry backup created: {path}',
         'registry_backup_failed': 'Failed to create a registry backup. Changes were not applied.',
-        'registry_leftovers_done_fmt': 'Czyszczenie pozostałości rejestru: znaleziono {found}, usunięto {removed} ({keys} kluczy, {values} wartości), błędy '
-                                       '{failed}.',
-        'registry_leftovers_limited_mode': 'Tryb ograniczony: sprawdzono tylko wpisy bieżącego użytkownika. Uruchom jako administrator, aby uwzględnić '
-                                           'systemowe wpisy HKLM.',
+        'registry_leftovers_done_fmt': 'Czyszczenie pozostałości rejestru: znaleziono {found}, usunięto {removed} '
+                                       '({keys} kluczy, {values} wartości), błędy {failed}.',
+        'registry_leftovers_limited_mode': 'Tryb ograniczony: sprawdzono tylko wpisy bieżącego użytkownika. Uruchom '
+                                           'jako administrator, aby uwzględnić systemowe wpisy HKLM.',
         'registry_leftovers_none': 'Nie znaleziono bezpiecznych pozostałości rejestru.',
         'registry_restore_fail': 'Failed to restore registry backup: {name}',
         'registry_restore_missing': 'No registry backup was found.',
@@ -2269,10 +2501,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'restore_dialog_backups': 'Available backups',
         'restore_dialog_manifest_empty': 'No manifest data found for this backup.',
         'restore_dialog_meta': 'Created: {created}\nFiles: {count}\nType: {kind}',
-        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new pre-restore snapshot before import, so you can '
-                               'undo the undo if needed.',
-        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the current state will be created '
-                              'automatically.',
+        'restore_dialog_note': 'Tip: restore only the tweaks you really want to roll back. The app saves a new '
+                               'pre-restore snapshot before import, so you can undo the undo if needed.',
+        'restore_dialog_sub': 'Choose a backup snapshot and restore it safely. A fresh pre-restore snapshot of the '
+                              'current state will be created automatically.',
         'restore_dialog_title': 'Restore registry backup',
         'restore_registry_admin_required': 'Run FreeCleaner as administrator to restore the registry backup.',
         'restore_registry_backup': 'Restore registry backup',
@@ -2292,13 +2524,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'sec_net_title': 'Przeglądarki i sieć',
         'sec_onedrive_sub': 'Wyłączanie wpływu w tle, diagnostyka i bezpieczne czyszczenie pamięci podręcznej/logów',
         'sec_onedrive_title': 'OneDrive',
-        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target value, and FreeCleaner creates a backup '
-                                      'before applying changes.',
+        'sec_optimizer_registry_sub': 'Advanced registry tweaks for games. Every row shows current value → target '
+                                      'value, and FreeCleaner creates a backup before applying changes.',
         'sec_optimizer_registry_title': 'Additional registry gaming tweaks',
-        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, standby RAM and graphics settings without '
-                             'overclocking.',
+        'sec_optimizer_sub': 'Safe CPU/GPU/RAM-oriented gaming tweaks: Game Mode, capture cleanup, power policy, '
+                             'standby RAM and graphics settings without overclocking.',
         'sec_optimizer_title': 'Windows gaming optimizer',
-        'sec_optimizer_tools_sub': 'Helpful shortcuts to the official graphics pages for windowed optimizations, VRR, app GPU choice and other gaming options.',
+        'sec_optimizer_tools_sub': 'Helpful shortcuts to the official graphics pages for windowed optimizations, VRR, '
+                                   'app GPU choice and other gaming options.',
         'sec_optimizer_tools_title': 'Graphics and guided Windows settings',
         'sec_system_sub': 'Bezpieczne podstawowe lokalizacje do szybkiego czyszczenia.',
         'sec_system_title': 'Tymczasowe pliki systemowe',
@@ -2324,11 +2557,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'stop_update_services': 'Zatrzymywanie usług Windows Update w celu wyczyszczenia pamięci podręcznej...',
         'streamer': 'Tryb streamera',
         'streamer_profile_on': 'Włączono profil streamera.',
-        'streaming_cpu_high_warn': '⚠ CPU jest teraz mocno obciążony. Do streamingu sprawdź procesy w tle albo przenieś kodowanie na GPU.',
+        'streaming_cpu_high_warn': '⚠ CPU jest teraz mocno obciążony. Do streamingu sprawdź procesy w tle albo '
+                                   'przenieś kodowanie na GPU.',
         'streaming_diag_done': 'Diagnostyka streamingu zakończona.',
         'streaming_diag_failed': 'Nie udało się uruchomić diagnostyki streamingu.',
         'streaming_diag_started': 'Uruchomiono diagnostykę streamingu. Ustawienia nie zostaną zmienione.',
-        'streaming_gpu_high_warn': '⚠ GPU jest prawie w pełni obciążone. Przy grze+streamie zmniejsz preset/jakość, FPS albo ciężkie filtry OBS.',
+        'streaming_gpu_high_warn': '⚠ GPU jest prawie w pełni obciążone. Przy grze+streamie zmniejsz preset/jakość, '
+                                   'FPS albo ciężkie filtry OBS.',
         'streaming_load_fmt': 'Bieżące obciążenie: CPU {cpu}, RAM {ram}, GPU {gpu}.',
         'tab_cleaner': 'Cleaner',
         'tab_cleaner_sub': 'Cleanup caches, temp files and launcher leftovers.',
@@ -2356,34 +2591,42 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.browser_generic.title': 'Pamięć podręczna {browser} ({profile})',
         'task.browser_opera.desc': 'Pliki tymczasowe i pamięć podręczna przeglądarki Opera.',
         'task.browser_opera.title': 'Opera Cache',
-        'task.cpu_latency_power_profile.desc': 'Zaawansowany profil tylko dla zasilania sieciowego dla starych i nowych CPU: High Performance, EPP=0, '
-                                               'agresywniejszy boost, szybsze podbijanie taktowania, odparkowane rdzenie i wyłączone PCIe ASPM. To nie '
-                                               'overclocking, ale może zwiększyć temperatury i pobór mocy; testuj osobno.',
+        'task.cpu_latency_power_profile.desc': 'Zaawansowany profil tylko dla zasilania sieciowego dla starych i '
+                                               'nowych CPU: High Performance, EPP=0, agresywniejszy boost, szybsze '
+                                               'podbijanie taktowania, odparkowane rdzenie i wyłączone PCIe ASPM. To '
+                                               'nie overclocking, ale może zwiększyć temperatury i pobór mocy; testuj '
+                                               'osobno.',
         'task.cpu_latency_power_profile.title': 'Maksymalny profil opóźnień/wydajności CPU',
         'task.crash_dumps.desc': 'Application crash dump files from the current user profile.',
         'task.crash_dumps.title': 'User Crash Dumps',
-        'task.cryptnet_cache.desc': 'Buforowane metadane/treść sprawdzania certyfikatów. Windows odtworzy je automatycznie.',
+        'task.cryptnet_cache.desc': 'Buforowane metadane/treść sprawdzania certyfikatów. Windows odtworzy je '
+                                    'automatycznie.',
         'task.cryptnet_cache.title': 'Cache certyfikatów Cryptnet URL',
         'task.delivery_opt.desc': 'Pamięć podręczna plików dostarczania aktualizacji.',
         'task.delivery_opt.title': 'Delivery Optimization Cache',
-        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs with frametime jitter, but Microsoft '
-                                                  'documents this boot option mainly for debugging. Manual advanced action; restart required.',
+        'task.disable_dynamic_tick_latency.desc': 'Sets BCDEdit disabledynamictick=yes. This can help some older CPUs '
+                                                  'with frametime jitter, but Microsoft documents this boot option '
+                                                  'mainly for debugging. Manual advanced action; restart required.',
         'task.disable_dynamic_tick_latency.title': 'Disable dynamic tick (latency test)',
-        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and related fullscreen compatibility flags to '
-                                     'reduce recording overhead while playing.',
+        'task.disable_gamedvr.desc': 'Disables Xbox Game Bar overlay, background capture, replay/audio capture and '
+                                     'related fullscreen compatibility flags to reduce recording overhead while '
+                                     'playing.',
         'task.disable_gamedvr.title': 'Disable Xbox Game Bar & DVR',
-        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if HAGS causes stutter, hitching or driver '
-                                  'issues. Restart required.',
+        'task.disable_hags.desc': 'Disables Hardware-Accelerated GPU Scheduling through the registry. Use this only if '
+                                  'HAGS causes stutter, hitching or driver issues. Restart required.',
         'task.disable_hags.title': 'Disable HAGS (stutter fallback)',
-        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable mouse input in games. A sign-out or app '
-                                                'restart may be needed.',
+        'task.disable_mouse_acceleration.desc': 'Sets MouseSpeed and MouseThreshold values to 0 for more predictable '
+                                                'mouse input in games. A sign-out or app restart may be needed.',
         'task.disable_mouse_acceleration.title': 'Disable mouse acceleration',
-        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and interruptions during gaming sessions.',
+        'task.disable_notifications.desc': 'Opens Windows notification settings so you can reduce pop-ups and '
+                                           'interruptions during gaming sessions.',
         'task.disable_notifications.title': 'Open Do Not Disturb / Focus Assist',
-        'task.disable_onedrive_background.desc': 'Zamyka OneDrive, usuwa autostart i z uprawnieniami administratora włącza politykę blokowania synchronizacji.',
+        'task.disable_onedrive_background.desc': 'Zamyka OneDrive, usuwa autostart i z uprawnieniami administratora '
+                                                 'włącza politykę blokowania synchronizacji.',
         'task.disable_onedrive_background.title': 'Wyłącz OneDrive w tle',
-        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry setting. This may reduce unwanted '
-                                              'throttling of game-related workloads. Restart required.',
+        'task.disable_power_throttling.desc': 'Turns off Windows power throttling through the power policy registry '
+                                              'setting. This may reduce unwanted throttling of game-related workloads. '
+                                              'Restart required.',
         'task.disable_power_throttling.title': 'Disable Power Throttling',
         'task.discord_cache.desc': 'Pamięć podręczna sieciowa Discorda.',
         'task.discord_cache.title': 'Discord Cache',
@@ -2393,12 +2636,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.dism_clean.title': 'DISM Component Cleanup',
         'task.dns_flush.desc': 'Czyści pamięć podręczną DNS. Przydatne przy dziwnych problemach sieciowych.',
         'task.dns_flush.title': 'Flush DNS Cache',
-        'task.dx_shader_cache.desc': 'Pamięć podręczna shaderów DirectX. Pierwsze uruchomienie gry po czyszczeniu może lekko przyciąć.',
+        'task.dx_shader_cache.desc': 'Pamięć podręczna shaderów DirectX. Pierwsze uruchomienie gry po czyszczeniu może '
+                                     'lekko przyciąć.',
         'task.dx_shader_cache.title': 'DirectX Shader Cache',
         'task.enable_game_mode.desc': 'Enables Windows Game Mode to reduce background interference while gaming.',
         'task.enable_game_mode.title': 'Enable Windows Game Mode',
-        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver combinations. This is optional: test games '
-                                 'after reboot and restore if stutters appear.',
+        'task.enable_hags.desc': 'Enables Hardware-Accelerated GPU Scheduling for supported Windows/GPU driver '
+                                 'combinations. This is optional: test games after reboot and restore if stutters '
+                                 'appear.',
         'task.enable_hags.title': 'Enable HAGS (optional GPU scheduling)',
         'task.epic_webcache.desc': 'Pamięć podręczna Chromium launchera Epic Games.',
         'task.epic_webcache.title': 'Epic Games Web Cache',
@@ -2410,10 +2655,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.firefox_startupCache.title': 'Firefox Startup Cache ({profile})',
         'task.font_cache.desc': 'Font rendering cache. Windows recreates it automatically.',
         'task.font_cache.title': 'Font Cache',
-        'task.gaming_compat_report.desc': 'Tylko odczyt: wersja Windows, Game Mode, Game DVR/Captures, HAGS, Power Throttling, plan zasilania i dynamic tick '
-                                          'przed zmianami.',
+        'task.gaming_compat_report.desc': 'Tylko odczyt: wersja Windows, Game Mode, Game DVR/Captures, HAGS, Power '
+                                          'Throttling, plan zasilania i dynamic tick przed zmianami.',
         'task.gaming_compat_report.title': 'Raport zgodności tweaków gamingowych',
-        'task.high_perf_plan.desc': 'Przełącza na High Performance. Najlepsze dla komputerów podłączonych do zasilania.',
+        'task.high_perf_plan.desc': 'Przełącza na High Performance. Najlepsze dla komputerów podłączonych do '
+                                    'zasilania.',
         'task.high_perf_plan.title': 'High Performance Power Plan',
         'task.icon_cache_db.desc': 'Pojedynczy plik IconCache.db. Eksplorator Windows odtworzy go w razie potrzeby.',
         'task.icon_cache_db.title': 'Baza pamięci podręcznej ikon Windows',
@@ -2427,10 +2673,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.launcher_cache.title': '{app} Launcher Cache',
         'task.memory_dumps.desc': 'Old BSOD and crash dump files. Keep them only if you are diagnosing crashes.',
         'task.memory_dumps.title': 'Windows Memory Dumps',
-        'task.mmcss_gaming_profile.desc': 'Stosuje udokumentowane wartości harmonogramu multimediów dla gier i pomija stare nieskuteczne tweaki.',
+        'task.mmcss_gaming_profile.desc': 'Stosuje udokumentowane wartości harmonogramu multimediów dla gier i pomija '
+                                          'stare nieskuteczne tweaki.',
         'task.mmcss_gaming_profile.title': 'Zastosuj bezpieczny profil MMCSS dla gier',
-        'task.network_throttling_off.desc': 'Ustawia NetworkThrottlingIndex na 0xffffffff, aby zmniejszyć throttling sieci w multimediach/grach. Zalecany '
-                                            'restart.',
+        'task.network_throttling_off.desc': 'Ustawia NetworkThrottlingIndex na 0xffffffff, aby zmniejszyć throttling '
+                                            'sieci w multimediach/grach. Zalecany restart.',
         'task.network_throttling_off.title': 'Wyłącz MMCSS NetworkThrottlingIndex',
         'task.nvidia_compute_cache.desc': 'NVIDIA CUDA/compute cache. It can be rebuilt automatically.',
         'task.nvidia_compute_cache.title': 'NVIDIA Compute Cache',
@@ -2438,7 +2685,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.nvidia_dx.title': 'NVIDIA DXCache',
         'task.nvidia_gl.desc': 'Pamięć podręczna OpenGL sterownika NVIDIA.',
         'task.nvidia_gl.title': 'NVIDIA GLCache',
-        'task.nvidia_ngx_cache.desc': 'Pamięć podręczna NVIDIA NGX/DLSS. Sterownik lub gra odbuduje ją w razie potrzeby.',
+        'task.nvidia_ngx_cache.desc': 'Pamięć podręczna NVIDIA NGX/DLSS. Sterownik lub gra odbuduje ją w razie '
+                                      'potrzeby.',
         'task.nvidia_ngx_cache.title': 'NVIDIA NGX Cache',
         'task.nvidia_nv_cache.desc': 'Pamięć podręczna potoku sterownika NVIDIA.',
         'task.nvidia_nv_cache.title': 'NVIDIA Driver Cache',
@@ -2452,48 +2700,61 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.onedrive_setup_logs.title': 'Logi instalacji OneDrive',
         'task.onedrive_webview_cache.desc': 'Czyści Cache, Code Cache, GPUCache i pamięci shaderów OneDrive WebView.',
         'task.onedrive_webview_cache.title': 'Pamięć WebView/GPU OneDrive',
-        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game DVR settings.',
+        'task.open_capture_settings.desc': 'Opens the Windows Captures page to review background recording and Game '
+                                           'DVR settings.',
         'task.open_capture_settings.title': 'Open Captures / DVR settings',
-        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. FreeCleaner does not disable this '
-                                         'automatically because it is a security trade-off.',
+        'task.open_core_isolation.desc': 'Opens Windows Security so you can review Memory integrity/VBS manually. '
+                                         'FreeCleaner does not disable this automatically because it is a security '
+                                         'trade-off.',
         'task.open_core_isolation.title': 'Open Core isolation / Memory integrity',
-        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the setting manually.',
+        'task.open_game_mode_settings.desc': 'Opens the official Windows Game Mode page so you can quickly verify the '
+                                             'setting manually.',
         'task.open_game_mode_settings.title': 'Open Game Mode settings',
-        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High performance on systems with multiple GPUs.',
+        'task.open_graphics_apps.desc': 'Opens Graphics settings so you can set wow.exe or Battle.net to High '
+                                        'performance on systems with multiple GPUs.',
         'task.open_graphics_apps.title': 'Open per-app graphics settings',
-        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed games, Variable Refresh Rate and hardware '
-                                            'GPU features when supported.',
+        'task.open_graphics_defaults.desc': 'Opens the Windows graphics defaults page for Optimizations for windowed '
+                                            'games, Variable Refresh Rate and hardware GPU features when supported.',
         'task.open_graphics_defaults.title': 'Open Graphics default settings',
-        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best performance on Windows 10/11 systems where OEM '
-                                              'power modes override classic power plans.',
+        'task.open_power_mode_settings.desc': 'Opens Windows power settings so you can manually choose Best '
+                                              'performance on Windows 10/11 systems where OEM power modes override '
+                                              'classic power plans.',
         'task.open_power_mode_settings.title': 'Open Power mode settings',
-        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual effects to best performance.',
+        'task.open_visual_effects.desc': 'Opens the Performance Options dialog where you can switch Windows visual '
+                                         'effects to best performance.',
         'task.open_visual_effects.title': 'Open Visual Effects performance options',
         'task.prefetch.desc': 'Ślady uruchamiania programów. Windows odbuduje je po czyszczeniu.',
         'task.prefetch.title': 'Windows Prefetch',
-        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does not close apps or change RAM timings.',
+        'task.purge_standby_ram.desc': 'Clears low-priority standby RAM cache before launching a heavy game. It does '
+                                       'not close apps or change RAM timings.',
         'task.purge_standby_ram.title': 'Purge standby RAM cache',
         'task.recent_docs.desc': 'Czyści historię ostatnio otwieranych plików w Eksploratorze.',
         'task.recent_docs.title': 'Recent Items',
         'task.recycle.desc': 'Trwale opróżnia Kosz.',
         'task.recycle.title': 'Empty Recycle Bin',
-        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target status lines without applying changes.',
+        'task.refresh_registry_statuses.desc': 'Re-reads optimizer registry values and updates the current → target '
+                                               'status lines without applying changes.',
         'task.refresh_registry_statuses.title': 'Refresh registry statuses',
-        'task.registry_leftovers.desc': 'Usuwa tylko wyraźnie uszkodzone wpisy Open With/Application, App Paths i autostartu wskazujące brakujące pliki '
-                                        'wykonywalne. Najpierw tworzy kopię rejestru.',
+        'task.registry_leftovers.desc': 'Usuwa tylko wyraźnie uszkodzone wpisy Open With/Application, App Paths i '
+                                        'autostartu wskazujące brakujące pliki wykonywalne. Najpierw tworzy kopię '
+                                        'rejestru.',
         'task.registry_leftovers.title': 'Ostrożne czyszczenie pozostałości rejestru',
-        'task.reset_winsock.desc': 'Resetuje stos sieciowy. Przydatne przy dziwnych problemach z gniazdami. Zalecany restart po wykonaniu.',
+        'task.reset_winsock.desc': 'Resetuje stos sieciowy. Przydatne przy dziwnych problemach z gniazdami. Zalecany '
+                                   'restart po wykonaniu.',
         'task.reset_winsock.title': 'Reset Winsock',
-        'task.restore_balanced_power_profile.desc': 'Bezpieczny rollback po gamingowych tweakach zasilania: przełącza Windows z powrotem na Balanced bez '
-                                                    'usuwania niestandardowych planów OEM.',
+        'task.restore_balanced_power_profile.desc': 'Bezpieczny rollback po gamingowych tweakach zasilania: przełącza '
+                                                    'Windows z powrotem na Balanced bez usuwania niestandardowych '
+                                                    'planów OEM.',
         'task.restore_balanced_power_profile.title': 'Przywróć plan Balanced',
-        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows manage timer ticks normally again. '
-                                                  'Restart required.',
+        'task.restore_dynamic_tick_default.desc': 'Removes the custom disabledynamictick boot option and lets Windows '
+                                                  'manage timer ticks normally again. Restart required.',
         'task.restore_dynamic_tick_default.title': 'Restore dynamic tick default',
-        'task.restore_onedrive_background.desc': 'Usuwa politykę blokowania OneDrive z uprawnieniami administratora i uruchamia klienta w tle.',
+        'task.restore_onedrive_background.desc': 'Usuwa politykę blokowania OneDrive z uprawnieniami administratora i '
+                                                 'uruchamia klienta w tle.',
         'task.restore_onedrive_background.title': 'Przywróć OneDrive',
-        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only CPU/PCIe latency settings. It does not '
-                                               'change voltage, clocks, fan curves or thermal protection.',
+        'task.safe_gaming_power_profile.desc': 'Switches Windows to High Performance and applies conservative AC-only '
+                                               'CPU/PCIe latency settings. It does not change voltage, clocks, fan '
+                                               'curves or thermal protection.',
         'task.safe_gaming_power_profile.title': 'Safe CPU/GPU gaming power profile',
         'task.steam_appcache.desc': 'Steam client HTTP/app cache.',
         'task.steam_appcache.title': 'Steam App Cache',
@@ -2503,14 +2764,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.steam_shadercache.title': 'Steam Shader Cache',
         'task.streaming_app_cache.desc': 'Temporary cache for streaming tools. App settings and scenes are preserved.',
         'task.streaming_app_cache.title': 'Streaming App Cache ({app})',
-        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting history.',
+        'task.streaming_app_logs.desc': 'Old streaming-app logs. Safe to remove when you do not need troubleshooting '
+                                        'history.',
         'task.streaming_app_logs.title': 'Streaming App Logs ({app})',
-        'task.streaming_diagnostics.desc': 'Sprawdza profile OBS, enkodery, ostatnie logi OBS, bieżące obciążenie CPU/GPU/RAM i szybkość zapisu dysku. Nie '
-                                           'zmienia ustawień automatycznie.',
+        'task.streaming_diagnostics.desc': 'Sprawdza profile OBS, enkodery, ostatnie logi OBS, bieżące obciążenie '
+                                           'CPU/GPU/RAM i szybkość zapisu dysku. Nie zmienia ustawień automatycznie.',
         'task.streaming_diagnostics.title': 'Diagnostyka streamingu OBS/systemu',
         'task.streaming_obs_cache.desc': 'OBS temporary cache only. Scenes, sources and profiles are not removed.',
         'task.streaming_obs_cache.title': 'OBS Studio Cache ({app})',
-        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues right now.',
+        'task.streaming_obs_logs.desc': 'Old OBS logs and crash reports. Keep them if you are debugging OBS issues '
+                                        'right now.',
         'task.streaming_obs_logs.title': 'OBS Studio Logs / Crashes ({app})',
         'task.system_temp.desc': 'Systemowy katalog temp Windows. Najlepiej czyścić z prawami administratora.',
         'task.system_temp.title': 'System Temp ({path})',
@@ -2524,30 +2787,37 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.update_cache_files.title': 'Windows Update Cache',
         'task.user_temp.desc': 'Pliki tymczasowe bieżącego użytkownika. Prawie zawsze bezpieczny wybór.',
         'task.user_temp.title': 'User Temp ({path})',
-        'task.uwp_temp_caches.desc': 'Ostrożne czyszczenie {count} folderów TempState/AC Temp aplikacji pakietowych. Dane LocalState nie są ruszane.',
+        'task.uwp_temp_caches.desc': 'Ostrożne czyszczenie {count} folderów TempState/AC Temp aplikacji pakietowych. '
+                                     'Dane LocalState nie są ruszane.',
         'task.uwp_temp_caches.title': 'Tymczasowe cache aplikacji Microsoft Store',
         'task.web_cache.desc': 'Windows WebCache database leftovers and browser-control cache files.',
         'task.web_cache.title': 'Windows WebCache',
-        'task.windows_caches_user.desc': 'Małe foldery cache Windows w profilu użytkownika. Windows utworzy je ponownie, gdy będą potrzebne.',
+        'task.windows_caches_user.desc': 'Małe foldery cache Windows w profilu użytkownika. Windows utworzy je '
+                                         'ponownie, gdy będą potrzebne.',
         'task.windows_caches_user.title': 'Pamięci podręczne użytkownika Windows',
-        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting update/component issues.',
+        'task.windows_component_logs.desc': 'CBS and DISM servicing logs. Useful only for troubleshooting '
+                                            'update/component issues.',
         'task.windows_component_logs.title': 'Windows Component Logs',
         'task.windows_old.desc': 'Windows.old from a previous upgrade. Cleaning it removes the easy rollback files.',
         'task.windows_old.title': 'Previous Windows Installation',
-        'task.windows_setup_logs.desc': 'Stare logi Panther, MoSetup i setup cleanup. Zostaw tylko podczas diagnozy błędów instalacji/aktualizacji.',
+        'task.windows_setup_logs.desc': 'Stare logi Panther, MoSetup i setup cleanup. Zostaw tylko podczas diagnozy '
+                                        'błędów instalacji/aktualizacji.',
         'task.windows_setup_logs.title': 'Logi instalacji i aktualizacji Windows',
         'task.windows_update_etl_logs.desc': 'Stare logi ETL WaaSMedic. Aktywne zablokowane pliki są pomijane.',
         'task.windows_update_etl_logs.title': 'Logi Windows Update Medic',
-        'task.windows_wmi_etl_logs.desc': 'Diagnostyczne logi ETL, np. DiagTrack. Aktywne zablokowane logi są pomijane.',
+        'task.windows_wmi_etl_logs.desc': 'Diagnostyczne logi ETL, np. DiagTrack. Aktywne zablokowane logi są '
+                                          'pomijane.',
         'task.windows_wmi_etl_logs.title': 'Logi ETL WMI i diagnostyki',
         'threads_info': 'Skanowanie: {scan} wątków | czyszczenie: {clean} wątków',
         'top_consumers': 'Najwięksi pożeracze miejsca:',
         'ultimate_perf_fail': 'Nie udało się włączyć Ultimate Performance.',
         'ultimate_perf_ok': 'Ultimate Performance włączone.',
-        'ultimate_power_redundant_skipped': 'Duplikacja planu zasilania: Ultimate Performance ma wyższy priorytet, słabsze przełączenia zasilania pominięto.',
+        'ultimate_power_redundant_skipped': 'Duplikacja planu zasilania: Ultimate Performance ma wyższy priorytet, '
+                                            'słabsze przełączenia zasilania pominięto.',
         'unavailable_short': 'b/d',
         'unknown': 'Unknown',
-        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest version: {latest}.',
+        'update_available_body': 'A newer FreeCleaner release is available. Current version: {current}. Latest '
+                                 'version: {latest}.',
         'update_available_log': 'Update found: {current} → {latest}',
         'update_changelog': 'What changed',
         'update_check_failed': 'Could not check for updates right now.',
@@ -2559,8 +2829,9 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'update_download_complete': 'Aktualizacja pobrana:\n{path}',
         'update_download_failed': 'Could not download the update.',
         'update_download_failed_reason': 'Could not download the update: {reason}',
-        'update_download_idle': 'Instalator zostanie zapisany w lokalnym folderze użytkownika FreeCleaner i uruchomiony automatycznie po pobraniu. Jeśli '
-                                'FreeCleaner jest zainstalowany w Program Files, Windows może poprosić o uprawnienia administratora dopiero podczas '
+        'update_download_idle': 'Instalator zostanie zapisany w lokalnym folderze użytkownika FreeCleaner i '
+                                'uruchomiony automatycznie po pobraniu. Jeśli FreeCleaner jest zainstalowany w Program '
+                                'Files, Windows może poprosić o uprawnienia administratora dopiero podczas '
                                 'uruchamiania instalatora.',
         'update_download_location': 'Folder aktualizacji: {path}',
         'update_download_progress': 'Downloading: {progress}',
@@ -2568,8 +2839,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'update_download_section': 'Update download',
         'update_download_started': 'Starting download for update {version}...',
         'update_downloading': 'Downloading...',
-        'update_install_cleanup_scheduled': 'Stare pliki aktualizacji zostaną usunięte z folderu updates po instalacji.',
-        'update_install_closing_app': 'Instalator uruchomiony. FreeCleaner zostanie zamknięty, aby zainstalować aktualizację.',
+        'update_install_cleanup_scheduled': 'Stare pliki aktualizacji zostaną usunięte z folderu updates po '
+                                            'instalacji.',
+        'update_install_closing_app': 'Instalator uruchomiony. FreeCleaner zostanie zamknięty, aby zainstalować '
+                                      'aktualizację.',
         'update_install_failed_reason': 'Nie udało się uruchomić instalatora aktualizacji: {reason}',
         'update_install_started': 'Instalator aktualizacji uruchomiony: {path}',
         'update_install_started_button': 'Instalator uruchomiony',
@@ -2592,10 +2865,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'about_close': 'Закрити',
         'about_copied': 'Скопійовано в буфер обміну.',
         'about_copy': 'Копіювати',
-        'about_desc': 'FreeCleaner допомагає безпечно прибрати тимчасові файли та дрібні «хвости», щоб звільнити місце й зробити Windows легшою.',
+        'about_desc': 'FreeCleaner допомагає безпечно прибрати тимчасові файли та дрібні «хвости», щоб звільнити місце '
+                      'й зробити Windows легшою.',
         'about_doc_missing': 'Файл не знайдено: {name}',
-        'about_hint_body': '• FreeCleaner працює локально на твоєму ПК.\\n• Ми не завантажуємо твої файли нікуди.\\n• Документи можна читати й копіювати прямо '
-                           'в програмі.',
+        'about_hint_body': '• FreeCleaner працює локально на твоєму ПК.\\n• Ми не завантажуємо твої файли нікуди.\\n• '
+                           'Документи можна читати й копіювати прямо в програмі.',
         'about_hint_title': 'Варто знати',
         'about_license': 'Ліцензія',
         'about_license_sub': 'Як можна використовувати та поширювати FreeCleaner.',
@@ -2647,20 +2921,23 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'cleanup_reboot_scheduled_fmt': 'Заплановано видалення після перезавантаження: {title} -> {count}',
         'cleanup_remaining_fmt': 'Після очищення ще лишилось: {title} -> файлів: {files}, папок: {dirs}',
         'cleanup_skipped_links_fmt': 'Пропущено захищені посилання/junction: {title} -> {count}',
-        'cleanup_summary_fmt': 'Підсумок чистки: {mb:.2f} MB, файлів: {files}, папок: {dirs}, у черзі на перезапуск: {scheduled}, пропущено посилань: '
-                               '{skipped}, помилок/пропусків: {errors}',
+        'cleanup_summary_fmt': 'Підсумок чистки: {mb:.2f} MB, файлів: {files}, папок: {dirs}, у черзі на перезапуск: '
+                               '{scheduled}, пропущено посилань: {skipped}, помилок/пропусків: {errors}',
         'cleanup_target_failed_fmt': 'Помилка очищення: {title}',
         'cleanup_target_ok_fmt': 'Очищено: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}',
-        'cleanup_target_partial_fmt': 'Очищено частково: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}, пропущено: {errors}',
+        'cleanup_target_partial_fmt': 'Очищено частково: {title} -> {mb:.2f} MB, файлів: {files}, папок: {dirs}, '
+                                      'пропущено: {errors}',
         'clear_log': 'Очистити лог',
         'clear_search': 'Очистити пошук',
         'copy_log': 'Копіювати лог',
         'core_isolation_page_fail': 'Не вдалося відкрити Windows Security / Core isolation.',
         'core_isolation_page_ok': 'Відкрито Windows Security / Core isolation.',
-        'cpu_latency_power_fail': 'Не вдалося застосувати CPU latency/performance профіль. Можливо, OEM/драйвер/план живлення не підтримує частину powercfg '
-                                  'alias-ів.',
-        'cpu_latency_power_ok': 'CPU latency/performance профіль застосовано. Перевір температури й стабільність у грі.',
-        'cpu_latency_redundant_skipped': 'Безпечний High Performance/ігровий power profile пропущено, бо максимальний CPU профіль уже містить ці дії.',
+        'cpu_latency_power_fail': 'Не вдалося застосувати CPU latency/performance профіль. Можливо, OEM/драйвер/план '
+                                  'живлення не підтримує частину powercfg alias-ів.',
+        'cpu_latency_power_ok': 'CPU latency/performance профіль застосовано. Перевір температури й стабільність у '
+                                'грі.',
+        'cpu_latency_redundant_skipped': 'Безпечний High Performance/ігровий power profile пропущено, бо максимальний '
+                                         'CPU профіль уже містить ці дії.',
         'custom_language_label': 'Користувацька [{name}]',
         'deep_profile': 'Глибоке очищення',
         'deep_profile_on': 'Увімкнено профіль глибокого очищення.',
@@ -2680,16 +2957,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_disk_ok_fmt': 'Тест запису: {mbps:.1f} MB/s у “{folder}” ({size} MB).',
         'diag_gpu_pref_header': 'GPU preference:',
         'diag_gpu_pref_line': '• {app}: {pref}',
-        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків краще виставити High performance вручну.',
+        'diag_gpu_pref_missing': 'Для OBS/ігор не знайдено per-app GPU preference. Це не помилка, але для ноутбуків '
+                                 'краще виставити High performance вручну.',
         'diag_label_captures': 'Captures/Game DVR',
         'diag_label_game_mode': 'Game Mode',
         'diag_label_hags': 'HAGS',
         'diag_label_power_plan': 'Power plan',
         'diag_more_items_fmt': '…ще {count}',
         'diag_network_activity_fmt': 'Останні логи: stream={stream}, record={record}, Replay Buffer={replay}',
-        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest server, а не “сміття Windows”.',
+        'diag_network_dropped_fmt': 'У OBS logs знайдено dropped frames: {count}. Частіше це мережа/bitrate/ingest '
+                                    'server, а не “сміття Windows”.',
         'diag_network_no_drops': 'У свіжих OBS logs dropped frames не знайдено.',
-        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати CPU/GPU/диск.',
+        'diag_network_triple_warn': 'Stream + Recording + Replay Buffer одночасно можуть сильно навантажувати '
+                                    'CPU/GPU/диск.',
         'diag_obs_issues_line': 'У логах OBS знайдено: {issues}',
         'diag_obs_logs_clean': 'У свіжих OBS logs явних overload/dropped/NVENC помилок не знайдено.',
         'diag_obs_no_profiles': 'OBS профілі не знайдено або OBS ще не створив basic.ini.',
@@ -2701,14 +2981,21 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diag_onedrive_running': 'Запущено',
         'diag_onedrive_state_line': '{label}: {value}',
         'diag_rec_all_good': 'Критичних проблем не видно. Не треба застосовувати випадкові інтернет-твіки.',
-        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати запис.',
-        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance GPU.',
-        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо він доступний.',
+        'diag_rec_disable_captures': 'Якщо пишеш через OBS, Windows Captures/Game DVR краще вимкнути, щоб не дублювати '
+                                     'запис.',
+        'diag_rec_gpu_high_performance': 'Для OBS і гри в Windows Graphics settings варто виставити High performance '
+                                         'GPU.',
+        'diag_rec_hardware_encoder': 'Для стріму/запису краще використовувати апаратний енкодер на основній GPU, якщо '
+                                     'він доступний.',
         'diag_rec_mkv': 'Для запису краще MKV або Hybrid MP4, щоб зменшити ризик втрати файлу після крашу.',
-        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть Windows без причини.',
-        'diag_rec_onedrive_disable': 'OneDrive активний: вимкни автозапуск/синхронізацію, якщо він не потрібен під гру або стрім.',
-        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації OneDrive.',
-        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або обмеж FPS у грі.',
+        'diag_rec_network_bitrate': 'Якщо є dropped frames — зменши bitrate або зміни ingest server OBS, а не чисть '
+                                    'Windows без причини.',
+        'diag_rec_onedrive_disable': 'OneDrive активний: вимкни автозапуск/синхронізацію, якщо він не потрібен під гру '
+                                     'або стрім.',
+        'diag_rec_recording_disk': 'Диск для запису повільний: краще писати на SSD або в іншу папку без синхронізації '
+                                   'OneDrive.',
+        'diag_rec_reduce_gpu_load': 'Rendering lag зазвичай означає перевантаження GPU: знизь FPS/сцену/фільтри або '
+                                    'обмеж FPS у грі.',
         'diag_status_error': 'Помилка',
         'diag_status_info': 'Інфо',
         'diag_status_loading': 'Перевірка',
@@ -2724,11 +3011,12 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'diagnostics_not_run': 'Натисни “Оновити діагностику”, щоб побачити реальний стан.',
         'diagnostics_refresh': 'Оновити діагностику',
         'diagnostics_running': 'Перевіряю…',
-        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. Налаштування не змінюються автоматично.',
+        'diagnostics_subtitle': 'Read-only перевірка: FreeCleaner читає OBS/Windows/логи та показує висновки картками. '
+                                'Налаштування не змінюються автоматично.',
         'diagnostics_title': 'Діагностика стрімінгу та геймінгу',
         'disk_write_fail_fmt': 'Disk write test не виконано для папки {folder}.',
-        'disk_write_low_warn': '⚠ Швидкість запису низька для стабільного запису високого бітрейту. Краще писати на SSD або інший диск, не той самий що '
-                               'активно грузить гра.',
+        'disk_write_low_warn': '⚠ Швидкість запису низька для стабільного запису високого бітрейту. Краще писати на '
+                               'SSD або інший диск, не той самий що активно грузить гра.',
         'disk_write_ok_fmt': 'Disk write test: {mbps:.1f} MB/s у папці {folder}.',
         'dism_busy_close_blocked': 'DISM ще працює. Закриття заблоковано до завершення.',
         'dism_fail': 'DISM завершився з помилками.',
@@ -2737,10 +3025,11 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'dns_fail': 'Не вдалося очистити DNS-кеш.',
         'dns_ok': 'DNS-кеш очищено.',
         'done_clean_sequence': 'Готово. Послідовність очищення завершена.',
-        'dynamic_tick_conflict_skipped': 'Dynamic tick-зміни пропущено, бо одночасно вибрано вимкнення і повернення default. Обери тільки одну дію.',
+        'dynamic_tick_conflict_skipped': 'Dynamic tick-зміни пропущено, бо одночасно вибрано вимкнення і повернення '
+                                         'default. Обери тільки одну дію.',
         'dynamic_tick_off_fail': 'Не вдалося вимкнути dynamic tick через BCDEdit.',
-        'dynamic_tick_off_ok': 'Dynamic tick вимкнено для тесту затримки. Перезавантаж Windows і перевір ігри; якщо погіршився sleep, батарея або таймінги — '
-                               'поверни default.',
+        'dynamic_tick_off_ok': 'Dynamic tick вимкнено для тесту затримки. Перезавантаж Windows і перевір ігри; якщо '
+                               'погіршився sleep, батарея або таймінги — поверни default.',
         'dynamic_tick_restore_fail': 'Не вдалося повернути dynamic tick за замовчуванням через BCDEdit.',
         'dynamic_tick_restore_ok': 'Dynamic tick повернено до стандартного режиму Windows. Перезавантаж Windows.',
         'event_log': 'Журнал подій',
@@ -2765,15 +3054,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'gaming_report_hags': 'Hardware-Accelerated GPU Scheduling',
         'gaming_report_item_fmt': '{item}: {state}.',
         'gaming_report_no_critical_notes': 'Критичних несумісностей у швидкому звіті не знайдено.',
-        'gaming_report_note_admin_limited': '• Без прав адміністратора частина HKLM/powercfg/BCDEdit статусів може бути неповною.',
-        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR увімкнено. Якщо пишеш/стрімиш через OBS, це може дублювати захоплення й забирати '
-                                              'ресурси.',
-        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick змінений через BCDEdit. Це не універсальний буст, а latency-експеримент; тримай rollback-дію '
-                                                  'поруч.',
-        'gaming_report_note_hags_unsupported': '• HAGS недоступний або не підтримується цією версією Windows/драйвером.',
+        'gaming_report_note_admin_limited': '• Без прав адміністратора частина HKLM/powercfg/BCDEdit статусів може '
+                                            'бути неповною.',
+        'gaming_report_note_capture_enabled': '⚠ Windows Captures/Game DVR увімкнено. Якщо пишеш/стрімиш через OBS, це '
+                                              'може дублювати захоплення й забирати ресурси.',
+        'gaming_report_note_dynamic_tick_custom': '⚠ Dynamic tick змінений через BCDEdit. Це не універсальний буст, а '
+                                                  'latency-експеримент; тримай rollback-дію поруч.',
+        'gaming_report_note_hags_unsupported': '• HAGS недоступний або не підтримується цією версією '
+                                               'Windows/драйвером.',
         'gaming_report_note_windows_only': '⚠ Цей звіт має сенс тільки на Windows 10/11.',
-        'gaming_report_note_wow64': '• Запуск 32-bit процесу на 64-bit Windows: FreeCleaner читає HKLM\\SOFTWARE через 64-bit registry view, щоб не потрапляти '
-                                    'в WOW6432Node.',
+        'gaming_report_note_wow64': '• Запуск 32-bit процесу на 64-bit Windows: FreeCleaner читає HKLM\\SOFTWARE через '
+                                    '64-bit registry view, щоб не потрапляти в WOW6432Node.',
         'gaming_report_power_fmt': 'Активний power plan: {plan}.',
         'gaming_report_power_throttling': 'Power Throttling',
         'gaming_report_started': 'Звіт сумісності геймінг-твіків запущено. Налаштування не змінюються.',
@@ -2788,14 +3079,16 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'graphics_apps_ok': 'Відкрито Graphics settings для програм.',
         'graphics_defaults_fail': 'Не вдалося відкрити Graphics default settings.',
         'graphics_defaults_ok': 'Відкрито Graphics default settings.',
-        'hags_conflict_skipped': 'HAGS-зміни пропущено, бо одночасно вибрано увімкнення і вимкнення HAGS. Обери тільки один варіант після тесту.',
+        'hags_conflict_skipped': 'HAGS-зміни пропущено, бо одночасно вибрано увімкнення і вимкнення HAGS. Обери тільки '
+                                 'один варіант після тесту.',
         'hags_off_fail': 'Не вдалося вимкнути HAGS через реєстр.',
         'hags_off_ok': 'HAGS вимкнено. Після перезавантаження перевір WoW на stutter/hitching.',
         'hags_on_fail': 'Не вдалося увімкнути HAGS через реєстр.',
         'hags_on_ok': 'HAGS увімкнено. Перезавантаж Windows і перевір ігри на стабільність та статори.',
         'high_perf_fail': 'Не вдалося змінити план живлення.',
         'high_perf_ok': 'Увімкнено High Performance.',
-        'high_perf_redundant_skipped': 'Базовий High Performance пропущено, бо безпечний ігровий профіль уже містить цю дію.',
+        'high_perf_redundant_skipped': 'Базовий High Performance пропущено, бо безпечний ігровий профіль уже містить '
+                                       'цю дію.',
         'junk_found': 'Знайдено сміття',
         'lang_auto': 'Auto',
         'lang_en': 'English',
@@ -2820,7 +3113,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'no': 'Ні',
         'no_noticeable_junk': 'Помітного сміття у вибраних папках не знайдено.',
         'nothing_selected': 'Нічого не вибрано.',
-        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — CPU-енкодер. Для гри+стріму це часто дає просадки кадрів; краще NVENC/QSV/AMF, якщо доступно.',
+        'obs_encoder_cpu_warn_fmt': '⚠ {label}: {encoder} — CPU-енкодер. Для гри+стріму це часто дає просадки кадрів; '
+                                    'краще NVENC/QSV/AMF, якщо доступно.',
         'obs_encoder_hw_ok_fmt': '✓ {label}: {encoder} — апаратний енкодер, правильний напрям для стрімінгу.',
         'obs_encoder_unknown_fmt': '• {label}: {encoder} — не вдалося надійно визначити тип енкодера.',
         'obs_log_issue_dropped_frames': 'dropped frames через мережу або пропускну здатність',
@@ -2830,15 +3124,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'obs_log_issue_recording_failure': 'помилки старту/роботи запису',
         'obs_log_issue_rendering_lag': 'rendering lag / затримки рендеру сцени',
         'obs_log_issue_unknown': 'невідома проблема в OBS-лозі',
-        'obs_log_triple_activity_warn': '⚠ Останні OBS-логи показують одночасну активність стріму, запису й Replay Buffer. Це може перевантажувати енкодер або '
-                                        'диск.',
+        'obs_log_triple_activity_warn': '⚠ Останні OBS-логи показують одночасну активність стріму, запису й Replay '
+                                        'Buffer. Це може перевантажувати енкодер або диск.',
         'obs_logs_clean': 'OBS log checker: критичних ознак encoding/render/network lag в останніх логах не знайдено.',
-        'obs_profile_missing': 'OBS-профілі не знайдені. Якщо OBS встановлений портативно, перевірка стандартного AppData-профілю може бути порожньою.',
-        'obs_profile_summary_fmt': 'OBS профіль [{profile}]: режим {mode}, стрім {stream}, запис {record}, формат {format}, Replay Buffer: {replay}.',
+        'obs_profile_missing': 'OBS-профілі не знайдені. Якщо OBS встановлений портативно, перевірка стандартного '
+                               'AppData-профілю може бути порожньою.',
+        'obs_profile_summary_fmt': 'OBS профіль [{profile}]: режим {mode}, стрім {stream}, запис {record}, формат '
+                                   '{format}, Replay Buffer: {replay}.',
         'obs_rec_format_ok_fmt': '✓ OBS профіль [{profile}]: формат запису {format} нормальний для безпечного запису.',
-        'obs_rec_format_warn_fmt': '⚠ OBS профіль [{profile}]: формат запису {format}. Для запису краще MKV/Hybrid MP4, щоб не втрачати файл після крашу.',
+        'obs_rec_format_warn_fmt': '⚠ OBS профіль [{profile}]: формат запису {format}. Для запису краще MKV/Hybrid '
+                                   'MP4, щоб не втрачати файл після крашу.',
         'obs_record_encoder': 'Енкодер запису',
-        'obs_replay_combo_warn': '⚠ Replay Buffer увімкнений. Не тримай одночасно Stream + Recording + Replay Buffer без запасу GPU/диска.',
+        'obs_replay_combo_warn': '⚠ Replay Buffer увімкнений. Не тримай одночасно Stream + Recording + Replay Buffer '
+                                 'без запасу GPU/диска.',
         'obs_stream_encoder': 'Стрім-енкодер',
         'onedrive_autostart_remove_fail': 'OneDrive: автозапуск не знайдено або не вдалося прибрати.',
         'onedrive_autostart_removed': 'OneDrive: автозапуск поточного користувача прибрано.',
@@ -2855,10 +3153,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'onedrive_report_cleanup_fmt': 'OneDrive: знайдено {targets} безпечних цілей очищення, приблизно {mb:.1f} MB.',
         'onedrive_report_done': 'OneDrive: звіт завершено.',
         'onedrive_report_failed': 'OneDrive: не вдалося зібрати звіт.',
-        'onedrive_report_policy_note': 'OneDrive: політика блокування синхронізації не активна. Для повного вимкнення потрібні права адміністратора.',
-        'onedrive_report_running_warn': 'OneDrive: процес активний, він може впливати на диск, мережу та автосинхронізацію.',
+        'onedrive_report_policy_note': 'OneDrive: політика блокування синхронізації не активна. Для повного вимкнення '
+                                       'потрібні права адміністратора.',
+        'onedrive_report_running_warn': 'OneDrive: процес активний, він може впливати на диск, мережу та '
+                                        'автосинхронізацію.',
         'onedrive_report_started': 'OneDrive: збираю звіт...',
-        'onedrive_report_status_fmt': 'OneDrive: встановлено={installed}, запущено={running}, автозапуск={autostart}, політика синхронізації={policy}.',
+        'onedrive_report_status_fmt': 'OneDrive: встановлено={installed}, запущено={running}, автозапуск={autostart}, '
+                                      'політика синхронізації={policy}.',
         'onedrive_restore_done': 'OneDrive: відновлення завершено.',
         'onedrive_restore_failed': 'OneDrive: не вдалося повернути фонову роботу.',
         'onedrive_restore_started': 'OneDrive: повертаю фонову роботу...',
@@ -2869,9 +3170,10 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'pick_one_module': 'Спочатку обери хоча б один модуль.',
         'power_mode_page_fail': 'Не вдалося відкрити налаштування живлення Windows.',
         'power_mode_page_ok': 'Відкрито налаштування живлення Windows.',
-        'power_profile_conflict_skipped': 'Power profile-зміни пропущено, бо одночасно вибрано максимальний CPU профіль і повернення Balanced.',
-        'power_restore_conflict_skipped': 'Конфлікт планів живлення: відновлення Balanced вибрано разом із продуктивними профілями. Продуктивні профілі '
-                                          'пропущено.',
+        'power_profile_conflict_skipped': 'Power profile-зміни пропущено, бо одночасно вибрано максимальний CPU '
+                                          'профіль і повернення Balanced.',
+        'power_restore_conflict_skipped': 'Конфлікт планів живлення: відновлення Balanced вибрано разом із '
+                                          'продуктивними профілями. Продуктивні профілі пропущено.',
         'power_throttling_fail': 'Не вдалося вимкнути Power Throttling.',
         'power_throttling_ok': 'Power Throttling вимкнено.',
         'pre_cleanup_actions': 'Виконую підготовчі дії перед очищенням, щоб уникнути заблокованих файлів.',
@@ -2881,16 +3183,17 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'profile_manual': 'Вручну',
         'profile_streamer': 'Геймінг + стрімінг',
         'queued_actions_fmt': 'Командних дій у черзі: {count}',
-        'quick_profiles': 'Швидкі профілі',
         'reboot_recommended': 'Для повного застосування цієї зміни рекомендовано перезавантажити ПК.',
         'recycle_fail': 'Не вдалося очистити кошик або він уже пустий.',
         'recycle_ok': 'Кошик очищено.',
-        'registry_admin_values_skipped': 'Частину системних значень реєстру пропущено: потрібен запуск від адміністратора.',
+        'registry_admin_values_skipped': 'Частину системних значень реєстру пропущено: потрібен запуск від '
+                                         'адміністратора.',
         'registry_backup_created': 'Резервну копію реєстру створено: {path}',
         'registry_backup_failed': 'Не вдалося створити резервну копію реєстру. Зміни не застосовано.',
-        'registry_leftovers_done_fmt': 'Очищення залишків реєстру: знайдено {found}, видалено {removed} ({keys} ключів, {values} значень), помилок {failed}.',
-        'registry_leftovers_limited_mode': 'Обмежений режим: перевірені лише записи поточного користувача. Запусти від адміністратора, щоб додати HKLM-записи '
-                                           'для всієї системи.',
+        'registry_leftovers_done_fmt': 'Очищення залишків реєстру: знайдено {found}, видалено {removed} ({keys} '
+                                       'ключів, {values} значень), помилок {failed}.',
+        'registry_leftovers_limited_mode': 'Обмежений режим: перевірені лише записи поточного користувача. Запусти від '
+                                           'адміністратора, щоб додати HKLM-записи для всієї системи.',
         'registry_leftovers_none': 'Безпечних залишків реєстру не знайдено.',
         'registry_restore_fail': 'Не вдалося відновити резервну копію реєстру: {name}',
         'registry_restore_missing': 'Резервну копію реєстру не знайдено.',
@@ -2913,12 +3216,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'restore_dialog_backups': 'Доступні резервні копії',
         'restore_dialog_manifest_empty': 'Для цієї копії не знайдено manifest-даних.',
         'restore_dialog_meta': 'Створено: {created}\nФайлів: {count}\nТип: {kind}',
-        'restore_dialog_note': 'Порада: відновлюй лише ті твіки, які справді хочеш відкотити. Перед імпортом програма створює новий pre-restore backup, тож '
-                               'можна відкотити навіть відкат.',
-        'restore_dialog_sub': 'Оберіть знімок резервної копії та відновіть його безпечніше. Перед імпортом програма автоматично створить новий pre-restore '
-                              'backup поточного стану.',
+        'restore_dialog_note': 'Порада: відновлюй лише ті твіки, які справді хочеш відкотити. Перед імпортом програма '
+                               'створює новий pre-restore backup, тож можна відкотити навіть відкат.',
+        'restore_dialog_sub': 'Оберіть знімок резервної копії та відновіть його безпечніше. Перед імпортом програма '
+                              'автоматично створить новий pre-restore backup поточного стану.',
         'restore_dialog_title': 'Відновлення резервної копії реєстру',
-        'restore_registry_admin_required': 'Для відновлення резервної копії реєстру запусти FreeCleaner від адміністратора.',
+        'restore_registry_admin_required': 'Для відновлення резервної копії реєстру запусти FreeCleaner від '
+                                           'адміністратора.',
         'restore_registry_backup': 'Відновити резервну копію реєстру',
         'restore_selected_backup': 'Відновити вибраний backup',
         'running': 'Працює...',
@@ -2936,14 +3240,14 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'sec_net_title': 'Браузери та мережа',
         'sec_onedrive_sub': 'Вимкнення фонового впливу, діагностика та безпечна чистка кешу/логів',
         'sec_onedrive_title': 'OneDrive',
-        'sec_optimizer_registry_sub': 'Просунуті registry-твіки для ігор. Кожен рядок показує поточне значення → цільове значення, а FreeCleaner створює бекап '
-                                      'перед застосуванням.',
+        'sec_optimizer_registry_sub': 'Просунуті registry-твіки для ігор. Кожен рядок показує поточне значення → '
+                                      'цільове значення, а FreeCleaner створює бекап перед застосуванням.',
         'sec_optimizer_registry_title': 'Додаткові реєстрові твіки для ігор',
-        'sec_optimizer_sub': 'Безпечні ігрові твіки для CPU/GPU/RAM: Game Mode, вимкнення захоплення, політика живлення, standby RAM і графічні налаштування '
-                             'без розгону.',
+        'sec_optimizer_sub': 'Безпечні ігрові твіки для CPU/GPU/RAM: Game Mode, вимкнення захоплення, політика '
+                             'живлення, standby RAM і графічні налаштування без розгону.',
         'sec_optimizer_title': 'Оптимізація Windows для ігор',
-        'sec_optimizer_tools_sub': 'Усі пункти нижче лише відкривають офіційні сторінки Windows: графіка, Captures, Game Mode, візуальні ефекти та корисні '
-                                   'ігрові сторінки.',
+        'sec_optimizer_tools_sub': 'Усі пункти нижче лише відкривають офіційні сторінки Windows: графіка, Captures, '
+                                   'Game Mode, візуальні ефекти та корисні ігрові сторінки.',
         'sec_optimizer_tools_title': 'Відкриття параметрів Windows',
         'sec_system_sub': 'Безпечні базові місця для швидкого очищення.',
         'sec_system_title': 'Системні тимчасові файли',
@@ -2952,7 +3256,8 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'selected_modules': 'Вибрано модулів',
         'selected_reset_hint': 'Вибір скинуто. Обери модулі або скористайся профілем.',
         'selection_cleared': 'Вибір очищено.',
-        'standby_ram_fail': 'Не вдалося очистити standby RAM cache. Можливо, потрібні права адміністратора або ця ОС не підтримує дію.',
+        'standby_ram_fail': 'Не вдалося очистити standby RAM cache. Можливо, потрібні права адміністратора або ця ОС '
+                            'не підтримує дію.',
         'standby_ram_ok': 'Standby RAM cache очищено.',
         'start_update_services': 'Повертаю служби Windows Update...',
         'state_custom': 'Кастомно',
@@ -2969,11 +3274,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'stop_update_services': 'Зупиняю служби Windows Update для очищення кешу...',
         'streamer': 'Геймінг + стрімінг',
         'streamer_profile_on': 'Увімкнено профіль для геймінгу та стрімінгу.',
-        'streaming_cpu_high_warn': '⚠ CPU зараз сильно завантажений. Для стрімінгу перевір фонові процеси або перенеси енкодинг на GPU.',
+        'streaming_cpu_high_warn': '⚠ CPU зараз сильно завантажений. Для стрімінгу перевір фонові процеси або перенеси '
+                                   'енкодинг на GPU.',
         'streaming_diag_done': 'Стрімінг-діагностика завершена.',
         'streaming_diag_failed': 'Не вдалося виконати стрімінг-діагностику.',
         'streaming_diag_started': 'Стрімінг-діагностика запущена. Налаштування не змінюються.',
-        'streaming_gpu_high_warn': '⚠ GPU зараз майже завантажений. Для гри+стріму зменш пресет/quality, FPS або важкі фільтри OBS.',
+        'streaming_gpu_high_warn': '⚠ GPU зараз майже завантажений. Для гри+стріму зменш пресет/quality, FPS або важкі '
+                                   'фільтри OBS.',
         'streaming_load_fmt': 'Поточне навантаження: CPU {cpu}, RAM {ram}, GPU {gpu}.',
         'tab_cleaner': 'Клінер',
         'tab_cleaner_sub': 'Очищення кешів, тимчасових файлів і залишків лаунчерів.',
@@ -2997,39 +3304,47 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.browser_chrome.title': 'Google Chrome Cache',
         'task.browser_edge.desc': 'Кеш сторінок, медіа та мережевих тимчасових файлів.',
         'task.browser_edge.title': 'Microsoft Edge Cache',
-        'task.browser_generic.desc': 'Реальні папки кешу профілю браузера: network cache, code cache, GPU cache та service worker cache.',
+        'task.browser_generic.desc': 'Реальні папки кешу профілю браузера: network cache, code cache, GPU cache та '
+                                     'service worker cache.',
         'task.browser_generic.title': '{browser} Cache ({profile})',
         'task.browser_opera.desc': 'Тимчасові файли й кеш браузера Opera.',
         'task.browser_opera.title': 'Opera Cache',
-        'task.cpu_latency_power_profile.desc': 'Просунутий AC-only профіль для старих і сучасних CPU: High Performance, EPP=0, агресивніший boost, швидше '
-                                               'підняття частот, unpark cores і вимкнення PCIe ASPM. Не розгін, але може підняти нагрів і споживання; тестуй '
-                                               'окремо.',
+        'task.cpu_latency_power_profile.desc': 'Просунутий AC-only профіль для старих і сучасних CPU: High '
+                                               'Performance, EPP=0, агресивніший boost, швидше підняття частот, unpark '
+                                               'cores і вимкнення PCIe ASPM. Не розгін, але може підняти нагрів і '
+                                               'споживання; тестуй окремо.',
         'task.cpu_latency_power_profile.title': 'Максимальний CPU latency/performance профіль',
         'task.crash_dumps.desc': 'Файли дампів після падіння програм у поточному профілі користувача.',
         'task.crash_dumps.title': 'Дампи збоїв користувача',
-        'task.cryptnet_cache.desc': 'Кеш метаданих і вмісту перевірок сертифікатів. Windows автоматично створює його знову.',
+        'task.cryptnet_cache.desc': 'Кеш метаданих і вмісту перевірок сертифікатів. Windows автоматично створює його '
+                                    'знову.',
         'task.cryptnet_cache.title': 'Кеш сертифікатів Cryptnet URL',
         'task.delivery_opt.desc': 'Кеш файлів доставки оновлень.',
         'task.delivery_opt.title': 'Delivery Optimization Cache',
-        'task.disable_dynamic_tick_latency.desc': 'Ставить BCDEdit disabledynamictick=yes. На деяких старіших CPU може зменшити frametime jitter, але '
-                                                  'Microsoft описує цей boot-параметр переважно як debug-опцію. Ручна просунута дія; потрібне '
+        'task.disable_dynamic_tick_latency.desc': 'Ставить BCDEdit disabledynamictick=yes. На деяких старіших CPU може '
+                                                  'зменшити frametime jitter, але Microsoft описує цей boot-параметр '
+                                                  'переважно як debug-опцію. Ручна просунута дія; потрібне '
                                                   'перезавантаження.',
         'task.disable_dynamic_tick_latency.title': 'Вимкнути dynamic tick (тест затримки)',
-        'task.disable_gamedvr.desc': 'Вимикає Xbox Game Bar overlay, фоновий запис, replay/audio capture і пов’язані fullscreen compatibility прапорці, щоб '
-                                     'зменшити зайве навантаження під час гри.',
+        'task.disable_gamedvr.desc': 'Вимикає Xbox Game Bar overlay, фоновий запис, replay/audio capture і пов’язані '
+                                     'fullscreen compatibility прапорці, щоб зменшити зайве навантаження під час гри.',
         'task.disable_gamedvr.title': 'Вимкнути Xbox Game Bar та DVR',
-        'task.disable_hags.desc': 'Вимикає Hardware-Accelerated GPU Scheduling через реєстр. Використовуй тільки якщо HAGS дає статори, hitching або проблеми '
-                                  'з драйвером. Потрібне перезавантаження.',
+        'task.disable_hags.desc': 'Вимикає Hardware-Accelerated GPU Scheduling через реєстр. Використовуй тільки якщо '
+                                  'HAGS дає статори, hitching або проблеми з драйвером. Потрібне перезавантаження.',
         'task.disable_hags.title': 'Вимкнути HAGS (fallback від статорів)',
-        'task.disable_mouse_acceleration.desc': 'Ставить MouseSpeed і MouseThreshold у 0 для більш передбачуваного вводу миші в іграх. Може знадобитися '
-                                                'повторний вхід у систему або перезапуск гри.',
+        'task.disable_mouse_acceleration.desc': 'Ставить MouseSpeed і MouseThreshold у 0 для більш передбачуваного '
+                                                'вводу миші в іграх. Може знадобитися повторний вхід у систему або '
+                                                'перезапуск гри.',
         'task.disable_mouse_acceleration.title': 'Вимкнути прискорення миші',
-        'task.disable_notifications.desc': 'Відкриває параметри сповіщень Windows, щоб зменшити поп-апи та зайві переривання під час гри.',
+        'task.disable_notifications.desc': 'Відкриває параметри сповіщень Windows, щоб зменшити поп-апи та зайві '
+                                           'переривання під час гри.',
         'task.disable_notifications.title': 'Відкрити Do Not Disturb / Focus Assist',
-        'task.disable_onedrive_background.desc': 'Завершує OneDrive, прибирає автозапуск і за прав адміністратора вмикає політику блокування синхронізації.',
+        'task.disable_onedrive_background.desc': 'Завершує OneDrive, прибирає автозапуск і за прав адміністратора '
+                                                 'вмикає політику блокування синхронізації.',
         'task.disable_onedrive_background.title': 'Вимкнути фоновий OneDrive',
-        'task.disable_power_throttling.desc': 'Вимикає системне power throttling через політику живлення Windows. Може зменшити небажане притискання фонових '
-                                              'або ігрових процесів. Потрібне перезавантаження.',
+        'task.disable_power_throttling.desc': 'Вимикає системне power throttling через політику живлення Windows. Може '
+                                              'зменшити небажане притискання фонових або ігрових процесів. Потрібне '
+                                              'перезавантаження.',
         'task.disable_power_throttling.title': 'Вимкнути Power Throttling',
         'task.discord_cache.desc': 'Веб-кеш Discord.',
         'task.discord_cache.title': 'Discord Cache',
@@ -3043,8 +3358,9 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.dx_shader_cache.title': 'DirectX Shader Cache',
         'task.enable_game_mode.desc': 'Увімкнює Game Mode, щоб зменшити фонові завади під час гри.',
         'task.enable_game_mode.title': 'Увімкнути Windows Game Mode',
-        'task.enable_hags.desc': 'Увімкнення Hardware-Accelerated GPU Scheduling для підтримуваних зв’язок Windows/GPU-драйвера. Це опційно: після '
-                                 'перезавантаження перевір ігри й відкотись, якщо з’являться статори.',
+        'task.enable_hags.desc': 'Увімкнення Hardware-Accelerated GPU Scheduling для підтримуваних зв’язок '
+                                 'Windows/GPU-драйвера. Це опційно: після перезавантаження перевір ігри й відкотись, '
+                                 'якщо з’являться статори.',
         'task.enable_hags.title': 'Увімкнути HAGS (опційний GPU scheduling)',
         'task.epic_webcache.desc': 'Chromium-кеш лаунчера Epic Games.',
         'task.epic_webcache.title': 'Epic Games Web Cache',
@@ -3056,12 +3372,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.firefox_startupCache.title': 'Firefox Startup Cache ({profile})',
         'task.font_cache.desc': 'Кеш рендерингу шрифтів. Windows автоматично створить його знову.',
         'task.font_cache.title': 'Кеш шрифтів',
-        'task.gaming_compat_report.desc': 'Read-only перевірка Windows-версії, Game Mode, Game DVR/Captures, HAGS, Power Throttling, power plan і dynamic tick '
-                                          'перед застосуванням твіків.',
+        'task.gaming_compat_report.desc': 'Read-only перевірка Windows-версії, Game Mode, Game DVR/Captures, HAGS, '
+                                          'Power Throttling, power plan і dynamic tick перед застосуванням твіків.',
         'task.gaming_compat_report.title': 'Звіт сумісності геймінг-твіків',
         'task.high_perf_plan.desc': 'Перемикає на High Performance. Найкраще для ПК від мережі.',
         'task.high_perf_plan.title': 'High Performance Power Plan',
-        'task.icon_cache_db.desc': 'Окремий файл IconCache.db. Провідник Windows відбудує його, коли іконки оновляться.',
+        'task.icon_cache_db.desc': 'Окремий файл IconCache.db. Провідник Windows відбудує його, коли іконки '
+                                   'оновляться.',
         'task.icon_cache_db.title': 'База кешу іконок Windows',
         'task.inet_cache.desc': 'Застарілий веб-кеш Windows, який буде створено знову за потреби.',
         'task.inet_cache.title': 'Internet Cache Windows',
@@ -3073,11 +3390,13 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.launcher_cache.title': 'Кеш лаунчера {app}',
         'task.memory_dumps.desc': 'Старі BSOD/crash dump файли. Залишай їх лише якщо діагностуєш падіння системи.',
         'task.memory_dumps.title': 'Memory dumps Windows',
-        'task.mmcss_gaming_profile.desc': 'Застосовує документовані значення мультимедійного планувальника для ігор. Старі фейкові твіки, які не працюють у '
-                                          'сучасній Windows, не використовуються.',
+        'task.mmcss_gaming_profile.desc': 'Застосовує документовані значення мультимедійного планувальника для ігор. '
+                                          'Старі фейкові твіки, які не працюють у сучасній Windows, не '
+                                          'використовуються.',
         'task.mmcss_gaming_profile.title': 'Застосувати безпечний MMCSS профіль для ігор',
-        'task.network_throttling_off.desc': 'Встановлює NetworkThrottlingIndex = 0xffffffff для меншого мережевого throttling у мультимедійних/ігрових '
-                                            'задачах. Рекомендовано перезавантаження.',
+        'task.network_throttling_off.desc': 'Встановлює NetworkThrottlingIndex = 0xffffffff для меншого мережевого '
+                                            'throttling у мультимедійних/ігрових задачах. Рекомендовано '
+                                            'перезавантаження.',
         'task.network_throttling_off.title': 'Вимкнути MMCSS NetworkThrottlingIndex',
         'task.nvidia_compute_cache.desc': 'CUDA/compute кеш NVIDIA. Він автоматично перебудується за потреби.',
         'task.nvidia_compute_cache.title': 'NVIDIA Compute Cache',
@@ -3099,49 +3418,61 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.onedrive_setup_logs.title': 'Setup-логи OneDrive',
         'task.onedrive_webview_cache.desc': 'Очищає Cache, Code Cache, GPUCache та shader-кеші OneDrive WebView.',
         'task.onedrive_webview_cache.title': 'WebView/GPU-кеш OneDrive',
-        'task.open_capture_settings.desc': 'Відкриває сторінку Captures у Windows, де можна перевірити параметри фонових записів і ігрового DVR.',
+        'task.open_capture_settings.desc': 'Відкриває сторінку Captures у Windows, де можна перевірити параметри '
+                                           'фонових записів і ігрового DVR.',
         'task.open_capture_settings.title': 'Відкрити сторінку Captures / DVR',
-        'task.open_core_isolation.desc': 'Відкриває Windows Security, щоб вручну перевірити Memory integrity/VBS. FreeCleaner не вимикає це автоматично, бо це '
-                                         'обмін безпеки на продуктивність.',
+        'task.open_core_isolation.desc': 'Відкриває Windows Security, щоб вручну перевірити Memory integrity/VBS. '
+                                         'FreeCleaner не вимикає це автоматично, бо це обмін безпеки на '
+                                         'продуктивність.',
         'task.open_core_isolation.title': 'Відкрити Core isolation / Memory integrity',
-        'task.open_game_mode_settings.desc': 'Відкриває офіційну сторінку Windows Game Mode. Корисно, якщо хочеш швидко перевірити стан Game Mode вручну.',
+        'task.open_game_mode_settings.desc': 'Відкриває офіційну сторінку Windows Game Mode. Корисно, якщо хочеш '
+                                             'швидко перевірити стан Game Mode вручну.',
         'task.open_game_mode_settings.title': 'Відкрити сторінку Game Mode',
-        'task.open_graphics_apps.desc': 'Відкриває Graphics settings, щоб можна було виставити wow.exe або Battle.net у режим High performance на системах із '
-                                        'кількома GPU.',
+        'task.open_graphics_apps.desc': 'Відкриває Graphics settings, щоб можна було виставити wow.exe або Battle.net '
+                                        'у режим High performance на системах із кількома GPU.',
         'task.open_graphics_apps.title': 'Відкрити графічні параметри для програм',
-        'task.open_graphics_defaults.desc': 'Відкриває сторінку Windows Graphics Default Settings для windowed optimizations, Variable Refresh Rate та '
-                                            'апаратних GPU-параметрів, якщо вони підтримуються.',
+        'task.open_graphics_defaults.desc': 'Відкриває сторінку Windows Graphics Default Settings для windowed '
+                                            'optimizations, Variable Refresh Rate та апаратних GPU-параметрів, якщо '
+                                            'вони підтримуються.',
         'task.open_graphics_defaults.title': 'Відкрити графічні параметри за замовчуванням',
-        'task.open_power_mode_settings.desc': 'Відкриває налаштування живлення Windows, щоб вручну вибрати Best performance на Windows 10/11, де OEM power '
-                                              'mode може перекривати класичні плани живлення.',
+        'task.open_power_mode_settings.desc': 'Відкриває налаштування живлення Windows, щоб вручну вибрати Best '
+                                              'performance на Windows 10/11, де OEM power mode може перекривати '
+                                              'класичні плани живлення.',
         'task.open_power_mode_settings.title': 'Відкрити Power mode settings',
-        'task.open_visual_effects.desc': 'Відкриває Performance Options, де можна перемкнути візуальні ефекти Windows на best performance.',
+        'task.open_visual_effects.desc': 'Відкриває Performance Options, де можна перемкнути візуальні ефекти Windows '
+                                         'на best performance.',
         'task.open_visual_effects.title': 'Відкрити параметри візуальних ефектів',
         'task.prefetch.desc': 'Сліди запуску програм. Після очищення Windows перебудує їх сама.',
         'task.prefetch.title': 'Windows Prefetch',
-        'task.purge_standby_ram.desc': 'Очищає низькопріоритетний standby-кеш RAM перед запуском важкої гри. Не закриває програми й не змінює таймінги RAM.',
+        'task.purge_standby_ram.desc': 'Очищає низькопріоритетний standby-кеш RAM перед запуском важкої гри. Не '
+                                       'закриває програми й не змінює таймінги RAM.',
         'task.purge_standby_ram.title': 'Очистити standby RAM cache',
         'task.recent_docs.desc': 'Очищає історію нещодавно відкритих файлів у Провіднику.',
         'task.recent_docs.title': 'Recent Items',
         'task.recycle.desc': 'Остаточно очищає кошик.',
         'task.recycle.title': 'Empty Recycle Bin',
-        'task.refresh_registry_statuses.desc': 'Повторно читає значення реєстру для оптимізатора та оновлює рядки “зараз → потрібно” без застосування змін.',
+        'task.refresh_registry_statuses.desc': 'Повторно читає значення реєстру для оптимізатора та оновлює рядки '
+                                               '“зараз → потрібно” без застосування змін.',
         'task.refresh_registry_statuses.title': 'Оновити статуси реєстру',
-        'task.registry_leftovers.desc': 'Видаляє тільки явно биті Open With/Application, App Paths і startup-записи, які вказують на відсутні .exe. Перед '
-                                        'змінами створюється backup реєстру.',
+        'task.registry_leftovers.desc': 'Видаляє тільки явно биті Open With/Application, App Paths і startup-записи, '
+                                        'які вказують на відсутні .exe. Перед змінами створюється backup реєстру.',
         'task.registry_leftovers.title': 'Обережне очищення залишків реєстру',
-        'task.reset_winsock.desc': 'Скидання мережевого стеку. Корисно при дивних socket-проблемах. Після цього бажано перезавантаження.',
+        'task.reset_winsock.desc': 'Скидання мережевого стеку. Корисно при дивних socket-проблемах. Після цього бажано '
+                                   'перезавантаження.',
         'task.reset_winsock.title': 'Reset Winsock',
-        'task.restore_balanced_power_profile.desc': 'Безпечний відкат після ігрових power-твіків: перемикає Windows назад на Balanced без видалення кастомних '
-                                                    'OEM-планів.',
+        'task.restore_balanced_power_profile.desc': 'Безпечний відкат після ігрових power-твіків: перемикає Windows '
+                                                    'назад на Balanced без видалення кастомних OEM-планів.',
         'task.restore_balanced_power_profile.title': 'Повернути Balanced power plan',
-        'task.restore_dynamic_tick_default.desc': 'Видаляє кастомний boot-параметр disabledynamictick і повертає керування таймерами Windows у нормальний '
-                                                  'режим. Потрібне перезавантаження.',
+        'task.restore_dynamic_tick_default.desc': 'Видаляє кастомний boot-параметр disabledynamictick і повертає '
+                                                  'керування таймерами Windows у нормальний режим. Потрібне '
+                                                  'перезавантаження.',
         'task.restore_dynamic_tick_default.title': 'Повернути dynamic tick за замовчуванням',
-        'task.restore_onedrive_background.desc': 'Прибирає політику блокування OneDrive за прав адміністратора та запускає клієнт у фоні.',
+        'task.restore_onedrive_background.desc': 'Прибирає політику блокування OneDrive за прав адміністратора та '
+                                                 'запускає клієнт у фоні.',
         'task.restore_onedrive_background.title': 'Повернути OneDrive',
-        'task.safe_gaming_power_profile.desc': 'Перемикає Windows на High Performance і застосовує обережні AC-only налаштування CPU/PCIe для меншої затримки. '
-                                               'Не змінює напругу, частоти, вентилятори або термозахист.',
+        'task.safe_gaming_power_profile.desc': 'Перемикає Windows на High Performance і застосовує обережні AC-only '
+                                               'налаштування CPU/PCIe для меншої затримки. Не змінює напругу, частоти, '
+                                               'вентилятори або термозахист.',
         'task.safe_gaming_power_profile.title': 'Безпечний ігровий профіль CPU/GPU',
         'task.steam_appcache.desc': 'HTTP/app кеш клієнта Steam.',
         'task.steam_appcache.title': 'Steam App Cache',
@@ -3149,16 +3480,19 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.steam_htmlcache.title': 'Steam Browser Cache',
         'task.steam_shadercache.desc': 'Кеш шейдерів Steam. Ігри можуть перебудувати шейдери після очищення.',
         'task.steam_shadercache.title': 'Steam Shader Cache',
-        'task.streaming_app_cache.desc': 'Тимчасовий кеш інструментів для стріму. Налаштування, сцени та профілі не чіпаються.',
+        'task.streaming_app_cache.desc': 'Тимчасовий кеш інструментів для стріму. Налаштування, сцени та профілі не '
+                                         'чіпаються.',
         'task.streaming_app_cache.title': 'Кеш стрімінгового застосунку ({app})',
-        'task.streaming_app_logs.desc': 'Старі логи стрімінгових застосунків. Можна прибрати, якщо історія діагностики не потрібна.',
+        'task.streaming_app_logs.desc': 'Старі логи стрімінгових застосунків. Можна прибрати, якщо історія діагностики '
+                                        'не потрібна.',
         'task.streaming_app_logs.title': 'Логи стрімінгового застосунку ({app})',
-        'task.streaming_diagnostics.desc': 'Перевіряє OBS-профілі, енкодери, останні OBS-логи, поточне CPU/GPU/RAM навантаження та швидкість запису диска. '
-                                           'Нічого не змінює автоматично.',
+        'task.streaming_diagnostics.desc': 'Перевіряє OBS-профілі, енкодери, останні OBS-логи, поточне CPU/GPU/RAM '
+                                           'навантаження та швидкість запису диска. Нічого не змінює автоматично.',
         'task.streaming_diagnostics.title': 'Стрімінг-діагностика OBS/системи',
         'task.streaming_obs_cache.desc': 'Лише тимчасовий кеш OBS. Сцени, джерела та профілі не видаляються.',
         'task.streaming_obs_cache.title': 'Кеш OBS Studio ({app})',
-        'task.streaming_obs_logs.desc': 'Старі логи та звіти про падіння OBS. Не видаляй, якщо зараз розбираєш проблему OBS.',
+        'task.streaming_obs_logs.desc': 'Старі логи та звіти про падіння OBS. Не видаляй, якщо зараз розбираєш '
+                                        'проблему OBS.',
         'task.streaming_obs_logs.title': 'Логи / краші OBS Studio ({app})',
         'task.system_temp.desc': 'Системовий temp Windows. Краще чистити з правами адміністратора.',
         'task.system_temp.title': 'System Temp ({path})',
@@ -3172,31 +3506,38 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'task.update_cache_files.title': 'Windows Update Cache',
         'task.user_temp.desc': 'Тимчасові файли поточного користувача. Майже завжди безпечний вибір.',
         'task.user_temp.title': 'User Temp ({path})',
-        'task.uwp_temp_caches.desc': 'Обережне очищення {count} TempState/AC Temp папок packaged-apps. Дані LocalState не чіпаються.',
+        'task.uwp_temp_caches.desc': 'Обережне очищення {count} TempState/AC Temp папок packaged-apps. Дані LocalState '
+                                     'не чіпаються.',
         'task.uwp_temp_caches.title': 'Тимчасові кеші Microsoft Store застосунків',
         'task.web_cache.desc': 'Залишки бази WebCache і кеш файлів веб-компонентів Windows.',
         'task.web_cache.title': 'WebCache Windows',
-        'task.windows_caches_user.desc': 'Невеликі кеш-папки Windows у профілі користувача. Windows створить їх повторно за потреби.',
+        'task.windows_caches_user.desc': 'Невеликі кеш-папки Windows у профілі користувача. Windows створить їх '
+                                         'повторно за потреби.',
         'task.windows_caches_user.title': 'Користувацькі кеші Windows',
-        'task.windows_component_logs.desc': 'Логи CBS і DISM. Потрібні лише для діагностики оновлень або компонентів Windows.',
+        'task.windows_component_logs.desc': 'Логи CBS і DISM. Потрібні лише для діагностики оновлень або компонентів '
+                                            'Windows.',
         'task.windows_component_logs.title': 'Логи компонентів Windows',
         'task.windows_old.desc': 'Windows.old після оновлення системи. Очищення прибирає файли швидкого відкату.',
         'task.windows_old.title': 'Попередня інсталяція Windows',
-        'task.windows_setup_logs.desc': 'Старі логи Panther, MoSetup і setup cleanup. Залишай їх лише якщо діагностуєш помилки встановлення або оновлення '
-                                        'Windows.',
+        'task.windows_setup_logs.desc': 'Старі логи Panther, MoSetup і setup cleanup. Залишай їх лише якщо діагностуєш '
+                                        'помилки встановлення або оновлення Windows.',
         'task.windows_setup_logs.title': 'Логи встановлення та оновлення Windows',
-        'task.windows_update_etl_logs.desc': 'Старі ETL-логи WaaSMedic для діагностики Windows Update. Активні заблоковані файли пропускаються.',
+        'task.windows_update_etl_logs.desc': 'Старі ETL-логи WaaSMedic для діагностики Windows Update. Активні '
+                                             'заблоковані файли пропускаються.',
         'task.windows_update_etl_logs.title': 'Логи Windows Update Medic',
-        'task.windows_wmi_etl_logs.desc': 'Діагностичні ETL-логи, зокрема DiagTrack listener. Активні заблоковані логи пропускаються.',
+        'task.windows_wmi_etl_logs.desc': 'Діагностичні ETL-логи, зокрема DiagTrack listener. Активні заблоковані логи '
+                                          'пропускаються.',
         'task.windows_wmi_etl_logs.title': 'WMI та діагностичні ETL-логи',
         'threads_info': 'Сканування: {scan} потоків | очищення: {clean} потоків',
         'top_consumers': 'Найбільші пожирачі місця:',
         'ultimate_perf_fail': 'Не вдалося увімкнути Ultimate Performance.',
         'ultimate_perf_ok': 'Ultimate Performance увімкнено.',
-        'ultimate_power_redundant_skipped': 'Дублювання планів живлення: Ultimate Performance має вищий пріоритет, слабші перемикачі живлення пропущено.',
+        'ultimate_power_redundant_skipped': 'Дублювання планів живлення: Ultimate Performance має вищий пріоритет, '
+                                            'слабші перемикачі живлення пропущено.',
         'unavailable_short': 'н/д',
         'unknown': 'Невідомо',
-        'update_available_body': 'Доступна новіша версія FreeCleaner. Поточна версія: {current}. Остання версія: {latest}.',
+        'update_available_body': 'Доступна новіша версія FreeCleaner. Поточна версія: {current}. Остання версія: '
+                                 '{latest}.',
         'update_available_log': 'Знайдено оновлення: {current} → {latest}',
         'update_changelog': 'Що змінилося',
         'update_check_failed': 'Не вдалося перевірити оновлення зараз.',
@@ -3208,8 +3549,9 @@ DEFAULT_LANG_PACKS = {'de': {'NAME': 'Deutsch',
         'update_download_complete': 'Оновлення завантажено:\n{path}',
         'update_download_failed': 'Не вдалося завантажити оновлення.',
         'update_download_failed_reason': 'Не вдалося завантажити оновлення: {reason}',
-        'update_download_idle': 'Інсталятор буде збережено в локальну папку користувача FreeCleaner і автоматично запущено після завантаження. Якщо інсталяція '
-                                'йде в Program Files, Windows може попросити права адміністратора лише на етапі встановлення.',
+        'update_download_idle': 'Інсталятор буде збережено в локальну папку користувача FreeCleaner і автоматично '
+                                'запущено після завантаження. Якщо інсталяція йде в Program Files, Windows може '
+                                'попросити права адміністратора лише на етапі встановлення.',
         'update_download_location': 'Папка оновлень: {path}',
         'update_download_progress': 'Завантаження: {progress}',
         'update_download_saved': 'Оновлення збережено: {path}',

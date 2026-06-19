@@ -1,5 +1,29 @@
 # FreeCleaner
 
+Current package: 0.2.1.0-build-28 — QA cleanup/powercfg stabilization: safe literal-path cleanup fallback without `$args[0]`, locked temp files stay out of errors.log, active power scheme TTL cache, skipped noisy `/GETACVALUEINDEX` probes for unsupported OEM settings, dynamic tick no-op detection.
+
+
+
+## Build 27 highlights
+
+- Removed the per-file PowerShell cleanup fallback that caused `Test-Path -LiteralPath $args[0]` errors on Windows 11 when locked temp files were encountered.
+- Cleanup now stays native: Python file removal, extended-path handling, and `MoveFileExW` scheduling for reboot-delete where appropriate. No cmd.exe/PowerShell recursion is used for normal temp-file deletion.
+- Locked/in-use temp files are classified as `skipped_busy` instead of application errors, keeping `errors.log` focused on real FreeCleaner failures.
+- `system.log` still records full cleanup totals, remaining files, skipped busy items, scheduled reboot deletes, and elapsed time for QA/debugging.
+- Powercfg status probing reuses the active scheme GUID cache and stops probing `/GETACVALUEINDEX` after `/QUERY` proves an OEM setting block is hidden.
+- Dynamic tick toggling is now idempotent: if BCDEdit already has the desired value, FreeCleaner logs a no-op instead of writing the same boot option repeatedly.
+- Toggle and background QThreads are no longer parented to the main window, reducing cross-thread QObject ownership warnings during worker cleanup.
+
+## Build 25 highlights
+
+- `system.log` now includes a per-launch session id, process snapshot, Qt/FreeCleaner environment flags, command context, return code, stdout/stderr and elapsed time for system calls.
+- Optional Windows probes are no longer written as application errors when the OS simply does not expose a setting. Their raw answers still stay in `system.log` for QA.
+- BCDEdit status detection now falls back from `bcdedit /enum {current}` to plain `bcdedit /enum` and `bcdedit /enum all`, fixing the Windows 11 “specified entry type is invalid” case from the uploaded logs.
+- Power profile status detection now falls back from `/GETACVALUEINDEX` to `/QUERY` and parses both output formats.
+- Admin-only optimizer switches stay clickable in non-admin mode so the user gets an admin-required message instead of dead-looking controls.
+- Startup/source launch path stays windowed through `app.pyw`/`pythonw`; packaged `.exe` remains `console=False`.
+- Added `FreeCleaner.pyw` as a no-console source launcher for Windows double-click testing.
+
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-blue)
 ![Python](https://img.shields.io/badge/python-3.x-green)
 ![License](https://img.shields.io/badge/license-MIT-black)
@@ -30,13 +54,16 @@ The gaming optimizer is intentionally conservative. It can adjust Windows-level 
 ## Features
 
 - Clean temporary and non-essential files
-- Expanded Windows, browser, app, launcher, shader cache, Windows log and packaged-app temp cleanup
+- Expanded Windows, browser, app, launcher, shader cache, Windows log, ProgramData/SystemTemp and packaged-app temp cleanup
 - Safer cleanup traversal that skips symlinks/junctions instead of following them
-- Quick profiles: Safe, Gaming cleanup, Gaming + Streaming cleanup, and Deep cleanup
 - Safe gaming optimizer actions for Windows Game Mode, power policy, optional maximum CPU latency profile, GPU scheduling settings, MMCSS, Power Throttling, dynamic-tick testing, standby RAM cleanup, streaming diagnostics, OneDrive background-impact checks and a read-only gaming compatibility report
 - Conservative registry leftovers cleanup for clearly broken Open With/Application, App Paths and startup entries, with registry backup before deletion
 - UI filtering that hides empty sections and keeps large task lists easier to scan
-- Simple desktop interface
+- Full Qt / PySide6 interface with Home, Cleaner, Optimizer, Registry Safety, Diagnostics and Settings areas
+- Cleaner dashboard shows the system drive label, letter and free/total capacity.
+- Per-run QA logs are recreated in the FreeCleaner user-data `logs/` folder: `startup.log`, `app.log`, `errors.log`, `actions.log`, `security.log`, `system.log` and `qa.log`. `system.log` keeps raw Windows/HTTP/registry responses for debugging.
+- Checkboxes for cleanup modules with dynamic selected-size estimates and instant switch-style controls for optimizer/registry tweaks initialized from real status
+- Manual registry backup and guided restore flow for optimizer registry changes
 - Local-first workflow
 - Privacy-friendly design
 - Built-in access to bundled project documents
@@ -73,7 +100,7 @@ Add your screenshots here after publishing visuals for the project.
 
 ## Cleanup scope notes
 
-FreeCleaner targets rebuildable caches, temporary folders, logs and dumps. Newer cleanup coverage includes CryptnetUrlCache, IconCache.db, Windows user caches, Windows Update / WaaSMedic logs, setup/upgrade logs, WMI diagnostic ETL logs, additional Delivery Optimization cache locations and conservative Microsoft Store packaged-app temp folders.
+FreeCleaner targets rebuildable caches, temporary folders, logs and dumps. Newer cleanup coverage includes CryptnetUrlCache, IconCache.db, Windows user caches, Windows Update / WaaSMedic logs, setup/upgrade logs, WMI diagnostic ETL logs, ProgramData temp, Windows SystemTemp, DeviceMetadataCache, additional Delivery Optimization cache locations and conservative Microsoft Store packaged-app temp folders.
 
 Registry cleanup is deliberately narrow. It does not touch COM, services, drivers, uninstall entries, shell extensions or broad file associations. It only removes clearly broken application/open-with/startup records that point to missing executable files and creates a registry backup first.
 
@@ -185,7 +212,7 @@ If you package FreeCleaner into an `.exe`, make sure all required assets are inc
 Example with PyInstaller:
 
 ```bash
-pyinstaller app.spec
+pyinstaller FreeCleaner.spec
 ```
 
 Or:
@@ -422,15 +449,54 @@ Recent stability improvements focus on doing less duplicate work while keeping c
 
 The cleaner still preserves target root folders, skips symlinks/junctions/reparse points, and avoids deleting user documents or OneDrive sync folders.
 
-## Modern Python UI performance layer
+## Modern Qt UI performance layer
 
-The UI layer now follows a more modern, low-overhead CustomTkinter pattern:
+The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 
-- reusable design tokens for colors, spacing, typography and motion timing instead of scattered magic values;
-- a `SmoothProgressBar` widget that accepts target progress and paints eased updates on the Tk main loop;
-- coalesced selection-stat updates so bulk profile changes do not redraw counters dozens of times;
-- cached task title/description/search text, including registry-status descriptions, to avoid repeated registry reads while filtering;
-- safe cancellation of pending `after()` callbacks when closing the app;
-- background cleanup/analyze workers are wrapped through one helper so uncaught worker errors do not silently freeze the UI state.
+- one Qt application layer (`freecleaner.qt_app`) is used for startup and builds;
+- cleanup work stays off the UI thread through `QThread` workers;
+- cleanup modules use checkbox rows, while optimizer/settings actions use switch controls;
+- task rows cache translated title/description text for search and filtering;
+- registry switches sync against the real current registry state before display;
+- admin-only and unsupported actions have separate visual states instead of looking broken.
 
-These changes keep Tk calls on the main thread, reduce redundant widget reconfiguration and make search/profile switching smoother on weak CPUs.
+## Earlier Qt migration — Qt UI rebuild
+
+- Primary frontend moved to PySide6/Qt.
+- Removed Quick profiles completely.
+- Rebuilt the interface into Cleaner, Optimizer, Registry safety, Diagnostics and Settings pages.
+- Cleanup modules use checkboxes; optimizer tweaks use switch controls.
+- Registry tweak switches read current registry state and show whether the target value is already applied.
+- Registry backup/restore is now a dedicated safety page.
+
+## Earlier Qt build — full Qt migration polish
+
+- Added a Qt splash screen for startup.
+- Updated the UI closer to a modern NVIDIA-App-style layout: compact left rail, dark surfaces, green active accent, right-side toggles and flat section rows.
+- Restored visible app functions in the Qt interface: license, privacy policy, update check, admin relaunch, config folder, diagnostics, registry backup and registry restore.
+- Added visual status pills for available, admin-only, applied and unavailable actions.
+- Added animated switches and page fade transitions.
+- Updated runtime requirement to the PySide6 6.11.x line.
+
+
+## Build 17 notes
+
+- Startup now uses a lightweight Qt bootstrap so the splash appears before heavy imports.
+- High DPI policy is applied before `QApplication`, removing the Qt warning.
+- Splash and toast animations no longer use unsafe signal disconnects.
+- Side navigation uses generated original SVG icons in `assets/icons/nav`.
+- Optimizer switches execute immediately; the old duplicate “apply selected tweaks” button was removed.
+- Cleaner checkbox changes update selected count and estimated selected cleanup size dynamically.
+- Diagnostics now uses separate system/gaming/streaming/OneDrive cards.
+
+
+## Build 19
+
+- Removed the grey main-window flash behind the splash by delaying the main window show until the splash fade starts closing.
+- Guarded Qt high-DPI setup so it is never called after QApplication already exists.
+- Added `app.pyw` for source GUI launches without a console window on Windows.
+- Centralized hidden subprocess startup options for Windows helper commands.
+- Fixed optimizer toggles that stayed visually disabled after a worker finished.
+- Deferred registry/power status sync until controls are re-enabled.
+- Admin-only optimizer toggles remain clickable and revert with a clear admin-required message instead of looking broken.
+- Improved power-plan recognition using `powercfg /GETACVALUEINDEX` for AC settings when available.
