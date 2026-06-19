@@ -1,9 +1,9 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-51 — Installer/update mode detection and recent changelog: setup now detects new installation vs in-place update, and the app builds the update changelog from the latest 5 GitHub release tags.
+Current package: 1.2.0.0-build-52 — Installer language selection: setup now starts with a language choice, reuses the saved language during updates when available, and writes the selected language as the app default.
 
 
-## 1.2.0.0 build-51 — Installer update mode and recent release changelog
+## 1.2.0.0 build-52 — Installer update mode and recent release changelog
 
 - Installer detects an existing FreeCleaner installation and switches into update mode.
 - Update mode reuses the existing installation folder and skips shortcut/directory steps that are only needed for first install.
