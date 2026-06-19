@@ -1585,6 +1585,8 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             "safety_reason": "installed_program",
         })
 
+    skipped_counts: dict[str, int] = {}
+    skipped_samples: list[dict[str, str]] = []
     for cidx, child in enumerate(app_children):
         if cidx in matched_child_indexes:
             continue
@@ -1592,7 +1594,13 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             break
         safe_candidate, safety_reason = _safe_removed_appdata_candidate(child, installed, cancel_event)
         if not safe_candidate:
-            log_qa_event("program_leftover_candidate_skipped", name=str(child.get("name") or ""), path=str(child.get("path") or ""), reason=safety_reason)
+            skipped_counts[safety_reason] = skipped_counts.get(safety_reason, 0) + 1
+            if len(skipped_samples) < 8:
+                skipped_samples.append({
+                    "name": str(child.get("name") or ""),
+                    "path": str(child.get("path") or ""),
+                    "reason": safety_reason,
+                })
             continue
         path = str(child.get("path") or "")
         size = SafeFS.fast_size_limited(path, cancel_event, max_seconds=0.45, max_entries=2600) if path else 0
@@ -1610,6 +1618,8 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             "cleanup_allowed": True,
             "safety_reason": safety_reason,
         })
+    if skipped_counts:
+        log_qa_event("program_leftover_candidates_skipped_summary", counts=skipped_counts, samples=skipped_samples)
 
     entries.sort(key=lambda item: (0 if item.get("status") == "removed" else 1, str(item.get("name") or "").lower()))
     return entries

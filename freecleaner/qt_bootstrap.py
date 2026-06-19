@@ -444,6 +444,12 @@ def _qt_message_handler(mode, context, message):
         text = str(message)
         if "setHighDpi" "ScaleFactorRoundingPolicy" in text:
             return
+        if "QFont::setPointSize" in text and "Point size <= 0" in text:
+            # Qt can emit this harmless warning while resolving theme/default
+            # fonts on Windows.  It does not affect rendering and only makes
+            # startup/app logs look broken to users.
+            log_qa_event("qt_font_warning_suppressed", message=text)
+            return
         log_startup(f"Qt: {text}", level="WARNING")
         log_app(f"Qt: {text}", level="WARNING")
     except Exception:
