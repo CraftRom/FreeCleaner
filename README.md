@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-39 — Startup splash flicker guard: the bootstrap splash now stays as a single stable native window while Qt modules and the full UI are prepared.
+Current package: 0.2.1.0-build-41 — Native startup splash reliability: fixes the Python 3.13 Win32 handle alias issue that prevented the quiet splash from being created and forced the flickery Qt fallback.
 
 
 
@@ -523,6 +523,23 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Switched dependency install commands to `python -m pip ...` so the workflow always uses the selected setup-python interpreter.
 - Updated release documentation to describe the current x64-only Windows build path.
 
+
+## 0.2.1.0 build-41 — Native splash Python 3.13 handle fix
+
+- Fixed native Win32 splash creation on Python 3.13 where `ctypes.wintypes.HCURSOR` may be missing.
+- Added explicit fallback handle aliases for `HICON`, `HCURSOR`, `HBRUSH`, `HWND` and `HINSTANCE`.
+- Pinned Win32 API return types and arguments for 64-bit-safe `HWND`/GDI handle usage.
+- Fixed `LoadCursorW(IDC_ARROW)` so the integer resource is passed as a raw pointer, not as a Unicode string.
+- Prevented the app from falling back to the flickery Qt splash because of Python ctypes metadata differences.
+
+## 0.2.1.0 build-40 — Quiet native Qt startup splash
+
+- show a silent native Win32 splash before importing PySide6/Qt modules;
+- keep the splash visible while QApplication, QtWidgets and the full FreeCleaner UI are prepared;
+- prevent the splash from disappearing during “Підготовка модулів Qt…”;
+- avoid taskbar/activation flicker by using a no-activate toolwindow splash;
+- close the splash only after the main Qt window is constructed and ready to show;
+- keep a Qt splash fallback for non-Windows/source environments.
 
 ## 0.2.1.0 build-39 — Startup splash flicker guard
 

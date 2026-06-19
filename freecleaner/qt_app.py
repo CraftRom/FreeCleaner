@@ -3849,32 +3849,55 @@ def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> 
         pass
     if hasattr(splash, "set_progress"):
         splash.set_progress(100, "Запуск інтерфейсу…")  # type: ignore[attr-defined]
+    native_splash = bool(getattr(splash, "_fc_native_splash", False)) if splash is not None else False
+
     def show_main_window() -> None:
-        # Show the main window only after the splash is gone.  No startup
-        # windowOpacity animation here: on some Windows GPU drivers it creates
-        # a grey top-level window flash behind the splash.
-        if splash is not None:
+        # Native bootstrap splash stays visible while the Qt stylesheet is
+        # applied and the main window is mapped.  Closing it first creates the
+        # exact black/background gap and helper-window blink reported during
+        # "Preparing Qt modules".  Qt fallback splash keeps the previous close
+        # first behavior.
+        if native_splash:
             try:
-                splash.close()
+                app.setStyleSheet(APP_QSS)
             except Exception:
                 pass
-        try:
-            app.setStyleSheet(APP_QSS)
-        except Exception:
-            pass
-        window.show()
-        window.raise_()
-        window.activateWindow()
+            window.show()
+            try:
+                QApplication.processEvents()
+            except Exception:
+                pass
+            if splash is not None:
+                try:
+                    splash.close()
+                except Exception:
+                    pass
+            window.raise_()
+            window.activateWindow()
+        else:
+            if splash is not None:
+                try:
+                    splash.close()
+                except Exception:
+                    pass
+            try:
+                app.setStyleSheet(APP_QSS)
+            except Exception:
+                pass
+            window.show()
+            window.raise_()
+            window.activateWindow()
         log_startup("main window shown")
 
     if splash is not None:
         if hasattr(splash, "fade_out"):
             splash.fade_out()  # type: ignore[attr-defined]
-            # Do not show the main window behind the splash.  This removes the
-            # grey pre-window flash visible on some Windows/driver setups.
-            QTimer.singleShot(360 if owned_splash else 320, show_main_window)
+            # Keep the native splash visible through this short handoff delay.
+            # For Qt fallback splash, fade_out closes it just like previous builds.
+            QTimer.singleShot(120 if native_splash else (360 if owned_splash else 320), show_main_window)
         else:
-            splash.close()
+            if not native_splash:
+                splash.close()
             QTimer.singleShot(0, show_main_window)
     else:
         QTimer.singleShot(0, show_main_window)
