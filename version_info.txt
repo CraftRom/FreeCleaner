@@ -16,11 +16,11 @@ VSVersionInfo(
         [
         StringStruct('CompanyName', 'FreeCleaner'),
         StringStruct('FileDescription', 'FreeCleaner Windows cleaner, auto system language, and persistent language preference'),
-        StringStruct('FileVersion', '1.2.0.0-build-48'),
+        StringStruct('FileVersion', '1.2.0.0-build-49'),
         StringStruct('InternalName', 'FreeCleaner'),
         StringStruct('OriginalFilename', 'FreeCleaner.exe'),
         StringStruct('ProductName', 'FreeCleaner'),
-        StringStruct('ProductVersion', '1.2.0.0-build-48')
+        StringStruct('ProductVersion', '1.2.0.0-build-49')
         ])
       ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

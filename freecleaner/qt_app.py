@@ -780,7 +780,7 @@ class SplashWindow(QWidget):
         text = QVBoxLayout()
         title = QLabel("FreeCleaner")
         title.setStyleSheet("font-size: 28px; font-weight: 900; color: #FFFFFF;")
-        subtitle = QLabel(f"{APP_VERSION} • Qt")
+        subtitle = QLabel(f"{APP_VERSION}")
         subtitle.setObjectName("VersionText")
         text.addWidget(title)
         text.addWidget(subtitle)
@@ -790,7 +790,7 @@ class SplashWindow(QWidget):
         line.setObjectName("AccentGreen")
         line.setFixedHeight(3)
         layout.addWidget(line)
-        self.message = QLabel("Підготовка модулів очищення…")
+        self.message = QLabel("Підготовка FreeCleaner…")
         self.message.setObjectName("Muted")
         layout.addWidget(self.message)
         self.progress = QProgressBar()
@@ -798,7 +798,7 @@ class SplashWindow(QWidget):
         self.progress.setValue(12)
         layout.addWidget(self.progress)
         layout.addStretch(1)
-        footer = QLabel("Safe cleanup • Registry backup • Gaming tweaks")
+        footer = QLabel("Safe cleanup • Backups • Windows optimization")
         footer.setObjectName("Tiny")
         layout.addWidget(footer)
         self._fade_target = "show"
@@ -1173,14 +1173,16 @@ class UpdateDialog(QDialog):
     def __init__(self, parent: QWidget, result: Dict[str, Any]) -> None:
         super().__init__(parent)
         self.result = dict(result or {})
+        self._tr = getattr(parent, "tr", lambda key: key)
+        self._trf = getattr(parent, "trf", lambda key, **kwargs: str(key).format(**kwargs))
         self._downloading = False
         self.setObjectName("UpdateDialog")
-        self.setWindowTitle("FreeCleaner • Оновлення")
+        self.setWindowTitle(self._tr("update_window_title"))
         self.setModal(False)
         self.setMinimumSize(680, 520)
         self.resize(760, 580)
 
-        latest = str(self.result.get("latest") or self.result.get("latest_name") or "latest")
+        latest = str(self.result.get("latest") or self.result.get("latest_name") or self._tr("update_latest_fallback"))
         current = str(self.result.get("current_display") or APP_VERSION)
         asset_name = str(self.result.get("asset_name") or "")
         published = str(self.result.get("published_at") or "")
@@ -1196,10 +1198,10 @@ class UpdateDialog(QDialog):
         hero_l = QVBoxLayout(hero)
         hero_l.setContentsMargins(16, 14, 16, 14)
         hero_l.setSpacing(8)
-        title = QLabel("Доступне оновлення FreeCleaner")
+        title = QLabel(self._tr("update_hero_title"))
         title.setObjectName("UpdateHeroTitle")
         hero_l.addWidget(title)
-        subtitle = QLabel("Перевірено GitHub release. Нижче — версія, файл інсталятора та хід оновлення.")
+        subtitle = QLabel(self._tr("update_hero_subtitle"))
         subtitle.setObjectName("SectionSub")
         subtitle.setWordWrap(True)
         hero_l.addWidget(subtitle)
@@ -1207,8 +1209,8 @@ class UpdateDialog(QDialog):
 
         versions = QHBoxLayout()
         versions.setSpacing(12)
-        versions.addWidget(self._version_card("Поточна версія", current), 1)
-        versions.addWidget(self._version_card("Нова версія", latest), 1)
+        versions.addWidget(self._version_card(self._tr("update_current_version"), current), 1)
+        versions.addWidget(self._version_card(self._tr("update_new_version"), latest), 1)
         root.addLayout(versions)
 
         meta_card = QFrame()
@@ -1216,16 +1218,16 @@ class UpdateDialog(QDialog):
         meta_l = QVBoxLayout(meta_card)
         meta_l.setContentsMargins(14, 12, 14, 12)
         meta_l.setSpacing(6)
-        self.asset_label = QLabel(f"Файл: {asset_name or 'installer asset не знайдено'}")
+        self.asset_label = QLabel(self._trf("update_file_label", file=asset_name or self._tr("update_installer_missing")))
         self.asset_label.setObjectName("UpdateMetaText")
         self.asset_label.setWordWrap(True)
         meta_l.addWidget(self.asset_label)
-        self.folder_label = QLabel(f"Папка оновлень: {get_updates_dir(create=True)}")
+        self.folder_label = QLabel(self._trf("update_folder_label", path=get_updates_dir(create=True)))
         self.folder_label.setObjectName("UpdateMetaText")
         self.folder_label.setWordWrap(True)
         meta_l.addWidget(self.folder_label)
         if published:
-            published_label = QLabel(f"Опубліковано: {published}")
+            published_label = QLabel(self._trf("update_published_at", date=published))
             published_label.setObjectName("UpdateMetaText")
             meta_l.addWidget(published_label)
         root.addWidget(meta_card)
@@ -1235,7 +1237,7 @@ class UpdateDialog(QDialog):
         progress_l = QVBoxLayout(progress_card)
         progress_l.setContentsMargins(14, 12, 14, 12)
         progress_l.setSpacing(8)
-        self.status_label = QLabel("Готово до завантаження. Інсталятор буде збережено в локальну папку FreeCleaner.")
+        self.status_label = QLabel(self._tr("update_ready_to_download"))
         self.status_label.setObjectName("UpdateStatusText")
         self.status_label.setWordWrap(True)
         progress_l.addWidget(self.status_label)
@@ -1244,33 +1246,33 @@ class UpdateDialog(QDialog):
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
         progress_l.addWidget(self.progress)
-        self.progress_meta = QLabel("Очікування запуску завантаження")
+        self.progress_meta = QLabel(self._tr("update_waiting_download"))
         self.progress_meta.setObjectName("UpdateMetaText")
         progress_l.addWidget(self.progress_meta)
         root.addWidget(progress_card)
 
-        notes_title = QLabel("Що змінилося")
+        notes_title = QLabel(self._tr("update_changelog"))
         notes_title.setObjectName("SectionTitle")
         root.addWidget(notes_title)
         self.notes = QTextEdit()
         self.notes.setReadOnly(True)
         self.notes.setMinimumHeight(130)
-        self.notes.setPlainText(body or "Для цього релізу не вказано список змін.")
+        self.notes.setPlainText(body or self._tr("update_no_changelog"))
         root.addWidget(self.notes, 1)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
-        self.release_btn = QPushButton("Відкрити GitHub Release")
+        self.release_btn = QPushButton(self._tr("update_open_release"))
         self.release_btn.setObjectName("GhostButton")
         self.release_btn.setIcon(self.style().standardIcon(QStyle.SP_DirLinkIcon))
         self.release_btn.clicked.connect(lambda: self.release_requested.emit(release_url))
         buttons.addWidget(self.release_btn)
         buttons.addStretch(1)
-        self.cancel_btn = QPushButton("Пізніше")
+        self.cancel_btn = QPushButton(self._tr("update_later"))
         self.cancel_btn.setObjectName("GhostButton")
         self.cancel_btn.clicked.connect(self._on_cancel_clicked)
         buttons.addWidget(self.cancel_btn)
-        self.download_btn = QPushButton("Завантажити та встановити")
+        self.download_btn = QPushButton(self._tr("update_download"))
         self.download_btn.setObjectName("PrimaryButton")
         self.download_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown))
         self.download_btn.clicked.connect(self._on_download_clicked)
@@ -1300,7 +1302,7 @@ class UpdateDialog(QDialog):
     def _on_cancel_clicked(self) -> None:
         if self._downloading:
             self.cancel_btn.setEnabled(False)
-            self.status_label.setText("Скасовую завантаження…")
+            self.status_label.setText(self._tr("update_cancel_requested"))
             self.cancel_requested.emit()
             return
         self.close()
@@ -1308,16 +1310,16 @@ class UpdateDialog(QDialog):
     def set_downloading(self, version: str, filename: str, dest_path: str) -> None:
         self._downloading = True
         self.download_btn.setEnabled(False)
-        self.download_btn.setText("Завантаження…")
-        self.cancel_btn.setText("Скасувати")
+        self.download_btn.setText(self._tr("update_downloading_button"))
+        self.cancel_btn.setText(self._tr("cancel"))
         self.cancel_btn.setEnabled(True)
         if filename:
-            self.asset_label.setText(f"Файл: {filename}")
+            self.asset_label.setText(self._trf("update_file_label", file=filename))
         if dest_path:
-            self.folder_label.setText(f"Збереження: {dest_path}")
-        self.status_label.setText(f"Завантаження FreeCleaner {version}…")
+            self.folder_label.setText(self._trf("update_saving_to", path=dest_path))
+        self.status_label.setText(self._trf("update_downloading_version", version=version))
         self.progress.setValue(1)
-        self.progress_meta.setText("Починаю завантаження")
+        self.progress_meta.setText(self._tr("update_download_starting"))
         self.raise_()
         self.show()
 
@@ -1331,41 +1333,41 @@ class UpdateDialog(QDialog):
             speed = payload.get("speed") or 0
             eta = payload.get("eta") or 0
             if total:
-                self.status_label.setText(f"Завантаження: {percent}%")
-                self.progress_meta.setText(f"{_format_bytes(downloaded)} / {_format_bytes(total)} • {_format_bytes(speed)}/s • залишилось {_format_eta(eta)}")
+                self.status_label.setText(self._trf("update_download_percent", percent=percent))
+                self.progress_meta.setText(self._trf("update_download_meta", downloaded=_format_bytes(downloaded), total=_format_bytes(total), speed=_format_bytes(speed), eta=_format_eta(eta)))
             else:
-                self.status_label.setText("Завантаження файлу оновлення…")
-                self.progress_meta.setText(f"Завантажено {_format_bytes(downloaded)} • {_format_bytes(speed)}/s")
+                self.status_label.setText(self._tr("update_downloading_file"))
+                self.progress_meta.setText(self._trf("update_download_meta_unknown", downloaded=_format_bytes(downloaded), speed=_format_bytes(speed)))
         elif stage == "verifying":
-            self.status_label.setText("Завантаження завершено. Перевіряю файл…")
+            self.status_label.setText(self._tr("update_verifying_file"))
             self.progress_meta.setText(str(payload.get("path") or ""))
         elif stage == "installing":
-            self.status_label.setText("Запускаю інсталятор оновлення…")
+            self.status_label.setText(self._tr("update_starting_installer"))
             self.progress_meta.setText(str(payload.get("path") or ""))
         elif stage == "cancelled":
-            self.set_failed("Завантаження скасовано.")
+            self.set_failed(self._tr("update_download_cancelled"))
         elif stage == "failed":
-            self.set_failed(str(payload.get("message") or "Не вдалося завантажити оновлення."))
+            self.set_failed(str(payload.get("message") or self._tr("update_download_failed")))
 
     def set_failed(self, message: str) -> None:
         self._downloading = False
         self.progress.setValue(0)
-        self.status_label.setText(message or "Не вдалося завантажити оновлення.")
-        self.progress_meta.setText("Можна повторити спробу або відкрити сторінку релізу.")
+        self.status_label.setText(message or self._tr("update_download_failed"))
+        self.progress_meta.setText(self._tr("update_retry_or_release"))
         self.download_btn.setEnabled(True)
-        self.download_btn.setText("Повторити")
+        self.download_btn.setText(self._tr("retry"))
         self.cancel_btn.setEnabled(True)
-        self.cancel_btn.setText("Закрити")
+        self.cancel_btn.setText(self._tr("close"))
 
     def set_done(self, path: str) -> None:
         self._downloading = False
         self.progress.setValue(100)
-        self.status_label.setText("Інсталятор запущено. FreeCleaner закриється для встановлення оновлення.")
+        self.status_label.setText(self._tr("update_install_launched_status"))
         self.progress_meta.setText(path or "")
         self.download_btn.setEnabled(False)
-        self.download_btn.setText("Інсталятор запущено")
+        self.download_btn.setText(self._tr("update_install_started_button"))
         self.cancel_btn.setEnabled(True)
-        self.cancel_btn.setText("Закрити")
+        self.cancel_btn.setText(self._tr("close"))
 
 
 class FreeCleanerQt(QMainWindow):
@@ -1602,7 +1604,7 @@ class FreeCleanerQt(QMainWindow):
         title = QLabel("FreeCleaner")
         title.setObjectName("BrandTitle")
         layout.addWidget(title)
-        subtitle = QLabel(f"{APP_VERSION} • Qt 6")
+        subtitle = QLabel(self.trf("topbar_version", version=APP_VERSION))
         subtitle.setObjectName("VersionText")
         layout.addWidget(subtitle)
         layout.addStretch(1)
@@ -1626,12 +1628,12 @@ class FreeCleanerQt(QMainWindow):
         self._nav_icon_specs: List[Tuple[QToolButton, str, str, str]] = []
         self._nav_icon_cache: Dict[str, QIcon] = {}
         items = [
-            ("home", "Головна" if self.lang_code == "uk" else "Home"),
-            ("cleaner", "Клінер" if self.lang_code == "uk" else "Cleaner"),
-            ("optimizer", "Оптим." if self.lang_code == "uk" else "Optimizer"),
-            ("registry", "Реєстр" if self.lang_code == "uk" else "Registry"),
-            ("diagnostics", "Перевірки" if self.lang_code == "uk" else "Checks"),
-            ("settings", "Налашт." if self.lang_code == "uk" else "Settings"),
+            ("home", self.tr("nav_home")),
+            ("cleaner", self.tr("nav_cleaner")),
+            ("optimizer", self.tr("nav_optimizer")),
+            ("registry", self.tr("nav_registry")),
+            ("diagnostics", self.tr("nav_diagnostics")),
+            ("settings", self.tr("nav_settings")),
         ]
         group = QButtonGroup(self)
         group.setExclusive(True)
@@ -1741,22 +1743,22 @@ class FreeCleanerQt(QMainWindow):
 
     def build_pages(self) -> None:
         self.home_page, home_layout = self.content_page(
-            "Головна" if self.lang_code == "uk" else "Home",
-            "Швидкий огляд стану FreeCleaner, доступності адмін-функцій і безпечних дій.",
+            self.tr("home_title"),
+            self.tr("home_subtitle"),
         )
         self.build_home_page(home_layout)
         self.stack.addWidget(self.home_page)
 
         self.cleaner_page, cleaner_layout = self.content_page(
-            self.tr("tab_cleaner") if self.tr("tab_cleaner") != "tab_cleaner" else "Cleaner",
-            self.tr("tab_cleaner_sub") if self.tr("tab_cleaner_sub") != "tab_cleaner_sub" else "Cleanup caches, temporary files and leftovers.",
+            self.tr("tab_cleaner"),
+            self.tr("tab_cleaner_sub"),
         )
         self.build_cleaner_page(cleaner_layout)
         self.stack.addWidget(self.cleaner_page)
 
         self.optimizer_page, opt_layout = self.content_page(
-            self.tr("optimizer_modules").strip() if self.tr("optimizer_modules") != "optimizer_modules" else "Optimizer",
-            "Твіки Windows у вигляді тумблерів із реальним статусом реєстру.",
+            self.tr("optimizer_modules").strip(),
+            self.tr("optimizer_subtitle"),
         )
         self.build_optimizer_page(opt_layout)
         self.stack.addWidget(self.optimizer_page)
@@ -1770,14 +1772,14 @@ class FreeCleanerQt(QMainWindow):
 
         self.diagnostics_page, diag_layout = self.content_page(
             self.tr("diagnostics_modules"),
-            self.tr("diagnostics_subtitle") if self.tr("diagnostics_subtitle") != "diagnostics_subtitle" else "System, gaming and streaming diagnostics.",
+            self.tr("diagnostics_subtitle"),
         )
         self.build_diagnostics_page(diag_layout)
         self.stack.addWidget(self.diagnostics_page)
 
         self.settings_page, settings_layout = self.content_page(
             self.tr("settings_title"),
-            self.tr("settings_subtitle") if self.tr("settings_subtitle") != "settings_subtitle" else "Language, safety, updates and app info.",
+            self.tr("settings_subtitle"),
         )
         self.build_settings_page(settings_layout)
         self.stack.addWidget(self.settings_page)
@@ -1792,7 +1794,7 @@ class FreeCleanerQt(QMainWindow):
         text = QVBoxLayout()
         title = QLabel("FreeCleaner")
         title.setObjectName("HeroTitle")
-        subtitle = QLabel("Qt / PySide6 frontend • SafeFS cleanup • Registry safety • Gaming tweaks")
+        subtitle = QLabel(self.tr("home_hero_subtitle"))
         subtitle.setObjectName("SectionSub")
         subtitle.setWordWrap(True)
         text.addWidget(title)
@@ -1801,7 +1803,7 @@ class FreeCleanerQt(QMainWindow):
         # Keep the hero header clean: the administrator state is represented by
         # the action button only.  A separate status pill here duplicated the
         # same information and made the header visually noisy.
-        admin = QPushButton("Адмін режим" if not self.is_admin else "Адмін активний")
+        admin = QPushButton(self.tr("settings_admin_mode_title") if not self.is_admin else self.tr("admin_active"))
         admin.setObjectName("PrimaryButton" if not self.is_admin else "GhostButton")
         admin.setEnabled(not self.is_admin)
         admin.clicked.connect(self.restart_as_admin)
@@ -1811,10 +1813,10 @@ class FreeCleanerQt(QMainWindow):
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(12)
-        self.home_selected_metric = self.home_tile("Обрано для очищення", "0", "Перейти до Cleaner", lambda: self.set_page(1))
-        self.home_optimizer_metric = self.home_tile("Твіки Windows", "Registry-aware", "Відкрити Optimizer", lambda: self.set_page(2))
-        self.home_backup_metric = self.home_tile("Registry backup", "—", "Відкрити безпеку реєстру", lambda: self.set_page(3))
-        self.home_diag_metric = self.home_tile("Діагностика", "OBS / Gaming / OneDrive", "Відкрити Diagnostics", lambda: self.set_page(4))
+        self.home_selected_metric = self.home_tile(self.tr("home_tile_cleaner_title"), "0", self.tr("home_tile_cleaner_action"), lambda: self.set_page(1))
+        self.home_optimizer_metric = self.home_tile(self.tr("home_tile_optimizer_title"), self.tr("home_tile_optimizer_value"), self.tr("home_tile_optimizer_action"), lambda: self.set_page(2))
+        self.home_backup_metric = self.home_tile(self.tr("home_tile_registry_title"), "—", self.tr("home_tile_registry_action"), lambda: self.set_page(3))
+        self.home_diag_metric = self.home_tile(self.tr("home_tile_diagnostics_title"), self.tr("home_tile_diagnostics_value"), self.tr("home_tile_diagnostics_action"), lambda: self.set_page(4))
         for idx, tile in enumerate((self.home_selected_metric, self.home_optimizer_metric, self.home_backup_metric, self.home_diag_metric)):
             grid.addWidget(tile, idx // 2, idx % 2)
             QTimer.singleShot(80 + idx * 45, lambda w=tile: UiFx.fade_in(w, 160))
@@ -1824,7 +1826,7 @@ class FreeCleanerQt(QMainWindow):
         notice.setObjectName("InlineNotice")
         nl = QHBoxLayout(notice)
         nl.setContentsMargins(14, 12, 14, 12)
-        msg = QLabel("Cleaner використовує чекбокси, Optimizer і налаштування — тумблери. Недоступні дії показують причину: admin-only, unavailable або applied.")
+        msg = QLabel(self.tr("home_hint_controls"))
         msg.setObjectName("SectionSub")
         msg.setWordWrap(True)
         nl.addWidget(msg, 1)
@@ -1876,8 +1878,8 @@ class FreeCleanerQt(QMainWindow):
         row = QGridLayout()
         row.setHorizontalSpacing(12)
         self.card_selected = StatusCard(self.tr("selected_modules"), "0", "Green")
-        self.card_junk = StatusCard(self.tr("junk_found") if self.tr("junk_found") != "junk_found" else "Знайдено сміття", "—", "Blue")
-        self.card_disk = StatusCard("Системний диск", "—", "Green")
+        self.card_junk = StatusCard(self.tr("junk_found"), "—", "Blue")
+        self.card_disk = StatusCard(self.tr("system_drive"), "—", "Green")
         self.card_admin = StatusCard(self.tr("admin_access"), self.tr("yes") if self.is_admin else self.tr("no"), "Green" if self.is_admin else "Amber")
         row.addWidget(self.card_selected, 0, 0)
         row.addWidget(self.card_junk, 0, 1)
@@ -1913,7 +1915,7 @@ class FreeCleanerQt(QMainWindow):
         l = QHBoxLayout(legend)
         l.setContentsMargins(12, 8, 12, 8)
         l.setSpacing(8)
-        l.addWidget(QLabel("Стани:"))
+        l.addWidget(QLabel(self.tr("statuses_label")))
         for text, tone in ((self.tr("registry_status_change_needed"), "Green"), (self.tr("registry_status_done"), "Blue"), (self.tr("registry_status_admin_only"), "Amber"), (self.tr("registry_status_unavailable"), "Grey")):
             l.addWidget(Pill(text, tone))
         l.addStretch(1)
@@ -1923,12 +1925,12 @@ class FreeCleanerQt(QMainWindow):
         toolbar.setObjectName("Panel")
         tl = QHBoxLayout(toolbar)
         tl.setContentsMargins(12, 10, 12, 10)
-        tl.addWidget(QLabel("Пошук твікiв"))
+        tl.addWidget(QLabel(self.tr("search_tweaks")))
         self.optimizer_search = QLineEdit()
-        self.optimizer_search.setPlaceholderText("Фільтр registry/gaming твікiв")
+        self.optimizer_search.setPlaceholderText(self.tr("optimizer_search_placeholder"))
         self.optimizer_search.textChanged.connect(self.apply_optimizer_search)
         tl.addWidget(self.optimizer_search, 1)
-        clear = QPushButton("Очистити")
+        clear = QPushButton(self.tr("clear_search"))
         clear.clicked.connect(lambda: self.optimizer_search.setText(""))
         tl.addWidget(clear)
         parent.addWidget(toolbar)
@@ -1936,10 +1938,10 @@ class FreeCleanerQt(QMainWindow):
         self.optimizer_scroll, self.optimizer_inner, self.optimizer_inner_layout = self.scroll_container()
         parent.addWidget(self.optimizer_scroll, 1)
         actions = QHBoxLayout()
-        self.refresh_registry_btn = QPushButton(self.tr("task.refresh_registry_statuses.title") if self.tr("task.refresh_registry_statuses.title") != "task.refresh_registry_statuses.title" else "Оновити статуси")
+        self.refresh_registry_btn = QPushButton(self.tr("task.refresh_registry_statuses.title"))
         self.refresh_registry_btn.clicked.connect(self.sync_registry_toggle_states)
         actions.addWidget(self.refresh_registry_btn)
-        hint = QLabel("Тумблери виконуються миттєво. OFF повертає безпечний дефолт там, де він визначений.")
+        hint = QLabel(self.tr("optimizer_toggle_hint"))
         hint.setObjectName("SectionSub")
         actions.addWidget(hint, 1)
         parent.addLayout(actions)
@@ -1961,9 +1963,9 @@ class FreeCleanerQt(QMainWindow):
         b1.setObjectName("PrimaryButton")
         b1.clicked.connect(self.manual_registry_backup)
         b2 = QPushButton(self.tr("restore_registry_backup"))
-        b2.setToolTip("Відновлює найновішу доступну резервну копію реєстру")
+        b2.setToolTip(self.tr("restore_registry_latest_tip"))
         b2.clicked.connect(self.restore_latest_registry_backup)
-        b3 = QPushButton(self.tr("open_backup_folder") if self.tr("open_backup_folder") != "open_backup_folder" else "Відкрити папку backup")
+        b3 = QPushButton(self.tr("open_backup_folder"))
         b3.clicked.connect(lambda: WindowsOps.open_in_file_manager(WindowsOps.registry_backup_root()))
         actions.addWidget(b1)
         actions.addWidget(b2)
@@ -1983,10 +1985,10 @@ class FreeCleanerQt(QMainWindow):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(12)
         cards = [
-            DiagnosticCard("Системна перевірка", "Адмін-режим, кількість модулів, registry backups, adaptive workers і базовий стан запуску.", "Перевірити", self.run_system_report, "#76B900"),
-            DiagnosticCard(self.tr("task.gaming_compat_report.title") if self.tr("task.gaming_compat_report.title") != "task.gaming_compat_report.title" else "Gaming report", "Game Mode, GameDVR, HAGS, Power Throttling, GPU preferences і active power scheme.", "Зібрати", self.run_gaming_report, "#4C8DFF"),
-            DiagnosticCard(self.tr("task.streaming_diagnostics.title") if self.tr("task.streaming_diagnostics.title") != "task.streaming_diagnostics.title" else "OBS/Streaming diagnostics", "OBS profiles, log issues, CPU/RAM/GPU load і швидкий disk write test.", "Зібрати", self.run_streaming_report, "#F59E0B"),
-            DiagnosticCard(self.tr("task.onedrive_report.title") if self.tr("task.onedrive_report.title") != "task.onedrive_report.title" else "OneDrive report", "OneDrive status, autostart, policy, cleanup targets і estimated cache.", "Зібрати", self.run_onedrive_report, "#22C55E"),
+            DiagnosticCard(self.tr("task.system_health_report.title"), self.tr("diagnostics_system_card_desc"), self.tr("diagnostics_run_check"), self.run_system_report, "#76B900"),
+            DiagnosticCard(self.tr("task.gaming_compat_report.title"), self.tr("diagnostics_gaming_card_desc"), self.tr("diagnostics_collect"), self.run_gaming_report, "#4C8DFF"),
+            DiagnosticCard(self.tr("task.streaming_diagnostics.title"), self.tr("diagnostics_streaming_card_desc"), self.tr("diagnostics_collect"), self.run_streaming_report, "#F59E0B"),
+            DiagnosticCard(self.tr("task.onedrive_report.title"), self.tr("diagnostics_onedrive_card_desc"), self.tr("diagnostics_collect"), self.run_onedrive_report, "#22C55E"),
         ]
         self.diagnostic_cards = cards
         for idx, card in enumerate(cards):
@@ -1996,11 +1998,11 @@ class FreeCleanerQt(QMainWindow):
         log_head.setObjectName("Panel")
         lh = QHBoxLayout(log_head)
         lh.setContentsMargins(12, 8, 12, 8)
-        title = QLabel("Журнал перевірок")
+        title = QLabel(self.tr("diagnostics_log_title"))
         title.setObjectName("SectionTitle")
         lh.addWidget(title)
         lh.addStretch(1)
-        clear = QPushButton("Очистити журнал")
+        clear = QPushButton(self.tr("clear_log"))
         clear.clicked.connect(lambda: self.log_box.clear())
         lh.addWidget(clear)
         parent.addWidget(log_head)
@@ -2018,13 +2020,13 @@ class FreeCleanerQt(QMainWindow):
 
         interface, interface_layout = self.settings_tab_page()
         interface_layout.addWidget(self.settings_section_header(
-            "Інтерфейс",
-            "Анімації, швидкість переходів, журнал і поведінка видимих елементів."
+            self.tr("settings_tab_interface"),
+            self.tr("settings_interface_desc")
         ))
         self.ui_animations_switch = self.settings_toggle_card(
             interface_layout,
-            "Плавні анімації інтерфейсу",
-            "Вмикає fade-появу сторінок, карток, toast-повідомлень і відфільтрованих рядків. Аналог ключа FREECLEANER_DISABLE_UI_ANIMATIONS, але керується з UI.",
+            self.tr("settings_animations_title"),
+            self.tr("settings_animations_desc"),
             "ui_animations_enabled",
             os.environ.get("FREECLEANER_DISABLE_UI_ANIMATIONS") != "1",
             restart_hint=False,
@@ -2032,72 +2034,72 @@ class FreeCleanerQt(QMainWindow):
         )
         self.animation_speed_combo = self.settings_combo_card(
             interface_layout,
-            "Швидкість анімацій",
-            "Контролює тривалість легких UI-переходів без важких GPU-ефектів.",
+            self.tr("settings_animation_speed_title"),
+            self.tr("settings_animation_speed_desc"),
             "ui_animation_duration_ms",
-            [(90, "Швидко"), (150, "Збалансовано"), (220, "Плавно"), (320, "Дуже плавно")],
+            [(90, self.tr("speed_fast")), (150, self.tr("speed_balanced")), (220, self.tr("speed_smooth")), (320, self.tr("speed_very_smooth"))],
             150,
             on_changed=lambda _value: self.apply_runtime_config_flags(),
         )
         self.compact_logs_switch = self.settings_toggle_card(
             interface_layout,
-            "Компактний журнал подій",
-            "Лог у вікні показує важливі події без зайвого шуму, системні логи на диску все одно залишаються повними.",
+            self.tr("settings_compact_log_title"),
+            self.tr("settings_compact_log_desc"),
             "compact_event_log",
             True,
         )
         interface_layout.addStretch(1)
-        tabs.addTab(interface, "Інтерфейс")
+        tabs.addTab(interface, self.tr("settings_tab_interface"))
 
         startup, startup_layout = self.settings_tab_page()
         startup_layout.addWidget(self.settings_section_header(
-            "Запуск і фонова робота",
-            "Те, що раніше керувалося тільки ключами середовища або config.json."
+            self.tr("settings_startup_section_title"),
+            self.tr("settings_startup_section_desc")
         ))
         self.startup_status_sync_switch = self.settings_toggle_card(
             startup_layout,
-            "Автооновлення статусів після старту",
-            "Після відкриття програми асинхронно перевіряє registry/powercfg статуси. Вимкнено за замовчуванням для максимальної стабільності UI.",
+            self.tr("settings_auto_status_title"),
+            self.tr("settings_auto_status_desc"),
             "startup_status_sync_enabled",
             os.environ.get("FREECLEANER_AUTO_STATUS_SYNC") == "1",
             on_changed=lambda value: self.apply_runtime_config_flags(),
         )
         self.startup_update_gate_switch = self.settings_toggle_card(
             startup_layout,
-            "Дозволити автоперевірку оновлень на старті",
-            "Глобальний запобіжник для фонового update-check після запуску. Саму перевірку також контролює перемикач нижче.",
+            self.tr("settings_startup_update_gate_title"),
+            self.tr("settings_startup_update_gate_desc"),
             "startup_update_check_enabled",
             os.environ.get("FREECLEANER_AUTO_UPDATE_CHECK") == "1",
             on_changed=lambda value: self.apply_runtime_config_flags(),
         )
         self.auto_update_switch = self.settings_toggle_card(
             startup_layout,
-            "Автоматично перевіряти оновлення",
-            "Якщо дозволено автоперевірку на старті, FreeCleaner перевірить актуальний GitHub release CraftRom/FreeCleaner у фоні після відкриття вікна.",
+            self.tr("settings_auto_update_title"),
+            self.tr("settings_auto_update_desc"),
             "auto_check_updates",
             True,
         )
         self.background_limit_combo = self.settings_combo_card(
             startup_layout,
-            "Ліміт фонових задач",
-            "Обмежує одночасні Diagnostics / Update / Registry jobs, щоб вони не забивали систему.",
+            self.tr("settings_background_limit_title"),
+            self.tr("settings_background_limit_desc"),
             "background_worker_limit",
-            [(1, "1 — максимально обережно"), (2, "2 — стандартно"), (3, "3 — швидше"), (4, "4 — агресивно")],
+            [(1, self.tr("background_limit_1")), (2, self.tr("background_limit_2")), (3, self.tr("background_limit_3")), (4, self.tr("background_limit_4"))],
             2,
             on_changed=lambda _value: self.apply_runtime_config_flags(),
         )
         startup_layout.addStretch(1)
-        tabs.addTab(startup, "Запуск")
+        tabs.addTab(startup, self.tr("settings_tab_startup"))
 
         safety, safety_layout = self.settings_tab_page()
         safety_layout.addWidget(self.settings_section_header(
-            "Безпека дій",
-            "Підтвердження, адмін-режим і захист від випадкового запуску важких операцій."
+            self.tr("settings_safety_section_title"),
+            self.tr("settings_safety_section_desc")
         ))
         self.confirm_heavy_switch = self.settings_toggle_card(
             safety_layout,
-            "Підтверджувати важкі дії",
-            "Запитує підтвердження перед DISM, глибокою очисткою, registry-змінами й іншими діями з підвищеним ризиком.",
+            self.tr("settings_confirm_heavy_title"),
+            self.tr("settings_confirm_heavy_desc"),
             "confirm_heavy_actions",
             True,
         )
@@ -2107,9 +2109,9 @@ class FreeCleanerQt(QMainWindow):
         al.setContentsMargins(14, 12, 14, 12)
         al.setSpacing(12)
         admin_text = QVBoxLayout()
-        admin_title = QLabel("Адмін режим")
+        admin_title = QLabel(self.tr("settings_admin_mode_title"))
         admin_title.setObjectName("SectionTitle")
-        admin_desc = QLabel("Дає доступ до HKLM, системних кешів, powercfg, DISM та відновлення registry backup.")
+        admin_desc = QLabel(self.tr("settings_admin_mode_desc"))
         admin_desc.setObjectName("SectionSub")
         admin_desc.setWordWrap(True)
         admin_text.addWidget(admin_title)
@@ -2120,36 +2122,36 @@ class FreeCleanerQt(QMainWindow):
         self.admin_mode_switch.setEnabled(not self.is_admin)
         self.admin_mode_switch.stateChanged.connect(self.on_admin_switch_changed)
         al.addWidget(self.admin_mode_switch)
-        admin_btn = QPushButton("Уже запущено від адміністратора" if self.is_admin else "Перезапустити від адміністратора")
+        admin_btn = QPushButton(self.tr("admin_already_running") if self.is_admin else self.tr("restart_as_admin"))
         admin_btn.setEnabled(not self.is_admin)
         admin_btn.setObjectName("PrimaryButton" if not self.is_admin else "GhostButton")
         admin_btn.clicked.connect(self.restart_as_admin)
         al.addWidget(admin_btn)
         safety_layout.addWidget(admin_panel)
         safety_layout.addStretch(1)
-        tabs.addTab(safety, "Безпека")
+        tabs.addTab(safety, self.tr("settings_tab_safety"))
 
         notify, notify_layout = self.settings_tab_page()
-        notify_layout.addWidget(self.settings_section_header("Сповіщення", "Toast-повідомлення, пояснення недоступних дій та завершення процесів."))
+        notify_layout.addWidget(self.settings_section_header(self.tr("settings_tab_notifications"), self.tr("settings_notifications_desc")))
         self.notify_done_switch = self.settings_toggle_card(
             notify_layout,
-            "Повідомляти після завершення",
-            "Показує підсумок після аналізу, очищення, діагностики, оновлення або застосування твікiв.",
+            self.tr("settings_notify_done_title"),
+            self.tr("settings_notify_done_desc"),
             "notify_on_finish",
             True,
         )
         self.notify_admin_switch = self.settings_toggle_card(
             notify_layout,
-            "Пояснювати недоступні дії",
-            "Показує причину, якщо дія disabled/admin-only/unavailable або потребує іншого режиму запуску.",
+            self.tr("settings_notify_unavailable_title"),
+            self.tr("settings_notify_unavailable_desc"),
             "notify_admin_required",
             True,
         )
         notify_layout.addStretch(1)
-        tabs.addTab(notify, "Сповіщення")
+        tabs.addTab(notify, self.tr("settings_tab_notifications"))
 
         info, info_layout = self.settings_tab_page()
-        info_layout.addWidget(self.settings_section_header("Інформація", "Мова, версія, оновлення, папки та документи програми."))
+        info_layout.addWidget(self.settings_section_header(self.tr("settings_tab_info"), self.tr("settings_info_section_desc")))
 
         lang_panel = QFrame()
         lang_panel.setObjectName("SettingsSection")
@@ -2158,7 +2160,7 @@ class FreeCleanerQt(QMainWindow):
         lang_text = QVBoxLayout()
         lang_title = QLabel(self.tr("language") if self.tr("language") != "language" else "Мова")
         lang_title.setObjectName("SectionTitle")
-        lang_desc = QLabel("Зміна мови застосовується після перезапуску програми.")
+        lang_desc = QLabel(self.tr("language_restart_desc"))
         lang_desc.setObjectName("SectionSub")
         lang_text.addWidget(lang_title)
         lang_text.addWidget(lang_desc)
@@ -2182,7 +2184,7 @@ class FreeCleanerQt(QMainWindow):
         ap.setContentsMargins(14, 12, 14, 12)
         about_title = QLabel(f"FreeCleaner {APP_VERSION}")
         about_title.setObjectName("SectionTitle")
-        about_text = QLabel("Повний Qt / PySide6 frontend. Безпечне очищення Windows, registry backup/restore, діагностика, gaming tweaks та адмін-режим.")
+        about_text = QLabel(self.tr("about_short_desc"))
         about_text.setObjectName("SectionSub")
         about_text.setWordWrap(True)
         ap.addWidget(about_title)
@@ -2190,7 +2192,7 @@ class FreeCleanerQt(QMainWindow):
         actions = QHBoxLayout()
         open_cfg = QPushButton(self.tr("open_config_folder") if self.tr("open_config_folder") != "open_config_folder" else "Відкрити папку конфігурації")
         open_cfg.clicked.connect(self.open_config_folder)
-        open_logs = QPushButton("Відкрити папку логів")
+        open_logs = QPushButton(self.tr("open_logs_folder"))
         open_logs.clicked.connect(self.open_logs_folder)
         about = QPushButton(self.tr("about_title"))
         about.clicked.connect(self.open_about)
@@ -2202,15 +2204,15 @@ class FreeCleanerQt(QMainWindow):
         ap.addLayout(actions)
         info_layout.addWidget(about_panel)
         info_layout.addStretch(1)
-        tabs.addTab(info, "Інформація")
+        tabs.addTab(info, self.tr("settings_tab_info"))
 
         license_page, license_layout = self.settings_tab_page()
         license_layout.addWidget(self.settings_section_header(self.tr("about_license") if self.tr("about_license") != "about_license" else "Ліцензія", self.tr("about_license_sub") if self.tr("about_license_sub") != "about_license_sub" else "Умови використання FreeCleaner."))
         self.license_text = QTextEdit()
         self.license_text.setReadOnly(True)
-        self.license_text.setPlainText(self.read_project_text("LICENSE") or "LICENSE file not found.")
+        self.license_text.setPlainText(self.read_project_text("LICENSE") or self.trf("about_doc_missing", name="LICENSE"))
         license_layout.addWidget(self.license_text, 1)
-        privacy_btn = QPushButton("Показати Privacy Policy")
+        privacy_btn = QPushButton(self.tr("about_privacy"))
         privacy_btn.clicked.connect(self.show_privacy_policy)
         license_layout.addWidget(privacy_btn, 0, Qt.AlignLeft)
         tabs.addTab(license_page, self.tr("about_license") if self.tr("about_license") != "about_license" else "Ліцензія")
@@ -3190,7 +3192,7 @@ class FreeCleanerQt(QMainWindow):
     def run_toggle_worker(self, key: str, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         if key in self.toggle_jobs:
             log_qa_event("toggle_worker_duplicate_blocked", key=key, active=list(self.toggle_jobs.keys()))
-            self.show_toast("Цей тумблер уже виконує дію.", "warning")
+            self.show_toast(self.tr("toggle_busy"), "warning")
             return
         log_qa_event("toggle_worker_create", key=key, group=self.toggle_action_group(key), active=list(self.toggle_jobs.keys()))
         thread = QThread()
@@ -3311,7 +3313,7 @@ class FreeCleanerQt(QMainWindow):
             row.control.update()
         self.log(error)
         log_error(f"toggle failed: {key}\n{error}")
-        self.show_toast("Помилка тумблера. Деталі у Diagnostics.", "error")
+        self.show_toast(self.tr("toggle_error_details"), "error")
         self.refresh_optimizer_interactivity()
         self.defer_status_sync(1400)
 
@@ -3325,28 +3327,28 @@ class FreeCleanerQt(QMainWindow):
         log_qa_event("toggle_requested", key=key, enable=bool(enable), previous_state=previous_state, admin=self.is_admin, state=task.state)
         if key in getattr(self, "toggle_jobs", {}):
             self.rollback_toggle_control(row, previous_state)
-            self.show_toast("Цей тумблер уже виконує дію.", "warning")
+            self.show_toast(self.tr("toggle_busy"), "warning")
             return
         if self.toggle_group_busy(key):
             self.rollback_toggle_control(row, previous_state)
             self.refresh_optimizer_interactivity()
-            self.show_toast("Суміжний системний твік ще виконується або стабілізується. Дочекайся завершення.", "warning")
+            self.show_toast(self.tr("toggle_group_busy"), "warning")
             return
         if task.requires_admin and not self.is_admin:
             self.rollback_toggle_control(row, previous_state)
             row.update_status(self.tr("registry_status_admin_only"))
             log_action({"toggle_blocked_admin_required": key})
-            self.show_toast("Потрібен запуск від адміністратора.", "warning")
+            self.show_toast(self.tr("admin_required_short"), "warning")
             return
         if task.state == "disabled":
             self.rollback_toggle_control(row, previous_state)
-            self.show_toast("Твік недоступний на цій системі.", "warning")
+            self.show_toast(self.tr("tweak_unavailable_system"), "warning")
             return
         specs = task.registry_values if enable else self.revert_registry_specs.get(key)
         command = task.command if enable else self.revert_commands.get(key)
         if not enable and not specs and not command:
             self.rollback_toggle_control(row, previous_state)
-            self.show_toast("Для цього тумблера немає безпечного OFF. Використай Registry restore.", "warning")
+            self.show_toast(self.tr("toggle_no_safe_off"), "warning")
             self.defer_status_sync(0)
             return
         title, _ = self.task_text(task)
@@ -3518,7 +3520,7 @@ class FreeCleanerQt(QMainWindow):
         """Run lightweight background jobs without locking the cleaner UI."""
         limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
         if len(getattr(self, "background_jobs", [])) >= limit:
-            self.show_toast("Фонова діагностика вже виконується. Дочекайся завершення.", "warning")
+            self.show_toast(self.tr("background_diagnostics_busy"), "warning")
             log_qa_event("background_worker_limit_blocked", active=len(getattr(self, "background_jobs", [])), limit=limit)
             return
         thread = QThread()
@@ -3584,7 +3586,7 @@ class FreeCleanerQt(QMainWindow):
                     else:
                         dlg.set_failed(self.trf("update_download_failed_reason", reason=message))
                 self.log(self.trf("update_download_failed_reason", reason=message))
-                self.show_toast("Завантаження скасовано" if result.get("cancelled") else self.tr("update_download_failed"), "warning" if result.get("cancelled") else "error")
+                self.show_toast(self.tr("update_download_cancelled") if result.get("cancelled") else self.tr("update_download_failed"), "warning" if result.get("cancelled") else "error")
         elif op == "registry_backup":
             path = str(result.get("path") or "")
             if path:
@@ -3631,11 +3633,11 @@ class FreeCleanerQt(QMainWindow):
         self._update_download_cancel_event: Optional[threading.Event] = None
         self.log(f"Background job failed: {error}")
         if hasattr(self, "toast"):
-            self.show_toast("Фонова дія завершилася з помилкою. Деталі в логах.", "error")
+            self.show_toast(self.tr("background_action_failed"), "error")
 
     def run_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
         if self.thread is not None:
-            self.show_toast("Зачекай завершення поточної дії.", "warning")
+            self.show_toast(self.tr("wait_current_action"), "warning")
             return
         self.cancel_event.clear()
         self.set_progress_value(0, animated=False)
@@ -3723,7 +3725,7 @@ class FreeCleanerQt(QMainWindow):
         self._cleaning_keys = []
         self.set_progress_value(0, animated=True)
         if hasattr(self, "toast"):
-            self.show_toast("Помилка виконання. Деталі у Diagnostics.", "error")
+            self.show_toast(self.tr("action_failed_details"), "error")
         self.defer_status_sync(0)
 
 
@@ -4078,9 +4080,9 @@ class FreeCleanerQt(QMainWindow):
         menu.setStyleSheet("QMenu { background: #242524; color: #F4F4F4; border: 1px solid #3A3B3A; padding: 4px; } QMenu::item { padding: 7px 28px 7px 24px; } QMenu::item:selected { background: #303130; }")
         restore_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
         folder_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
-        restore_action = QAction(restore_icon, "Відновити", self)
-        open_action = QAction(folder_icon, "Відкрити розташування", self)
-        delete_action = QAction(self._trash_menu_icon(), "Видалити", self)
+        restore_action = QAction(restore_icon, self.tr("restore"), self)
+        open_action = QAction(folder_icon, self.tr("open_location"), self)
+        delete_action = QAction(self._trash_menu_icon(), self.tr("delete"), self)
         delete_action.setToolTip("Видаляє тільки вибрану папку backup з її файлами")
         menu.addAction(restore_action)
         menu.addAction(open_action)
@@ -4150,7 +4152,7 @@ class FreeCleanerQt(QMainWindow):
         title = QLabel(f"FreeCleaner {APP_VERSION}")
         title.setObjectName("PageTitle")
         layout.addWidget(title)
-        desc = QLabel("Windows cleaner with a full Qt/PySide6 frontend, safe file operations, registry backup, restore, diagnostics and gaming optimization toggles.")
+        desc = QLabel(self.tr("about_short_desc"))
         desc.setObjectName("SectionSub")
         desc.setWordWrap(True)
         layout.addWidget(desc)
@@ -4158,7 +4160,7 @@ class FreeCleanerQt(QMainWindow):
         meta.setReadOnly(True)
         meta.setPlainText(
             f"Version: {APP_VERSION_RAW}\n"
-            f"UI: Qt / PySide6\n"
+            
             f"Mode: {'Administrator' if self.is_admin else 'Restricted'}\n"
             f"Config: {CONFIG_PATH}\n"
             f"Data folder: {get_user_data_dir(create=True)}\n"
@@ -4234,13 +4236,13 @@ class FreeCleanerQt(QMainWindow):
             return
         limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
         if len(getattr(self, "background_jobs", [])) >= limit:
-            self.show_toast("Фонові задачі зайняті. Повтори перевірку після завершення поточної дії.", "warning")
+            self.show_toast(self.tr("background_busy_retry_check"), "warning")
             return
         self._update_check_running = True
         self.log(f"{self.tr('checking_updates')} ({APP_UPDATE_OWNER}/{APP_UPDATE_REPO})")
 
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
-            emit(8, f"GitHub: {APP_UPDATE_OWNER}/{APP_UPDATE_REPO}")
+            emit(8, self.tr("update_contacting_server"))
             info = fetch_latest_github_release(APP_UPDATE_OWNER, APP_UPDATE_REPO)
             if not info:
                 emit(100, self.tr("update_check_failed"))
@@ -4318,24 +4320,24 @@ class FreeCleanerQt(QMainWindow):
         if not download_url or not download_url.lower().startswith("https://"):
             self.show_toast(self.tr("update_download_failed"), "error")
             if dialog is not None:
-                dialog.set_failed("Не знайдено безпечне HTTPS-посилання на інсталятор.")
+                dialog.set_failed(self.tr("update_no_secure_installer_link"))
             return
         if not asset_name or not download_url.lower().endswith((".exe", ".msi")):
-            self.log("Update asset not found; opening release page instead.")
+            self.log(self.tr("update_installer_missing_open_release_log"))
             if dialog is not None:
-                dialog.set_failed("Installer asset не знайдено. Відкриваю сторінку релізу GitHub.")
+                dialog.set_failed(self.tr("update_installer_missing_open_release"))
             try:
                 webbrowser.open(release_url or download_url)
-                self.show_toast("Відкрито сторінку релізу GitHub", "info")
+                self.show_toast(self.tr("update_release_page_opened"), "info")
             except Exception as exc:
                 self.show_toast(str(exc), "error")
             return
 
         limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
         if len(getattr(self, "background_jobs", [])) >= limit:
-            self.show_toast("Фонові задачі зайняті. Повтори завантаження після завершення поточної дії.", "warning")
+            self.show_toast(self.tr("background_busy_retry_download"), "warning")
             if dialog is not None:
-                dialog.set_failed("Фонові задачі зайняті. Повтори завантаження після завершення поточної дії.")
+                dialog.set_failed(self.tr("background_busy_retry_download"))
             return
         self._update_download_running = True
         filename = asset_name or guess_download_filename(download_url, fallback="FreeCleaner-update.exe")
@@ -4374,7 +4376,7 @@ class FreeCleanerQt(QMainWindow):
                 else:
                     percent = min(90, max(5, int((downloaded / max(downloaded + 1024 * 1024, 1)) * 90)))
                     eta = 0.0
-                emit_payload(percent, stage="downloading", downloaded=downloaded, total=total or 0, speed=int(speed), eta=int(eta), message=f"{self.tr('update_downloading')} {percent}%")
+                emit_payload(percent, stage="downloading", downloaded=downloaded, total=total or 0, speed=int(speed), eta=int(eta), message=self.trf("update_download_percent", percent=percent))
 
             emit_payload(2, stage="downloading", downloaded=0, total=0, speed=0, eta=0, message=self.trf("update_download_started", version=latest))
             ok, message = download_url_to_file(download_url, dest_path, progress_cb=on_progress, cancel_event=cancel_event)

@@ -1,9 +1,9 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-48 — Modern update window: replaces the blocking update message box with a FreeCleaner-styled update dialog, live download progress, speed/ETA, cancellation, release notes and safer installer handoff.
+Current package: 1.2.0.0-build-49 — Localization cleanup: update window, settings, diagnostics, registry menu and startup texts now use language packs with cleaner non-technical wording.
 
 
-## 1.2.0.0 build-48 — Modern update window and download progress
+## 1.2.0.0 build-49 — Localization cleanup
 
 - Replaced the old QMessageBox update prompt with a non-blocking FreeCleaner-styled update window.
 - Added version comparison cards, installer asset details, release notes and the exact local update path.
