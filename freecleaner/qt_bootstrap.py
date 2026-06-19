@@ -18,6 +18,9 @@ from .runtime_logging import log_startup, log_app, log_qa_event
 os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 os.environ.setdefault("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough")
 os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
+# Keep Qt startup quiet and prevent transient native helper windows from
+# stealing focus while the splash is the only visible window.
+os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.*=false")
 
 from PySide6.QtCore import Qt, qInstallMessageHandler
 from PySide6.QtGui import QIcon
@@ -87,8 +90,14 @@ def configure_high_dpi() -> None:
 
 class EarlySplash(QWidget):
     def __init__(self, icon_path: Optional[str] = None) -> None:
-        super().__init__(None, Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        # Keep this as one simple top-level splash window.  Qt.Tool and
+        # WindowStaysOnTopHint can create extra owner/activation transitions on
+        # Windows while PySide loads modules, which looks like a hidden window
+        # blinking behind the splash.  SplashScreen + NoDropShadow is enough and
+        # avoids the additional native window choreography.
+        super().__init__(None, Qt.SplashScreen | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WA_NativeWindow, True)
         self.setAttribute(Qt.WA_NoSystemBackground, False)
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)
         self.setFixedSize(460, 250)
@@ -142,13 +151,24 @@ class EarlySplash(QWidget):
             geo = screen.availableGeometry()
             self.move(geo.center() - self.rect().center())
         self.show()
+        self.raise_()
         self._fade_target = "show"
+        try:
+            QApplication.processEvents()
+        except Exception:
+            pass
 
     def set_progress(self, value: int, message: str = "") -> None:
         self.progress.setValue(max(0, min(100, int(value))))
         if message:
             self.message.setText(message)
-        # Avoid nested processEvents from splash updates; Qt event loop owns repaint.
+        # The event loop is not running yet during bootstrap. Process one paint
+        # pass so the splash itself is stable before heavy module imports begin;
+        # this prevents grey/white native-window flashes behind it on Windows.
+        try:
+            QApplication.processEvents()
+        except Exception:
+            pass
 
     def fade_out(self) -> None:
         self._fade_target = "hide"
@@ -177,10 +197,10 @@ def main() -> int:
     log_startup("showing early splash")
     splash.show_centered()
     log_qa_event("early_splash_shown")
-    splash.set_progress(28, "Завантаження ядра FreeCleaner…")
+    splash.set_progress(28, "Підготовка модулів Qt…")
     log_startup("importing full qt_app")
     from . import qt_app
-    splash.set_progress(58, "Підготовка модулів Qt…")
+    splash.set_progress(58, "Завантаження інтерфейсу FreeCleaner…")
     log_startup("handoff to full qt_app")
     return qt_app.launch_existing_app(app, splash)
 

@@ -709,8 +709,13 @@ class Pill(QLabel):
 
 class SplashWindow(QWidget):
     def __init__(self, icon_path: Optional[str] = None) -> None:
-        super().__init__(None, Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        # Keep splash as a single native top-level without Tool/topmost owner
+        # transitions.  Tool/topmost combinations can briefly flash helper
+        # windows behind the splash on Windows while Qt modules are prepared.
+        super().__init__(None, Qt.SplashScreen | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setObjectName("SplashRoot")
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WA_NativeWindow, True)
         self.setFixedSize(460, 260)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 26, 30, 26)
@@ -752,7 +757,12 @@ class SplashWindow(QWidget):
             geo = screen.availableGeometry()
             self.move(geo.center() - self.rect().center())
         self.show()
+        self.raise_()
         self._fade_target = "show"
+        try:
+            QApplication.processEvents()
+        except Exception:
+            pass
 
     def set_progress(self, value: int, message: str = "") -> None:
         self.progress.setValue(max(0, min(100, int(value))))
@@ -3800,11 +3810,12 @@ def configure_high_dpi() -> None:
     return
 
 
-def _prepare_qapplication(app: QApplication) -> Optional[str]:
+def _prepare_qapplication(app: QApplication, apply_stylesheet: bool = True) -> Optional[str]:
     app.setApplicationName("FreeCleaner")
     app.setApplicationDisplayName("FreeCleaner")
     app.setOrganizationName("FreeCleaner")
-    app.setStyleSheet(APP_QSS)
+    if apply_stylesheet:
+        app.setStyleSheet(APP_QSS)
     app.setQuitOnLastWindowClosed(True)
     icon = find_icon_path("app.ico") or find_icon_path("app.png")
     if icon:
@@ -3819,7 +3830,11 @@ def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> 
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FreeCleaner.Qt")
         except Exception:
             pass
-    icon = _prepare_qapplication(app)
+    # Do not apply the global QSS while the splash is visible.  Re-polishing the
+    # already shown splash during full Qt UI import can create a short native
+    # background-window flash on Windows.  Apply QSS after the splash closes and
+    # before the main window becomes visible.
+    icon = _prepare_qapplication(app, apply_stylesheet=False)
     owned_splash = splash is None
     if splash is None:
         splash = SplashWindow(icon)
@@ -3843,6 +3858,10 @@ def launch_existing_app(app: QApplication, splash: Optional[QWidget] = None) -> 
                 splash.close()
             except Exception:
                 pass
+        try:
+            app.setStyleSheet(APP_QSS)
+        except Exception:
+            pass
         window.show()
         window.raise_()
         window.activateWindow()

@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 0.2.1.0-build-38 — Settings UX upgrade: config/env-backed runtime options are now exposed in the Settings UI, with clickable setting cards, smoother lightweight animations and cleaner startup/background controls.
+Current package: 0.2.1.0-build-39 — Startup splash flicker guard: the bootstrap splash now stays as a single stable native window while Qt modules and the full UI are prepared.
 
 
 
@@ -522,6 +522,15 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Kept `PySide6==6.11.1` but now installs it only on supported Python `>=3.10,<3.15` runtimes.
 - Switched dependency install commands to `python -m pip ...` so the workflow always uses the selected setup-python interpreter.
 - Updated release documentation to describe the current x64-only Windows build path.
+
+
+## 0.2.1.0 build-39 — Startup splash flicker guard
+
+- Kept the bootstrap splash as a single native splash window without Tool/topmost owner transitions.
+- Processed one safe paint pass before heavy Qt module import so the splash is stable during startup.
+- Delayed global Qt stylesheet application until after the splash is closed and before the main window is shown.
+- Reworded the startup progress sequence so Qt module preparation is displayed before importing the full UI.
+- Reduced QPA startup logging noise that could surface as transient background activity in source/debug runs.
 
 ## 0.2.1.0 build-38 — Settings UX, config toggles and UI polish
 
