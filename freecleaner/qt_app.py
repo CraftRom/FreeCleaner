@@ -1208,6 +1208,12 @@ _APPDATA_RESIDUE_MARKERS = {
     "cache", "code cache", "gpucache", "logs", "log", "crashpad", "crashes", "blob_storage",
     "indexeddb", "local storage", "session storage", "shadercache", "cachedata", "tmp", "temp",
 }
+_APPDATA_RESIDUE_FILE_EXTENSIONS = {".log", ".tmp", ".old", ".bak", ".cache", ".dmp", ".sqlite", ".db", ".json", ".ini", ".xml"}
+_APPDATA_SCAN_CHILD_LIMIT = 1200
+_PROGRAM_SIZE_SCAN_BUDGET_SECONDS = 12.0
+_PROGRAM_SIZE_SCAN_MAX_MISSING_ESTIMATES = 36
+_LEFTOVER_SIZE_SCAN_MAX_SECONDS = 0.28
+_LEFTOVER_SIZE_SCAN_MAX_ENTRIES = 1400
 
 
 def _program_tokens(*values: str) -> set[str]:
@@ -1243,7 +1249,7 @@ def _appdata_name_is_protected(name: str) -> bool:
     return False
 
 
-def _has_active_runtime_marker(path: str, cancel_event: Optional[threading.Event] = None) -> bool:
+def _has_active_runtime_marker(path: str, cancel_event: Optional[threading.Event] = None, cache: Optional[dict[str, bool]] = None) -> bool:
     """Return True when an AppData folder looks like an active app install.
 
     Apps such as Discord, Spotify and launchers often live inside AppData.  If a
@@ -1253,50 +1259,81 @@ def _has_active_runtime_marker(path: str, cancel_event: Optional[threading.Event
     """
     if not path or not os.path.isdir(path):
         return False
+    norm_path = SafeFS._norm_abs(path)
+    if cache is not None and norm_path in cache:
+        return cache[norm_path]
+    result = False
     scanned = 0
     try:
         for root, dirs, files in os.walk(path):
             if cancel_event is not None and cancel_event.is_set():
-                return True
+                result = True
+                break
             rel = os.path.relpath(root, path)
             depth = 0 if rel == "." else rel.count(os.sep) + 1
             if depth > 2:
                 dirs[:] = []
                 continue
+            safe_dirs = []
+            for dirname in dirs:
+                child_dir = os.path.join(root, dirname)
+                if SafeFS._is_reparse_point(child_dir):
+                    result = True
+                    break
+                safe_dirs.append(dirname)
+            dirs[:] = safe_dirs
+            if result:
+                break
             for name in files:
                 scanned += 1
                 low = name.lower()
                 if low in _APPDATA_ACTIVE_MARKER_NAMES or low.endswith((".exe", ".msi", ".com", ".bat", ".cmd", ".ps1", ".dll")):
-                    return True
+                    result = True
+                    break
                 if scanned > 900:
-                    return True
+                    # Too many files to classify quickly and safely; treat as active/uncertain.
+                    result = True
+                    break
+            if result:
+                break
     except Exception:
-        return True
-    return False
-
+        result = True
+    if cache is not None:
+        cache[norm_path] = result
+    return result
 
 def _has_residue_marker(path: str) -> bool:
     if not path or not os.path.isdir(path):
         return False
+    scanned = 0
+    has_residue_file = False
     try:
         with os.scandir(path) as it:
             for entry in it:
+                scanned += 1
                 low = entry.name.strip().lower()
                 if low in _APPDATA_RESIDUE_MARKERS:
                     return True
+                try:
+                    if entry.is_file(follow_symlinks=False) and os.path.splitext(low)[1] in _APPDATA_RESIDUE_FILE_EXTENSIONS:
+                        has_residue_file = True
+                except OSError:
+                    continue
+                if scanned >= 160:
+                    break
     except Exception:
         return False
-    return True  # non-system AppData child without runtime markers is still a conservative leftover candidate
+    return has_residue_file
 
 
-def _safe_removed_appdata_candidate(child: dict[str, Any], installed_programs: list[dict[str, Any]], cancel_event: Optional[threading.Event] = None) -> tuple[bool, str]:
+def _safe_removed_appdata_candidate(child: dict[str, Any], installed_programs: list[dict[str, Any]], cancel_event: Optional[threading.Event] = None, active_marker_cache: Optional[dict[str, bool]] = None) -> tuple[bool, str]:
     path = str(child.get("path") or "")
     name = str(child.get("name") or "")
     if not path or not _safe_appdata_child(path):
         return False, "outside_appdata"
     if _appdata_name_is_protected(name):
         return False, "protected_name"
-    if _has_active_runtime_marker(path, cancel_event):
+    if _has_active_runtime_marker(path, cancel_event, active_marker_cache):
         return False, "active_runtime_marker"
     if not _has_residue_marker(path):
         return False, "no_residue_marker"
@@ -1495,6 +1532,7 @@ def _iter_installed_programs_from_registry() -> list[dict[str, Any]]:
 
 def _scan_appdata_children(cancel_event: Optional[threading.Event] = None) -> list[dict[str, Any]]:
     children: list[dict[str, Any]] = []
+    skipped_over_limit = 0
     for root in _appdata_roots():
         if cancel_event is not None and cancel_event.is_set():
             break
@@ -1503,6 +1541,9 @@ def _scan_appdata_children(cancel_event: Optional[threading.Event] = None) -> li
                 for entry in it:
                     if cancel_event is not None and cancel_event.is_set():
                         break
+                    if len(children) >= _APPDATA_SCAN_CHILD_LIMIT:
+                        skipped_over_limit += 1
+                        continue
                     try:
                         if not entry.is_dir(follow_symlinks=False):
                             continue
@@ -1524,6 +1565,8 @@ def _scan_appdata_children(cancel_event: Optional[threading.Event] = None) -> li
                         continue
         except OSError:
             continue
+    if skipped_over_limit:
+        log_qa_event("program_appdata_scan_limit_reached", limit=_APPDATA_SCAN_CHILD_LIMIT, skipped=skipped_over_limit)
     return children
 
 
@@ -1541,16 +1584,31 @@ def _program_match_score(program: dict[str, Any], child: dict[str, Any]) -> int:
 
 
 def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> list[dict[str, Any]]:
+    started_at = time.monotonic()
+    size_deadline = started_at + _PROGRAM_SIZE_SCAN_BUDGET_SECONDS
     installed = _iter_installed_programs_from_registry()
     app_children = _scan_appdata_children(cancel_event)
     matched_child_indexes: set[int] = set()
     program_leftovers: dict[int, list[dict[str, Any]]] = {idx: [] for idx in range(len(installed))}
 
+    token_index: dict[str, set[int]] = {}
+    for pidx, program in enumerate(installed):
+        for token in set(program.get("tokens") or set()):
+            token_index.setdefault(str(token), set()).add(pidx)
+
+    # Avoid an O(installed * AppData) scan on machines with hundreds of apps.
+    # Most good matches share at least one normalized token, so we only score
+    # candidate programs from the token index.  A full registry/AppData cross
+    # product made the Programs tab slow on large Windows profiles.
     for cidx, child in enumerate(app_children):
+        ctokens = set(child.get("tokens") or set())
+        candidate_indexes: set[int] = set()
+        for token in ctokens:
+            candidate_indexes.update(token_index.get(str(token), set()))
         best_idx = -1
         best_score = 0
-        for pidx, program in enumerate(installed):
-            score = _program_match_score(program, child)
+        for pidx in candidate_indexes:
+            score = _program_match_score(installed[pidx], child)
             if score > best_score:
                 best_idx = pidx
                 best_score = score
@@ -1559,6 +1617,8 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
             matched_child_indexes.add(cidx)
 
     entries: list[dict[str, Any]] = []
+    measured_missing_install_sizes = 0
+    skipped_size_budget = 0
     for pidx, program in enumerate(installed):
         if cancel_event is not None and cancel_event.is_set():
             break
@@ -1567,8 +1627,17 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
         install_path = str(program.get("install_path") or "")
         install_size = int(program.get("estimated_size") or 0)
         if not install_size and install_path and os.path.isdir(install_path):
-            install_size = SafeFS.fast_size_limited(install_path, cancel_event, max_seconds=0.35, max_entries=1800)
-        leftover_size = SafeFS.fast_size_many_limited(leftover_paths, cancel_event, max_seconds=0.55, max_entries=3200) if leftover_paths else 0
+            if time.monotonic() < size_deadline and measured_missing_install_sizes < _PROGRAM_SIZE_SCAN_MAX_MISSING_ESTIMATES:
+                measured_missing_install_sizes += 1
+                install_size = SafeFS.fast_size_limited(install_path, cancel_event, max_seconds=0.18, max_entries=900)
+            else:
+                skipped_size_budget += 1
+        leftover_size = 0
+        if leftover_paths:
+            if time.monotonic() < size_deadline:
+                leftover_size = SafeFS.fast_size_many_limited(leftover_paths, cancel_event, max_seconds=_LEFTOVER_SIZE_SCAN_MAX_SECONDS, max_entries=_LEFTOVER_SIZE_SCAN_MAX_ENTRIES)
+            else:
+                skipped_size_budget += len(leftover_paths)
         leftover_drives = sorted({_path_drive(p) for p in leftover_paths if p})
         entries.append({
             "status": "installed",
@@ -1587,12 +1656,14 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
 
     skipped_counts: dict[str, int] = {}
     skipped_samples: list[dict[str, str]] = []
+    active_marker_cache: dict[str, bool] = {}
+    removed_candidates = 0
     for cidx, child in enumerate(app_children):
         if cidx in matched_child_indexes:
             continue
         if cancel_event is not None and cancel_event.is_set():
             break
-        safe_candidate, safety_reason = _safe_removed_appdata_candidate(child, installed, cancel_event)
+        safe_candidate, safety_reason = _safe_removed_appdata_candidate(child, installed, cancel_event, active_marker_cache)
         if not safe_candidate:
             skipped_counts[safety_reason] = skipped_counts.get(safety_reason, 0) + 1
             if len(skipped_samples) < 8:
@@ -1603,7 +1674,13 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
                 })
             continue
         path = str(child.get("path") or "")
-        size = SafeFS.fast_size_limited(path, cancel_event, max_seconds=0.45, max_entries=2600) if path else 0
+        size = 0
+        if path:
+            if time.monotonic() < size_deadline:
+                size = SafeFS.fast_size_limited(path, cancel_event, max_seconds=_LEFTOVER_SIZE_SCAN_MAX_SECONDS, max_entries=_LEFTOVER_SIZE_SCAN_MAX_ENTRIES)
+            else:
+                skipped_size_budget += 1
+        removed_candidates += 1
         entries.append({
             "status": "removed",
             "name": str(child.get("name") or ""),
@@ -1620,10 +1697,43 @@ def scan_program_inventory(cancel_event: Optional[threading.Event] = None) -> li
         })
     if skipped_counts:
         log_qa_event("program_leftover_candidates_skipped_summary", counts=skipped_counts, samples=skipped_samples)
+    if skipped_size_budget:
+        log_qa_event("program_size_scan_budget_used", skipped=skipped_size_budget, measured_missing_install_sizes=measured_missing_install_sizes)
+    log_qa_event(
+        "program_inventory_scan_finished",
+        installed=len(installed),
+        appdata_children=len(app_children),
+        removed_candidates=removed_candidates,
+        seconds=round(time.monotonic() - started_at, 2),
+    )
 
     entries.sort(key=lambda item: (0 if item.get("status") == "removed" else 1, str(item.get("name") or "").lower()))
     return entries
 
+
+def _appdata_tree_has_reparse_point(path: str, cancel_event: Optional[threading.Event] = None, max_entries: int = 2400) -> bool:
+    if not path or not os.path.isdir(path):
+        return False
+    scanned = 0
+    try:
+        for root, dirs, files in os.walk(path):
+            if cancel_event is not None and cancel_event.is_set():
+                return True
+            scanned += len(dirs) + len(files)
+            if scanned > max_entries:
+                return True
+            if SafeFS._is_reparse_point(root):
+                return True
+            safe_dirs = []
+            for dirname in dirs:
+                child = os.path.join(root, dirname)
+                if SafeFS._is_reparse_point(child):
+                    return True
+                safe_dirs.append(dirname)
+            dirs[:] = safe_dirs
+    except Exception:
+        return True
+    return False
 
 def delete_program_leftover_paths(paths: list[str], cancel_event: Optional[threading.Event] = None) -> dict[str, int]:
     result = {"removed_bytes": 0, "removed_items": 0, "errors": 0}
@@ -1646,12 +1756,17 @@ def delete_program_leftover_paths(paths: list[str], cancel_event: Optional[threa
             break
         if not os.path.exists(path):
             continue
-        if not _safe_appdata_child(path) or _appdata_name_is_protected(os.path.basename(path)) or _has_active_runtime_marker(path, cancel_event):
+        if (
+            not _safe_appdata_child(path)
+            or _appdata_name_is_protected(os.path.basename(path))
+            or _has_active_runtime_marker(path, cancel_event)
+            or _appdata_tree_has_reparse_point(path, cancel_event)
+        ):
             log_security(f"blocked unsafe program leftover delete: {path}", level="WARNING")
             result["errors"] += 1
             continue
         try:
-            size = SafeFS.fast_size(path, cancel_event)
+            size = SafeFS.fast_size_limited(path, cancel_event, max_seconds=0.6, max_entries=3200)
             if os.path.isdir(path):
                 def onerror(func, p, _exc):
                     try:
@@ -2710,8 +2825,9 @@ class FreeCleanerQt(QMainWindow):
             if removed:
                 item.setForeground(1, QColor("#FCA5A5"))
             self.program_tree.addTopLevelItem(item)
-        for col in range(self.program_tree.columnCount()):
-            self.program_tree.resizeColumnToContents(col)
+        if self.program_tree.topLevelItemCount() <= 550:
+            for col in range(self.program_tree.columnCount()):
+                self.program_tree.resizeColumnToContents(col)
         self.program_tree.setSortingEnabled(True)
         self.program_tree.sortItems(1, Qt.DescendingOrder)
         self.filter_program_rows()

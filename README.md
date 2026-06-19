@@ -1,6 +1,6 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-59 — Smart Programs safety: uses conservative removed-app detection, skips Windows/system/vendor AppData, blocks active runtimes, and cleans only verified removed-app leftovers.
+Current package: 1.2.0.0-build-60 — Audit fixes: optimizes Programs scanning, reduces risky leftover detection, adds scan budgets, and blocks unsafe AppData deletion paths more aggressively.
 
 
 ## 1.2.0.0 build-52 — Installer update mode and recent release changelog
