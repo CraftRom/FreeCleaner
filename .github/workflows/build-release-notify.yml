@@ -132,15 +132,14 @@ jobs:
         shell: pwsh
         run: pyinstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
 
-      - name: Rename packaged executable
+      - name: Locate packaged application
         shell: pwsh
         run: |
-          $ExePath = Join-Path 'dist' '${{ env.APP_NAME }}.exe'
-          if (-not (Test-Path $ExePath)) { throw "Built executable not found: $ExePath" }
-          $ExeName = "${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}.exe"
-          $RenamedExePath = Join-Path 'dist' $ExeName
-          Move-Item -Path $ExePath -Destination $RenamedExePath -Force
-          "RENAMED_EXE_PATH=$RenamedExePath" >> $env:GITHUB_ENV
+          $PackageDir = Join-Path 'dist' '${{ env.APP_NAME }}'
+          $ExePath = Join-Path $PackageDir '${{ env.APP_NAME }}.exe'
+          if (-not (Test-Path $ExePath)) { throw "Built package executable not found: $ExePath" }
+          "PACKAGE_DIR=$PackageDir" >> $env:GITHUB_ENV
+          "PACKAGE_EXE_PATH=$ExePath" >> $env:GITHUB_ENV
 
       - name: Install Inno Setup
         shell: pwsh
@@ -150,7 +149,7 @@ jobs:
         shell: pwsh
         run: |
           .\\scripts\\build_installer.ps1 `
-            -ExePath "${{ env.RENAMED_EXE_PATH }}" `
+            -ExePath "${{ env.PACKAGE_EXE_PATH }}" `
             -Arch "${{ matrix.asset_suffix }}" `
             -Version "${{ needs.version.outputs.full_version }}" `
             -OutputDir "dist"
@@ -162,8 +161,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifact-out | Out-Null
-          Copy-Item -Path "${{ env.RENAMED_EXE_PATH }}" -Destination artifact-out -Force
+          $PortableName = "${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}-portable.zip"
+          $PortablePath = Join-Path 'dist' $PortableName
+          if (Test-Path $PortablePath) { Remove-Item $PortablePath -Force }
+          Compress-Archive -Path (Join-Path "${{ env.PACKAGE_DIR }}" '*') -DestinationPath $PortablePath -CompressionLevel Optimal
           Copy-Item -Path "${{ env.INSTALLER_PATH }}" -Destination artifact-out -Force
+          Copy-Item -Path $PortablePath -Destination artifact-out -Force
           Copy-Item -Path version_info.txt -Destination artifact-out -Force
           Get-ChildItem -Path artifact-out -File | Format-Table Name, Length
 
@@ -199,18 +202,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           Get-ChildItem -Path downloaded-artifacts -Recurse -File | Format-Table FullName, Length
-          $exeFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File -Filter "*.exe"
-          if (-not $exeFiles -or $exeFiles.Count -eq 0) {
-            throw "No .exe files were downloaded from build artifacts."
+          $releaseFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File | Where-Object { $_.Extension -in '.exe', '.zip' }
+          if (-not $releaseFiles -or $releaseFiles.Count -eq 0) {
+            throw "No release files were downloaded from build artifacts."
           }
-          foreach ($file in $exeFiles) {
+          foreach ($file in $releaseFiles) {
             Copy-Item -Path $file.FullName -Destination (Join-Path release-assets $file.Name) -Force
           }
-          $releaseFiles = Get-ChildItem -Path release-assets -File -Filter "*.exe"
-          if (-not $releaseFiles -or $releaseFiles.Count -eq 0) {
-            throw "release-assets/*.exe was not created."
+          $stagedFiles = Get-ChildItem -Path release-assets -File | Where-Object { $_.Extension -in '.exe', '.zip' }
+          if (-not $stagedFiles -or $stagedFiles.Count -eq 0) {
+            throw "release-assets did not receive any installer or portable archive."
           }
-          $releaseFiles | Format-Table Name, Length
+          $stagedFiles | Format-Table Name, Length
 
       - name: Create Git Tag
         if: needs.version.outputs.create_tag == 'true'
@@ -240,7 +243,9 @@ jobs:
           name: ${{ env.APP_NAME }} ${{ needs.version.outputs.full_version }}
           body_path: RELEASE_NOTES.md
           prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
-          files: release-assets/*.exe
+          files: |
+            release-assets/*.exe
+            release-assets/*.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

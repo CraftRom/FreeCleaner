@@ -1,7 +1,16 @@
 # FreeCleaner
 
-Current package: 1.2.0.0-build-49 — Localization cleanup: update window, settings, diagnostics, registry menu and startup texts now use language packs with cleaner non-technical wording.
+Current package: 1.2.0.0-build-50 — Stable Windows packaging: FreeCleaner now ships as an installed app folder instead of a fragile one-file executable, preventing Python DLL startup failures from temporary extraction paths.
 
+
+## 1.2.0.0 build-50 — Stable Windows packaging
+
+- Reworked the Windows release package from one-file PyInstaller mode to one-directory mode.
+- The installer now copies the full FreeCleaner app folder, including Python, Qt and VC runtime files.
+- Removed UPX compression from the runtime package to avoid broken or blocked DLL loading.
+- Added explicit Python and VC runtime DLL collection for Python 3.13 builds.
+- Release workflow now uploads the installer and a portable ZIP instead of a fragile standalone EXE.
+- This prevents startup errors like `Failed to load Python DLL ... python313.dll` from temporary `_MEI` extraction folders.
 
 ## 1.2.0.0 build-49 — Localization cleanup
 

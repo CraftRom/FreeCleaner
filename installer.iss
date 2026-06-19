@@ -7,8 +7,8 @@
 #ifndef MyAppArch
   #define MyAppArch "win64"
 #endif
-#ifndef MySourceExe
-  #define MySourceExe "dist\\FreeCleaner.exe"
+#ifndef MySourceDir
+  #define MySourceDir "dist\FreeCleaner"
 #endif
 #ifndef MyOutputDir
   #define MyOutputDir "dist"
@@ -50,10 +50,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "{#MySourceExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
+Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "PRIVACY_POLICY.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "assets\icons\app.ico"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icons\app.ico"

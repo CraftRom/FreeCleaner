@@ -33,10 +33,15 @@ if (-not $iscc) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $fullExePath = (Resolve-Path $ExePath).Path
+$sourceDir = Split-Path -Parent $fullExePath
 $fullOutputDir = (Resolve-Path $OutputDir).Path
 
+if (-not (Test-Path (Join-Path $sourceDir 'FreeCleaner.exe'))) {
+  throw "FreeCleaner.exe was not found inside the package directory: $sourceDir"
+}
+
 & $iscc.Source `
-  "/DMySourceExe=$fullExePath" `
+  "/DMySourceDir=$sourceDir" `
   "/DMyAppArch=$Arch" `
   "/DMyAppVersion=$Version" `
   "/DMyOutputDir=$fullOutputDir" `
