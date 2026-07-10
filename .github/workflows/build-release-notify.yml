@@ -34,14 +34,12 @@ jobs:
         id: versioning
         shell: pwsh
         run: |
-          $BuildNumber = [int]'${{ github.run_number }}'
           function Normalize-Version([string]$Version) {
             if ([string]::IsNullOrWhiteSpace($Version)) { throw 'Version cannot be empty.' }
             $clean = $Version.Trim()
             if ($clean.StartsWith('v')) { $clean = $clean.Substring(1) }
-            if ($clean -match '-') { $clean = $clean.Split('-', 2)[0] }
             $parts = $clean.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
-            if ($parts.Count -lt 1) { throw "Version '$Version' does not contain any numeric parts." }
+            if ($parts.Count -lt 1 -or $parts.Count -gt 4) { throw "Version '$Version' must contain 1-4 numeric parts." }
             foreach ($p in $parts) { if ($p -notmatch '^\d+$') { throw "Version '$Version' contains a non-numeric part: $p" } }
             return ($parts -join '.')
           }
@@ -55,10 +53,15 @@ jobs:
           }
           if ('${{ github.ref_type }}' -eq 'tag') {
             $TagName = '${{ github.ref_name }}'
-            $BaseVersion = Normalize-Version $TagName
+            if ($TagName -notmatch '^v(?<base>\d+(?:\.\d+){0,3})(?:-(?<pre>alpha\d*|beta\d*|rc\d*))?-build-(?<build>\d+)$') {
+              throw "Release tag '$TagName' must use v<version>[-alphaN|-betaN|-rcN]-build-<number>."
+            }
+            $BaseVersion = Normalize-Version $Matches['base']
+            $BuildNumber = [int]$Matches['build']
             $CreateTag = 'false'
-            $IsPrerelease = if ($TagName -match '-(alpha|beta|rc)(\.|\d|$)') { 'true' } else { 'false' }
+            $IsPrerelease = if ($Matches['pre']) { 'true' } else { 'false' }
           } else {
+            $BuildNumber = [int]'${{ github.run_number }}'
             $BaseVersion = Normalize-Version '${{ github.event.inputs.base_version }}'
             $CreateTag = 'true'
             $IsPrerelease = if ('${{ github.event.inputs.is_prerelease }}' -eq 'true') { 'true' } else { 'false' }
@@ -74,9 +77,47 @@ jobs:
           "create_tag=$CreateTag" >> $env:GITHUB_OUTPUT
           "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
 
+
+  quality:
+    name: Quality gate
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: x64
+          cache: pip
+
+      - name: Install validation dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install -r requirements-dev.txt
+
+      - name: Validate, lint and test
+        shell: pwsh
+        run: |
+          python -B scripts/validate_source_tree.py
+          python -B scripts/validate_translations.py
+          ruff check . --no-cache
+          mypy freecleaner/models.py scripts/validate_release_metadata.py scripts/validate_source_tree.py scripts/validate_translations.py --no-incremental
+          python -B -m pytest -q -p no:cacheprovider
+          pip-audit -r requirements.txt --progress-spinner off
+          python -m compileall -q .
+          Get-ChildItem -Path . -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+
   build:
     name: Build ${{ matrix.arch }} EXE
-    needs: version
+    needs: [version, quality]
     runs-on: windows-2022
     permissions:
       contents: read
@@ -128,6 +169,20 @@ jobs:
             --file-description "${{ env.FILE_DESCRIPTION }} (${{ matrix.arch }})" `
             --output version_info.txt
 
+      - name: Validate release metadata
+        shell: pwsh
+        run: |
+          python scripts/validate_release_metadata.py `
+            --tag "${{ needs.version.outputs.tag_name }}" `
+            --full-version "${{ needs.version.outputs.full_version }}" `
+            --version-info version_info.txt
+
+      - name: Validate source tree and translations
+        shell: pwsh
+        run: |
+          python -B scripts/validate_source_tree.py
+          python -B scripts/validate_translations.py
+
       - name: Build executable with PyInstaller
         shell: pwsh
         run: pyinstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
@@ -140,6 +195,37 @@ jobs:
           if (-not (Test-Path $ExePath)) { throw "Built package executable not found: $ExePath" }
           "PACKAGE_DIR=$PackageDir" >> $env:GITHUB_ENV
           "PACKAGE_EXE_PATH=$ExePath" >> $env:GITHUB_ENV
+
+      - name: Import required code-signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64)) {
+            throw 'WINDOWS_SIGNING_CERTIFICATE_BASE64 secret is required for secure releases.'
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_BASE64))
+          $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword
+          if (-not $cert) { throw 'Could not import the code-signing certificate.' }
+          if ($cert.Subject -notlike "*${env:COMPANY_NAME}*") {
+            throw "Code-signing certificate publisher '$($cert.Subject)' does not contain expected publisher '${env:COMPANY_NAME}'."
+          }
+          "SIGNING_CERT_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+          "SIGNING_CERT_SUBJECT=$($cert.Subject)" >> $env:GITHUB_ENV
+
+      - name: Sign packaged executable
+        shell: pwsh
+        run: |
+          $cert = Get-Item "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
+          $signature = Set-AuthenticodeSignature `
+            -FilePath "${{ env.PACKAGE_EXE_PATH }}" `
+            -Certificate $cert `
+            -TimestampServer 'http://timestamp.digicert.com' `
+            -HashAlgorithm SHA256
+          if ($signature.Status -ne 'Valid') { throw "Executable signature is not valid: $($signature.StatusMessage)" }
 
       - name: Install Inno Setup
         shell: pwsh
@@ -157,6 +243,19 @@ jobs:
           if (-not $InstallerPath) { throw "Installer was not generated." }
           "INSTALLER_PATH=$($InstallerPath.FullName)" >> $env:GITHUB_ENV
 
+      - name: Sign and verify installer
+        shell: pwsh
+        run: |
+          $cert = Get-Item "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
+          $signature = Set-AuthenticodeSignature `
+            -FilePath "${{ env.INSTALLER_PATH }}" `
+            -Certificate $cert `
+            -TimestampServer 'http://timestamp.digicert.com' `
+            -HashAlgorithm SHA256
+          if ($signature.Status -ne 'Valid') { throw "Installer signature is not valid: $($signature.StatusMessage)" }
+          $verified = Get-AuthenticodeSignature -LiteralPath "${{ env.INSTALLER_PATH }}"
+          if ($verified.Status -ne 'Valid') { throw "Installer post-sign verification failed: $($verified.StatusMessage)" }
+
       - name: Stage release files
         shell: pwsh
         run: |
@@ -168,6 +267,12 @@ jobs:
           Copy-Item -Path "${{ env.INSTALLER_PATH }}" -Destination artifact-out -Force
           Copy-Item -Path $PortablePath -Destination artifact-out -Force
           Copy-Item -Path version_info.txt -Destination artifact-out -Force
+          $hashLines = Get-ChildItem -Path artifact-out -File | Where-Object { $_.Extension -in '.exe', '.zip' } | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          if (-not $hashLines) { throw 'No release files were available for SHA-256 manifest generation.' }
+          Set-Content -Path (Join-Path artifact-out 'SHA256SUMS.txt') -Value $hashLines -Encoding utf8NoBOM
           Get-ChildItem -Path artifact-out -File | Format-Table Name, Length
 
       - name: Upload workflow artifact
@@ -202,7 +307,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           Get-ChildItem -Path downloaded-artifacts -Recurse -File | Format-Table FullName, Length
-          $releaseFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File | Where-Object { $_.Extension -in '.exe', '.zip' }
+          $releaseFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File | Where-Object { $_.Extension -in '.exe', '.zip' -or $_.Name -eq 'SHA256SUMS.txt' }
           if (-not $releaseFiles -or $releaseFiles.Count -eq 0) {
             throw "No release files were downloaded from build artifacts."
           }
@@ -246,6 +351,7 @@ jobs:
           files: |
             release-assets/*.exe
             release-assets/*.zip
+            release-assets/SHA256SUMS.txt
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

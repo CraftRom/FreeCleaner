@@ -35,7 +35,7 @@ WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
 AlwaysRestart=no
-MinVersion=6.1sp1
+MinVersion=10.0
 #if MyAppArch == "win64"
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -298,74 +298,35 @@ begin
     Result := 'auto';
 end;
 
-function ReplaceOrAddJsonLanguage(Content: String; Value: String): String;
-var
-  CloseBrace: Integer;
-  Body: String;
-begin
-  Value := NormalizeLanguagePreference(Value);
-  Content := Trim(Content);
-
-  { Keep this file intentionally simple and predictable. The app treats these
-    keys as the default language written by the installer. Existing user
-    settings are preserved by the app on first launch, while installer metadata
-    remains clear for future update runs. }
-  if (Length(Content) < 2) or (Copy(Content, 1, 1) <> '{') then
-  begin
-    Result := '{'#13#10 +
-      '  "language": "' + Value + '",'#13#10 +
-      '  "app_language": "' + Value + '",'#13#10 +
-      '  "locale": "' + Value + '"'#13#10 +
-      '}';
-    Exit;
-  end;
-
-  CloseBrace := Length(Content);
-  while (CloseBrace > 0) and (Copy(Content, CloseBrace, 1) <> '}') do CloseBrace := CloseBrace - 1;
-  if CloseBrace <= 0 then
-  begin
-    Result := '{'#13#10 +
-      '  "language": "' + Value + '",'#13#10 +
-      '  "app_language": "' + Value + '",'#13#10 +
-      '  "locale": "' + Value + '"'#13#10 +
-      '}';
-    Exit;
-  end;
-
-  Body := Trim(Copy(Content, 2, CloseBrace - 2));
-  if Body = '' then
-    Result := '{'#13#10 +
-      '  "language": "' + Value + '",'#13#10 +
-      '  "app_language": "' + Value + '",'#13#10 +
-      '  "locale": "' + Value + '"'#13#10 +
-      '}'
-  else
-    Result := '{'#13#10 +
-      '  "language": "' + Value + '",'#13#10 +
-      '  "app_language": "' + Value + '",'#13#10 +
-      '  "locale": "' + Value + '",'#13#10 +
-      Body + #13#10 +
-      '}';
-end;
-
 procedure SaveSelectedLanguageConfig();
 var
   ConfigDir: String;
-  ConfigPath: String;
-  RawContent: AnsiString;
-  Content: String;
+  StatePath: String;
+  TempPath: String;
+  Content: AnsiString;
 begin
+  { Never edit the application's JSON configuration with string surgery.
+    The application consumes this one-purpose state file on next startup and
+    merges it through Python's JSON parser using an atomic config write. }
   ConfigDir := ExpandConstant('{localappdata}\FreeCleaner');
-  ConfigPath := AddBackslash(ConfigDir) + 'config.json';
+  StatePath := AddBackslash(ConfigDir) + 'installer-language.json';
+  TempPath := StatePath + '.tmp';
   ForceDirectories(ConfigDir);
-  if LoadStringFromFile(ConfigPath, RawContent) then
-    Content := RawContent
-  else
-    Content := '';
-  Content := ReplaceOrAddJsonLanguage(Content, SelectedLanguagePreference);
-  RawContent := Content;
-  SaveStringToFile(ConfigPath, RawContent, False);
+  Content := '{"language":"' + NormalizeLanguagePreference(SelectedLanguagePreference) + '"}'#13#10;
+  DeleteFile(TempPath);
+  if not SaveStringToFile(TempPath, Content, False) then
+  begin
+    Log('Could not save temporary installer language state: ' + TempPath);
+    Exit;
+  end;
+  DeleteFile(StatePath);
+  if not RenameFile(TempPath, StatePath) then
+  begin
+    Log('Could not promote installer language state: ' + StatePath);
+    DeleteFile(TempPath);
+  end;
 end;
+
 
 procedure ApplyInstallerLanguageToWizard();
 begin

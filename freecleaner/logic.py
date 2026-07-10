@@ -24,12 +24,11 @@ try:
     import winreg  # type: ignore
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
-import concurrent.futures
-import queue
 import json
-import locale
 import re
 import configparser
+import hashlib
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Optional, Dict, List, Tuple, Union, Set
@@ -51,6 +50,26 @@ APP_UPDATE_REPO = os.environ.get("FREECLEANER_UPDATE_REPO", "FreeCleaner").strip
 APP_UPDATE_REPO_URL = f"https://github.com/{APP_UPDATE_OWNER}/{APP_UPDATE_REPO}"
 APP_UPDATE_RELEASES_URL = f"{APP_UPDATE_REPO_URL}/releases"
 APP_UPDATE_LATEST_RELEASE_URL = f"{APP_UPDATE_RELEASES_URL}/latest"
+APP_UPDATE_PUBLISHER = os.environ.get("FREECLEANER_UPDATE_PUBLISHER", APP_NAME).strip() or APP_NAME
+MAX_GITHUB_API_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_UPDATE_DOWNLOAD_BYTES = 512 * 1024 * 1024
+_ALLOWED_UPDATE_HOSTS = {
+    "github.com",
+    "api.github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+}
+_SAFE_HTTP_RESPONSE_HEADERS = {
+    "content-length",
+    "content-type",
+    "etag",
+    "last-modified",
+    "location",
+    "retry-after",
+    "x-ratelimit-limit",
+    "x-ratelimit-remaining",
+    "x-ratelimit-reset",
+}
 
 
 @dataclass
@@ -68,6 +87,16 @@ class UpdateInfo:
     version_tuple: Tuple[int, ...]
     changelog: str = ""
     changelog_count: int = 0
+    asset_size: int = 0
+    asset_digest: str = ""
+
+    @property
+    def release_page_url(self) -> str:
+        return self.html_url
+
+    @property
+    def installer_download_url(self) -> str:
+        return self.download_url if self.asset_name else ""
 
 
 
@@ -564,41 +593,189 @@ def _release_version_text(tag_name: str, name: str) -> str:
     return best_text or ".".join(str(x) for x in best_tuple[:4])
 
 
-def _github_api_request(url: str, timeout: int = 12) -> Optional[Any]:
-    request = urllib.request.Request(
-        url,
-        headers={
+def _safe_response_headers(headers: Any) -> Dict[str, str]:
+    """Return an allow-listed HTTP header snapshot safe for diagnostic logs."""
+    result: Dict[str, str] = {}
+    try:
+        items = headers.items()
+    except (AttributeError, TypeError):
+        return result
+    for key, value in items:
+        normalized = str(key).strip().lower()
+        if normalized in _SAFE_HTTP_RESPONSE_HEADERS:
+            result[normalized] = str(value)
+    return result
+
+
+def _github_cache_paths(url: str) -> Tuple[str, str]:
+    cache_root = os.path.join(get_user_data_dir(create=True), "http_cache")
+    os.makedirs(cache_root, exist_ok=True)
+    key = hashlib.sha256(url.encode("utf-8", errors="replace")).hexdigest()
+    return os.path.join(cache_root, f"{key}.json"), os.path.join(cache_root, f"{key}.etag")
+
+
+def _read_github_cache(url: str) -> Tuple[Optional[Any], str]:
+    payload_path, etag_path = _github_cache_paths(url)
+    payload: Optional[Any] = None
+    etag = ""
+    try:
+        with open(payload_path, "r", encoding="utf-8") as fh:
+            cached = json.load(fh)
+        if isinstance(cached, (dict, list)):
+            payload = cached
+    except (OSError, ValueError, TypeError):
+        payload = None
+    try:
+        with open(etag_path, "r", encoding="utf-8") as fh:
+            etag = fh.read().strip()
+    except OSError:
+        etag = ""
+    return payload, etag
+
+
+def _write_github_cache(url: str, payload: Any, etag: str) -> None:
+    payload_path, etag_path = _github_cache_paths(url)
+    try:
+        temp_payload = payload_path + ".tmp"
+        with open(temp_payload, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(temp_payload, payload_path)
+        if etag:
+            temp_etag = etag_path + ".tmp"
+            with open(temp_etag, "w", encoding="utf-8") as fh:
+                fh.write(etag)
+            os.replace(temp_etag, etag_path)
+    except OSError as exc:
+        log_app(f"GitHub cache write failed: {exc}", level="WARNING")
+
+
+def _retry_delay_seconds(headers: Any, attempt: int) -> float:
+    retry_after = ""
+    rate_remaining = ""
+    rate_reset = ""
+    try:
+        retry_after = str(headers.get("Retry-After") or "").strip()
+        rate_remaining = str(headers.get("X-RateLimit-Remaining") or "").strip()
+        rate_reset = str(headers.get("X-RateLimit-Reset") or "").strip()
+    except (AttributeError, TypeError):
+        pass
+    if retry_after.isdigit():
+        return min(15.0, max(0.0, float(retry_after)))
+    if rate_remaining == "0" and rate_reset.isdigit():
+        until_reset = max(0.0, float(rate_reset) - time.time())
+        return min(15.0, until_reset + random.uniform(0.05, 0.35))
+    base = min(4.0, 0.4 * (2 ** max(0, attempt - 1)))
+    return base + random.uniform(0.0, 0.25)
+
+
+def _github_api_request(
+    url: str,
+    timeout: int = 12,
+    *,
+    cancel_event: Optional[threading.Event] = None,
+    max_attempts: int = 3,
+) -> Optional[Any]:
+    cached_payload, cached_etag = _read_github_cache(url)
+    attempts = max(1, min(4, int(max_attempts or 1)))
+    for attempt in range(1, attempts + 1):
+        if cancel_event is not None and cancel_event.is_set():
+            return None
+        headers = {
             "Accept": "application/vnd.github+json",
             "User-Agent": f"{APP_NAME}-UpdateChecker/{APP_VERSION_RAW if 'APP_VERSION_RAW' in globals() else '0'}",
             "X-GitHub-Api-Version": "2022-11-28",
-        },
-        method="GET",
-    )
-    try:
+        }
+        if cached_etag:
+            headers["If-None-Match"] = cached_etag
+        request = urllib.request.Request(url, headers=headers, method="GET")
         started = time.perf_counter()
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8", errors="replace"))
-            status_code = getattr(response, "status", None) or getattr(response, "code", None)
-            log_system_response(
-                "http.response",
-                command={"method": "GET", "url": url},
-                returncode=status_code,
-                elapsed_ms=int((time.perf_counter() - started) * 1000),
-                timeout=timeout,
-                context={"update_check": True},
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                final_url = str(getattr(response, "geturl", lambda: url)() or url)
+                parsed_final = urllib.parse.urlparse(final_url)
+                if parsed_final.scheme.lower() != "https" or parsed_final.hostname != "api.github.com":
+                    raise ValueError("GitHub API redirected to an untrusted endpoint.")
+                raw = response.read(MAX_GITHUB_API_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_GITHUB_API_RESPONSE_BYTES:
+                    raise ValueError("GitHub API response exceeded the size limit.")
+                payload = json.loads(raw.decode("utf-8", errors="strict"))
+                if not isinstance(payload, (dict, list)):
+                    raise ValueError("GitHub API returned an unsupported JSON root type.")
+                status_code = int(getattr(response, "status", None) or getattr(response, "code", None) or 200)
+                safe_headers = _safe_response_headers(getattr(response, "headers", {}))
+                log_system_response(
+                    "http.response",
+                    command={"method": "GET", "url": url},
+                    returncode=status_code,
+                    stdout={"headers": safe_headers, "cache": "miss"},
+                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    timeout=timeout,
+                    context={"update_check": True},
+                )
+                _write_github_cache(url, payload, safe_headers.get("etag", ""))
+                return payload
+        except urllib.error.HTTPError as exc:
+            status = int(getattr(exc, "code", 0) or 0)
+            safe_headers = _safe_response_headers(getattr(exc, "headers", {}))
+            if status == 304 and cached_payload is not None:
+                log_system_response(
+                    "http.response",
+                    command={"method": "GET", "url": url},
+                    returncode=304,
+                    stdout={"headers": safe_headers, "cache": "hit"},
+                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    timeout=timeout,
+                    context={"update_check": True},
+                )
+                return cached_payload
+            is_rate_limited = status == 429 or (
+                status == 403
+                and (
+                    safe_headers.get("retry-after")
+                    or safe_headers.get("x-ratelimit-remaining") == "0"
+                )
             )
-            return payload if isinstance(payload, (dict, list)) else None
-    except Exception as exc:
-        log_system_response(
-            "http.update_check_failed",
-            command={"method": "GET", "url": url},
-            returncode="exception",
-            stderr=str(exc),
-            timeout=timeout,
-            context={"update_check": True},
-            level="WARNING",
-        )
-        return None
+            retryable = is_rate_limited or status in {500, 502, 503, 504}
+            log_system_response(
+                "http.update_check_failed",
+                command={"method": "GET", "url": url},
+                returncode=status,
+                stderr=str(exc),
+                stdout={"headers": safe_headers},
+                timeout=timeout,
+                context={"update_check": True, "attempt": attempt},
+                level="WARNING",
+            )
+            if retryable and attempt < attempts:
+                delay = _retry_delay_seconds(getattr(exc, "headers", {}), attempt)
+                if cancel_event is not None:
+                    if cancel_event.wait(delay):
+                        return None
+                else:
+                    time.sleep(delay)
+                continue
+            return cached_payload
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            log_system_response(
+                "http.update_check_failed",
+                command={"method": "GET", "url": url},
+                returncode="exception",
+                stderr=str(exc),
+                timeout=timeout,
+                context={"update_check": True, "attempt": attempt},
+                level="WARNING",
+            )
+            if attempt < attempts:
+                delay = _retry_delay_seconds({}, attempt)
+                if cancel_event is not None:
+                    if cancel_event.wait(delay):
+                        return None
+                else:
+                    time.sleep(delay)
+                continue
+            return cached_payload
+    return cached_payload
 
 
 def _short_release_body(body: str, *, max_lines: int = 10, max_chars: int = 1400) -> str:
@@ -635,7 +812,7 @@ def _build_recent_release_changelog(releases: Any, *, limit: int = 5) -> Tuple[s
     for release in releases:
         if not isinstance(release, dict):
             continue
-        if release.get("draft"):
+        if release.get("draft") or release.get("prerelease"):
             continue
         tag = str(release.get("tag_name") or "").strip()
         name = str(release.get("name") or tag or "FreeCleaner").strip()
@@ -669,12 +846,12 @@ def fetch_recent_github_releases(owner: str = APP_UPDATE_OWNER, repo: str = APP_
     return [item for item in payload if isinstance(item, dict)]
 
 
-def _select_release_asset(assets: Any) -> Tuple[str, str]:
-    """Return (download_url, asset_name) for the best installer asset."""
+def _select_release_asset_details(assets: Any) -> Tuple[str, str, int, str]:
+    """Return URL, name, size and digest for the best compatible installer."""
     if not isinstance(assets, list):
-        return "", ""
+        return "", "", 0, ""
 
-    best: Tuple[int, str, str] = (-1, "", "")
+    best: Tuple[int, str, str, int, str] = (-1, "", "", 0, "")
     for asset in assets:
         if not isinstance(asset, dict):
             continue
@@ -687,6 +864,12 @@ def _select_release_asset(assets: Any) -> Tuple[str, str]:
             continue
         if not is_update_asset_compatible(raw_name):
             continue
+        parsed = urllib.parse.urlparse(candidate)
+        if parsed.scheme.lower() != "https" or parsed.hostname != "github.com":
+            continue
+        expected_prefix = f"/{APP_UPDATE_OWNER}/{APP_UPDATE_REPO}/releases/download/".casefold()
+        if not parsed.path.casefold().startswith(expected_prefix):
+            continue
         score = 10
         if name.endswith("-setup.exe"):
             score += 80
@@ -694,9 +877,20 @@ def _select_release_asset(assets: Any) -> Tuple[str, str]:
             score += 60
         if APP_NAME.lower() in name:
             score += 20
+        try:
+            size = max(0, int(asset.get("size") or 0))
+        except (TypeError, ValueError):
+            size = 0
+        digest = str(asset.get("digest") or "").strip()
         if score > best[0]:
-            best = (score, candidate, raw_name)
-    return best[1], best[2]
+            best = (score, candidate, raw_name, size, digest)
+    return best[1], best[2], best[3], best[4]
+
+
+def _select_release_asset(assets: Any) -> Tuple[str, str]:
+    """Compatibility wrapper returning only URL and asset name."""
+    url, name, _size, _digest = _select_release_asset_details(assets)
+    return url, name
 
 
 def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_UPDATE_REPO, timeout: int = 12) -> Optional[UpdateInfo]:
@@ -719,10 +913,7 @@ def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_U
     html_url = str(payload.get("html_url") or f"https://github.com/{owner}/{repo}/releases/latest").strip()
     published_at = str(payload.get("published_at") or payload.get("created_at") or "").strip()
 
-    download_url, selected_asset_name = _select_release_asset(payload.get("assets"))
-    if not download_url:
-        download_url = html_url
-        selected_asset_name = ""
+    download_url, selected_asset_name, asset_size, asset_digest = _select_release_asset_details(payload.get("assets"))
 
     version_text = _release_version_text(tag_name, name)
     info = UpdateInfo(
@@ -739,6 +930,8 @@ def fetch_latest_github_release(owner: str = APP_UPDATE_OWNER, repo: str = APP_U
         version_tuple=normalize_version_tuple(version_text),
         changelog=changelog,
         changelog_count=changelog_count,
+        asset_size=asset_size,
+        asset_digest=asset_digest,
     )
     log_action({
         "update_release": f"{owner}/{repo}",
@@ -926,6 +1119,114 @@ def _powershell_literal(value: str) -> str:
     return "'" + (value or "").replace("'", "''") + "'"
 
 
+def _is_allowed_update_url(url: str, *, initial: bool = False) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(str(url or "").strip())
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme.lower() != "https" or not host:
+        return False
+    if host not in _ALLOWED_UPDATE_HOSTS and not host.endswith(".githubusercontent.com"):
+        return False
+    if initial and host == "github.com":
+        prefix = f"/{APP_UPDATE_OWNER}/{APP_UPDATE_REPO}/releases/download/".casefold()
+        return parsed.path.casefold().startswith(prefix)
+    return True
+
+
+def _normalize_sha256(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if text.startswith("sha256:"):
+        text = text.split(":", 1)[1].strip()
+    return text if re.fullmatch(r"[0-9a-f]{64}", text) else ""
+
+
+def calculate_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_authenticode_signature(path: str, expected_publisher: str = APP_UPDATE_PUBLISHER) -> Tuple[bool, str, str]:
+    """Verify a PE/MSI signature with WinVerifyTrust and validate its publisher."""
+    if not IS_WINDOWS:
+        return False, "Authenticode verification is only available on Windows.", ""
+    file_path = os.path.abspath(path or "")
+    if not os.path.isfile(file_path):
+        return False, "Installer file was not found.", ""
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("Data1", ctypes.c_ulong), ("Data2", ctypes.c_ushort), ("Data3", ctypes.c_ushort), ("Data4", ctypes.c_ubyte * 8)]
+
+    class WINTRUST_FILE_INFO(ctypes.Structure):
+        _fields_ = [("cbStruct", ctypes.c_ulong), ("pcwszFilePath", ctypes.c_wchar_p), ("hFile", ctypes.c_void_p), ("pgKnownSubject", ctypes.c_void_p)]
+
+    class WINTRUST_DATA(ctypes.Structure):
+        _fields_ = [
+            ("cbStruct", ctypes.c_ulong),
+            ("pPolicyCallbackData", ctypes.c_void_p),
+            ("pSIPClientData", ctypes.c_void_p),
+            ("dwUIChoice", ctypes.c_ulong),
+            ("fdwRevocationChecks", ctypes.c_ulong),
+            ("dwUnionChoice", ctypes.c_ulong),
+            ("pFile", ctypes.POINTER(WINTRUST_FILE_INFO)),
+            ("dwStateAction", ctypes.c_ulong),
+            ("hWVTStateData", ctypes.c_void_p),
+            ("pwszURLReference", ctypes.c_wchar_p),
+            ("dwProvFlags", ctypes.c_ulong),
+            ("dwUIContext", ctypes.c_ulong),
+            ("pSignatureSettings", ctypes.c_void_p),
+        ]
+
+    action = GUID(0x00AAC56B, 0xCD44, 0x11D0, (ctypes.c_ubyte * 8)(0x8C, 0xC2, 0x00, 0xC0, 0x4F, 0xC2, 0x95, 0xEE))
+    file_info = WINTRUST_FILE_INFO(ctypes.sizeof(WINTRUST_FILE_INFO), file_path, None, None)
+    trust_data = WINTRUST_DATA()
+    trust_data.cbStruct = ctypes.sizeof(WINTRUST_DATA)
+    trust_data.dwUIChoice = 2
+    trust_data.fdwRevocationChecks = 0
+    trust_data.dwUnionChoice = 1
+    trust_data.pFile = ctypes.pointer(file_info)
+    trust_data.dwStateAction = 1
+    trust_data.dwProvFlags = 0x00001000
+    win_verify_trust = ctypes.windll.wintrust.WinVerifyTrust
+    win_verify_trust.argtypes = [ctypes.c_void_p, ctypes.POINTER(GUID), ctypes.POINTER(WINTRUST_DATA)]
+    win_verify_trust.restype = ctypes.c_long
+    status = int(win_verify_trust(ctypes.c_void_p(-1), ctypes.byref(action), ctypes.byref(trust_data)))
+    trust_data.dwStateAction = 2
+    try:
+        win_verify_trust(ctypes.c_void_p(-1), ctypes.byref(action), ctypes.byref(trust_data))
+    except OSError:
+        pass
+    if status != 0:
+        log_security(f"Authenticode verification failed for {file_path}: {status}", level="WARNING")
+        return False, f"Authenticode verification failed ({status}).", ""
+
+    publisher = ""
+    script = f"$s=Get-AuthenticodeSignature -LiteralPath {_powershell_literal(file_path)}; if ($s.SignerCertificate) {{ $s.SignerCertificate.Subject }}"
+    try:
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            shell=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+            **WindowsOps.hidden_subprocess_kwargs(capture=True),
+        )
+        if completed.returncode == 0:
+            publisher = (completed.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Could not read signer publisher: {exc}", ""
+    expected = str(expected_publisher or "").strip().casefold()
+    if expected and expected not in publisher.casefold():
+        log_security(f"Update publisher mismatch: expected={expected_publisher!r}, actual={publisher!r}", level="WARNING")
+        return False, "Installer publisher does not match the expected publisher.", publisher
+    return True, "Authenticode signature is valid.", publisher
+
+
 def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str = "open", working_dir: Optional[str] = None) -> Tuple[bool, str, Optional[int]]:
     if not IS_WINDOWS:
         return False, "ShellExecute is available only on Windows.", None
@@ -988,7 +1289,7 @@ def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str 
 
 
 def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[int]]:
-    """Launch a downloaded update installer and return (ok, message, pid)."""
+    """Verify and launch a downloaded update installer."""
     path = os.path.abspath(installer_path or "")
     if not path or not os.path.isfile(path):
         return False, "Update file was not found.", None
@@ -997,7 +1298,7 @@ def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[in
         if os.path.commonpath([updates_root, path]) != updates_root:
             log_security(f"blocked update launch outside updates dir: {path}", level="WARNING")
             return False, "Update file is outside the trusted updates folder.", None
-    except Exception:
+    except (OSError, ValueError):
         return False, "Could not verify update file location.", None
 
     ext = os.path.splitext(path)[1].lower()
@@ -1005,30 +1306,26 @@ def launch_update_installer(installer_path: str) -> Tuple[bool, str, Optional[in
         log_security(f"blocked non-installer update launch: {path}", level="WARNING")
         return False, "Unsupported update installer type.", None
     if not IS_WINDOWS:
-        try:
-            webbrowser.open(path)
-            return True, "Update file opened.", None
-        except Exception as exc:
-            return False, str(exc) or "Could not open update file.", None
+        return False, "Update installers can only be launched on Windows.", None
+
+    verified, verify_message, publisher = verify_authenticode_signature(path)
+    if not verified:
+        return False, verify_message, None
+    log_security(f"verified update publisher: {publisher}")
 
     try:
         if ext == ".msi":
             proc = subprocess.Popen(["msiexec.exe", "/i", path], cwd=os.path.dirname(path) or None)
-            log_system_response("process.start", command=["msiexec.exe", "/i", path], returncode="started", stdout={"pid": int(proc.pid)}, context={"installer": True, "visible": True})
+            log_system_response("process.start", command=["msiexec.exe", "/i", path], returncode="started", stdout={"pid": int(proc.pid)}, context={"installer": True, "visible": True, "verified": True})
             return True, "MSI installer started.", int(proc.pid)
-        if ext == ".exe":
-            ok, message, pid = _shell_execute_with_process(path)
-            if ok:
-                return ok, message, pid
-            ok, message, pid = _shell_execute_with_process(path, verb="runas")
-            if ok:
-                return ok, message, pid
-            proc = subprocess.Popen([path], cwd=os.path.dirname(path) or None)
-            log_system_response("process.start", command=[path], returncode="started", stdout={"pid": int(proc.pid)}, context={"installer": True, "visible": True})
-            return True, "Installer started.", int(proc.pid)
-        os.startfile(path)  # type: ignore[attr-defined]
-        return True, "Update file opened.", None
-    except Exception as exc:
+        ok, message, pid = _shell_execute_with_process(path)
+        if ok:
+            return ok, message, pid
+        ok, message, pid = _shell_execute_with_process(path, verb="runas")
+        if ok:
+            return ok, message, pid
+        return False, message or "Could not start verified installer.", None
+    except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc) or "Could not start update installer.", None
 
 
@@ -1097,27 +1394,41 @@ def download_url_to_file(
     progress_cb: Optional[Callable[[int, Optional[int]], None]] = None,
     timeout: int = 30,
     cancel_event: Optional[threading.Event] = None,
+    expected_sha256: str = "",
+    expected_size: Optional[int] = None,
+    max_bytes: int = MAX_UPDATE_DOWNLOAD_BYTES,
+    verify_signature: bool = False,
+    expected_publisher: str = APP_UPDATE_PUBLISHER,
 ) -> Tuple[bool, str]:
     target_url = (url or "").strip()
     dest = (dest_path or "").strip()
     if not target_url:
         return False, "Empty download URL."
-    parsed_url = urllib.parse.urlparse(target_url)
-    if parsed_url.scheme.lower() != "https":
-        log_security(f"blocked non-HTTPS update download URL: {target_url}", level="WARNING")
-        return False, "Only HTTPS update downloads are allowed."
+    if not _is_allowed_update_url(target_url, initial=True):
+        log_security(f"blocked untrusted update download URL: {target_url}", level="WARNING")
+        return False, "The update URL is not a trusted GitHub release asset."
     if not dest:
         return False, "Empty destination path."
+
+    expected_digest = _normalize_sha256(expected_sha256)
+    expected_length: Optional[int] = None
+    try:
+        if expected_size is not None and int(expected_size) > 0:
+            expected_length = int(expected_size)
+    except (TypeError, ValueError):
+        return False, "Invalid expected update size."
+    byte_limit = max(1, min(int(max_bytes or MAX_UPDATE_DOWNLOAD_BYTES), MAX_UPDATE_DOWNLOAD_BYTES))
+    if expected_length and expected_length > byte_limit:
+        return False, "The update exceeds the allowed size limit."
 
     parent_dir = os.path.dirname(dest) or "."
     os.makedirs(parent_dir, exist_ok=True)
     temp_path = dest + ".part"
-
     request = urllib.request.Request(
         target_url,
         headers={
-            "Accept": "application/octet-stream,application/vnd.github+json;q=0.9,*/*;q=0.8",
-            "User-Agent": f"{APP_NAME}-Updater",
+            "Accept": "application/octet-stream,application/x-msdownload,application/x-msi,*/*;q=0.5",
+            "User-Agent": f"{APP_NAME}-Updater/{APP_VERSION_RAW}",
             "X-GitHub-Api-Version": "2022-11-28",
         },
         method="GET",
@@ -1125,49 +1436,82 @@ def download_url_to_file(
 
     downloaded = 0
     total: Optional[int] = None
+    digest = hashlib.sha256()
     log_action({"download_start": target_url, "dest": dest})
     try:
         started_http = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response, open(temp_path, "wb") as fh:
-            status_code = getattr(response, "status", None) or getattr(response, "code", None)
-            headers_snapshot = {str(k): str(v) for k, v in getattr(response, "headers", {}).items()}
+            final_url = str(getattr(response, "geturl", lambda: target_url)() or target_url)
+            if not _is_allowed_update_url(final_url):
+                raise ValueError("Update download redirected to an untrusted endpoint.")
+            status_code = int(getattr(response, "status", None) or getattr(response, "code", None) or 200)
+            if status_code < 200 or status_code >= 300:
+                raise ValueError(f"Unexpected HTTP status: {status_code}")
+            safe_headers = _safe_response_headers(getattr(response, "headers", {}))
             log_system_response(
                 "http.response",
-                command={"method": "GET", "url": target_url},
+                command={"method": "GET", "url": target_url, "final_url": final_url},
                 returncode=status_code,
-                stdout={"headers": headers_snapshot},
+                stdout={"headers": safe_headers},
                 elapsed_ms=int((time.perf_counter() - started_http) * 1000),
                 timeout=timeout,
                 context={"dest": dest},
             )
-            length_header = response.headers.get("Content-Length")
-            if length_header and str(length_header).isdigit():
+            length_header = str(response.headers.get("Content-Length") or "").strip()
+            if length_header:
+                if not length_header.isdigit():
+                    raise ValueError("Invalid Content-Length header.")
                 total = int(length_header)
+                if total > byte_limit:
+                    raise ValueError("The update exceeds the allowed size limit.")
+                if expected_length is not None and total != expected_length:
+                    raise ValueError("Release metadata size does not match Content-Length.")
+            content_type = str(response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            allowed_content_types = {"", "application/octet-stream", "application/x-msdownload", "application/vnd.microsoft.portable-executable", "application/x-msi", "application/x-ms-installer"}
+            if content_type not in allowed_content_types:
+                raise ValueError(f"Unexpected installer content type: {content_type}")
             while True:
                 if cancel_event is not None and cancel_event.is_set():
-                    raise RuntimeError("Download cancelled.")
+                    raise InterruptedError("Download cancelled.")
                 chunk = response.read(1024 * 128)
                 if not chunk:
                     break
-                fh.write(chunk)
                 downloaded += len(chunk)
+                if downloaded > byte_limit:
+                    raise ValueError("The update exceeds the allowed size limit.")
+                fh.write(chunk)
+                digest.update(chunk)
                 if progress_cb is not None:
-                    try:
-                        progress_cb(downloaded, total)
-                    except Exception:
-                        pass
+                    progress_cb(downloaded, total)
+        if total is not None and downloaded != total:
+            raise ValueError("Downloaded byte count does not match Content-Length.")
+        if expected_length is not None and downloaded != expected_length:
+            raise ValueError("Downloaded byte count does not match release metadata.")
+        actual_digest = digest.hexdigest()
+        if expected_digest and actual_digest != expected_digest:
+            raise ValueError("SHA-256 verification failed.")
+        if verify_signature:
+            signature_ok, signature_message, publisher = verify_authenticode_signature(
+                temp_path,
+                expected_publisher=expected_publisher,
+            )
+            if not signature_ok:
+                raise ValueError(signature_message or "Authenticode verification failed.")
+            log_security(
+                f"Verified update signature before atomic promotion: publisher={publisher!r}"
+            )
         os.replace(temp_path, dest)
-        log_action({"download_complete": dest, "bytes": downloaded})
-        log_system_response("http.download_complete", command={"url": target_url}, returncode="ok", stdout={"dest": dest, "bytes": downloaded, "expected_total": total}, context={"dest": dest})
+        log_action({"download_complete": dest, "bytes": downloaded, "sha256": actual_digest})
+        log_system_response("http.download_complete", command={"url": target_url}, returncode="ok", stdout={"dest": dest, "bytes": downloaded, "expected_total": total, "sha256": actual_digest}, context={"dest": dest})
         return True, dest
-    except Exception as exc:
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError, InterruptedError) as exc:
         log_error(f"download failed: {target_url}: {exc}")
         log_system_response("http.download_failed", command={"url": target_url}, returncode="exception", stderr=str(exc), timeout=timeout, context={"dest": dest}, level="ERROR")
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-        except Exception:
-            pass
+        except OSError as cleanup_exc:
+            log_app(f"could not remove partial update {temp_path}: {cleanup_exc}", level="WARNING")
         return False, str(exc) or "Download failed."
 
 
@@ -4110,6 +4454,23 @@ class SafeFS:
         return False
 
     @staticmethod
+    def _path_contains_reparse_point(path: str) -> bool:
+        """Reject traversal through any existing symlink/junction ancestor."""
+        try:
+            absolute = os.path.abspath(path)
+            if absolute.startswith("\\"):
+                return True
+            drive, tail = os.path.splitdrive(absolute)
+            current = drive + os.sep if drive else os.sep
+            for part in [segment for segment in tail.replace("/", os.sep).split(os.sep) if segment]:
+                current = os.path.join(current, part)
+                if os.path.lexists(current) and SafeFS._is_reparse_point(current):
+                    return True
+        except (OSError, ValueError):
+            return True
+        return False
+
+    @staticmethod
     def _entry_is_reparse_point(entry: os.DirEntry) -> bool:
         """Fast reparse-point check for os.scandir/os.walk entries.
 
@@ -4149,7 +4510,7 @@ class SafeFS:
         except Exception:
             return False
 
-        if SafeFS._is_reparse_point(abs_path):
+        if SafeFS._is_reparse_point(abs_path) or SafeFS._path_contains_reparse_point(abs_path):
             return False
 
         if SafeFS._is_drive_root(abs_path) or SafeFS._is_drive_root(real_path):

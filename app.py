@@ -77,7 +77,7 @@ def _maybe_relaunch_pythonw() -> None:
 
 _maybe_relaunch_pythonw()
 
-from freecleaner.runtime_logging import setup_runtime_logging, log_startup, StreamToLog
+from freecleaner.runtime_logging import setup_runtime_logging, log_startup, StreamToLog  # noqa: E402
 
 _MUTEX_HANDLE = None
 
@@ -119,7 +119,7 @@ os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 os.environ.setdefault("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough")
 os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
 
-from freecleaner.qt_bootstrap import main
+from freecleaner.qt_bootstrap import main  # noqa: E402
 
 
 if __name__ == "__main__":

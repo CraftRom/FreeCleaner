@@ -357,8 +357,6 @@ class NativeWinSplash:
 
     def _paint(self, hwnd: Any) -> None:
         import ctypes
-        from ctypes import wintypes
-
         user32 = self._user32
         gdi32 = self._gdi32
         if not user32 or not gdi32:
@@ -442,7 +440,7 @@ class NativeWinSplash:
 def _qt_message_handler(mode, context, message):
     try:
         text = str(message)
-        if "setHighDpi" "ScaleFactorRoundingPolicy" in text:
+        if "setHighDpi" in text or "ScaleFactorRoundingPolicy" in text:
             return
         if "QFont::setPointSize" in text and "Point size <= 0" in text:
             # Qt can emit this harmless warning while resolving theme/default
@@ -461,7 +459,7 @@ def configure_high_dpi() -> None:
     return
 
 
-def _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget, QIcon):
+def _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget, QIcon, QFont):
     class EarlySplash(QWidget):
         def __init__(self, icon_path: Optional[str] = None) -> None:
             super().__init__(None, Qt.SplashScreen | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
@@ -592,7 +590,7 @@ def main() -> int:
 
     splash: Any = native_splash
     if splash is None:
-        EarlySplash = _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget, QIcon)
+        EarlySplash = _make_qt_splash_class(Qt, QApplication, QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget, QIcon, QFont)
         splash = EarlySplash(icon)
         log_startup("showing fallback Qt splash")
         splash.show_centered()

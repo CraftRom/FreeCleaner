@@ -17,26 +17,26 @@ import re
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 try:
     import winreg  # type: ignore
 except Exception:  # pragma: no cover
     winreg = None  # type: ignore
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QEasingCurve, QPoint
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtCore import QObject, Qt, QThread, Signal, QSize, QTimer, Property, QEvent, QPropertyAnimation, QVariantAnimation, QEasingCurve, QPoint
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
-    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -57,7 +57,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTextEdit,
     QTabWidget,
-    QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QToolButton,
     QStyle,
@@ -70,7 +69,6 @@ from .logic import (
     APP_VERSION_RAW,
     APP_UPDATE_LATEST_RELEASE_URL,
     APP_UPDATE_OWNER,
-    APP_UPDATE_RELEASES_URL,
     APP_UPDATE_REPO,
     CONFIG_PATH,
     LEGACY_CONFIG_PATH,
@@ -78,7 +76,6 @@ from .logic import (
     SCAN_WORKERS,
     IS_WINDOWS,
     LANG_PACKS,
-    LANG_PACK_SOURCES,
     CleanerTask,
     PathFinder,
     RegistryValueSpec,
@@ -99,8 +96,10 @@ from .logic import (
     language_display_name,
     launch_update_installer,
     schedule_update_cleanup_after_install,
+    verify_authenticode_signature,
 )
-from .runtime_logging import log_app, log_startup, log_error, log_action, log_security, log_qa_event, log_system_response, all_log_paths, app_log_path, startup_log_path
+from .models import OperationResult
+from .runtime_logging import log_app, log_startup, log_error, log_action, log_security, log_qa_event, all_log_paths
 
 APP_QSS = r"""
 * {
@@ -455,6 +454,16 @@ QFrame#ActionTile:hover QLabel#TextLinkLabel { color: #FFFFFF; }
 """
 
 
+def _operation_result_ok(value: Any, operation: str) -> bool:
+    """Accept only explicit boolean success contracts."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, dict) and isinstance(value.get("ok"), bool):
+        return bool(value["ok"])
+    log_error(f"invalid operation result contract for {operation}: {type(value).__name__}")
+    return False
+
+
 class UiFx:
     """Small, safe UI animation helpers.
 
@@ -501,6 +510,30 @@ class UiFx:
             widget._fc_fade_anim = anim  # type: ignore[attr-defined]
             anim.start()
         except Exception:
+            widget.setVisible(True)
+
+    @classmethod
+    def soft_reveal(cls, widget: QWidget, duration: int = 170) -> None:
+        """Reveal a page without an opacity-zero flash."""
+        if widget is None or not cls.enabled:
+            if widget is not None:
+                widget.setVisible(True)
+            return
+        try:
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(0.88)
+            animation = QPropertyAnimation(effect, b"opacity", widget)
+            animation.setDuration(max(90, int(duration)))
+            animation.setStartValue(0.88)
+            animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.OutCubic)
+            animation.finished.connect(lambda: widget.setGraphicsEffect(None) if widget.graphicsEffect() is effect else None)
+            widget._fc_page_reveal_animation = animation  # type: ignore[attr-defined]
+            animation.start()
+        except RuntimeError:
             widget.setVisible(True)
 
     @classmethod
@@ -649,12 +682,7 @@ class ClickableSettingRow(QFrame):
 
 
 class ToggleSwitch(QCheckBox):
-    """Animated Qt switch used for settings and registry tweaks.
-
-    This widget does not rely on the platform checkbox indicator.  It toggles
-    from the full switch rectangle on mouse release and from Space/Enter, then
-    emits the normal Qt stateChanged/toggled signals.
-    """
+    """Accessible animated switch with interruption-safe motion."""
 
     def __init__(self, text: str = "", parent: Optional[QWidget] = None) -> None:
         super().__init__(text, parent)
@@ -664,8 +692,13 @@ class ToggleSwitch(QCheckBox):
         self.setMinimumSize(QSize(52, 28))
         self.setMaximumSize(QSize(52, 28))
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setAccessibleName(text or "Toggle switch")
         self._position = 1.0 if self.isChecked() else 0.0
         self._pressed_inside = False
+        self._position_animation = QPropertyAnimation(self, b"position", self)
+        self._position_animation.setDuration(165)
+        self._position_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.toggled.connect(self._animate_to_state)
 
     def get_position(self) -> float:
         return float(self._position)
@@ -677,13 +710,22 @@ class ToggleSwitch(QCheckBox):
     position = Property(float, get_position, set_position)
 
     def _animate_to_state(self, *_: Any) -> None:
-        self._position = 1.0 if self.isChecked() else 0.0
-        self.update()
+        target = 1.0 if self.isChecked() else 0.0
+        self._position_animation.stop()
+        if not UiFx.enabled or not self.isVisible():
+            self.set_position(target)
+            return
+        self._position_animation.setStartValue(float(self._position))
+        self._position_animation.setEndValue(target)
+        self._position_animation.start()
 
     def setChecked(self, value: bool) -> None:  # noqa: N802 - Qt API
-        super().setChecked(bool(value))
-        self._position = 1.0 if bool(value) else 0.0
-        self.update()
+        value = bool(value)
+        changed = value != self.isChecked()
+        super().setChecked(value)
+        if not changed:
+            self._position_animation.stop()
+            self.set_position(1.0 if value else 0.0)
 
     def nextCheckState(self) -> None:  # noqa: N802 - Qt override
         self.setChecked(not self.isChecked())
@@ -745,6 +787,10 @@ class ToggleSwitch(QCheckBox):
         y = track.top() + 3
         painter.setBrush(knob)
         painter.drawEllipse(int(x), int(y), int(d), int(d))
+        if self.hasFocus():
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#A7D96B"), 1))
+            painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 8, 8)
         painter.end()
 
 
@@ -809,15 +855,28 @@ class SplashWindow(QWidget):
         footer.setObjectName("Tiny")
         layout.addWidget(footer)
         self._fade_target = "show"
+        self._fade_animation = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_animation.setDuration(180)
+        self._fade_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade_animation.finished.connect(self._on_fade_finished)
 
     def show_centered(self) -> None:
         screen = QApplication.primaryScreen()
         if screen:
             geo = screen.availableGeometry()
             self.move(geo.center() - self.rect().center())
+        self._fade_target = "show"
+        if UiFx.enabled:
+            self.setWindowOpacity(0.0)
+        else:
+            self.setWindowOpacity(1.0)
         self.show()
         self.raise_()
-        self._fade_target = "show"
+        if UiFx.enabled:
+            self._fade_animation.stop()
+            self._fade_animation.setStartValue(0.0)
+            self._fade_animation.setEndValue(1.0)
+            self._fade_animation.start()
         try:
             QApplication.processEvents()
         except Exception:
@@ -830,11 +889,19 @@ class SplashWindow(QWidget):
 
     def fade_out(self) -> None:
         self._fade_target = "hide"
-        self.close()
+        if not UiFx.enabled:
+            self.close()
+            return
+        self._fade_animation.stop()
+        self._fade_animation.setStartValue(float(self.windowOpacity()))
+        self._fade_animation.setEndValue(0.0)
+        self._fade_animation.start()
 
     def _on_fade_finished(self) -> None:
         if getattr(self, "_fade_target", "show") == "hide":
             self.close()
+        else:
+            self.setWindowOpacity(1.0)
 
 
 class Worker(QObject):
@@ -852,7 +919,13 @@ class Worker(QObject):
             log_qa_event("worker_run_start", worker=str(self), thread=threading.current_thread().name, started=str(started))
             def emit(percent: int, text: str = "") -> None:
                 self.progress.emit(max(0, min(100, int(percent))), text)
-            result = self.fn(emit) or {}
+            raw_result = self.fn(emit)
+            if isinstance(raw_result, OperationResult):
+                result = raw_result.to_dict()
+            elif isinstance(raw_result, dict):
+                result = raw_result
+            else:
+                raise TypeError(f"worker returned unsupported result type: {type(raw_result).__name__}")
             log_qa_event("worker_run_finished", worker=str(self), thread=threading.current_thread().name, result=result)
             self.finished.emit(result)
         except Exception as exc:  # pragma: no cover - worker safety
@@ -1104,10 +1177,6 @@ class Toast(QFrame):
         self.label.setWordWrap(True)
         layout.addWidget(self.label, 1)
         self._fade_target = "show"
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(24)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, 130))
         # Keep the opacity effect because Qt allows only one graphics effect.
         # Shadow is intentionally not attached; simple flat NVIDIA-like UI is preferred.
 
@@ -1804,6 +1873,7 @@ class UpdateDialog(QDialog):
     """Modern in-app update window with live download/install progress."""
 
     download_requested = Signal()
+    install_requested = Signal()
     release_requested = Signal(str)
     cancel_requested = Signal()
 
@@ -1813,6 +1883,7 @@ class UpdateDialog(QDialog):
         self._tr = getattr(parent, "tr", lambda key: key)
         self._trf = getattr(parent, "trf", lambda key, **kwargs: str(key).format(**kwargs))
         self._downloading = False
+        self._ready_to_install = False
         self.setObjectName("UpdateDialog")
         self.setWindowTitle(self._tr("update_window_title"))
         self.setModal(False)
@@ -1935,6 +2006,9 @@ class UpdateDialog(QDialog):
     def _on_download_clicked(self) -> None:
         if self._downloading:
             return
+        if self._ready_to_install:
+            self.install_requested.emit()
+            return
         self.download_requested.emit()
 
     def _on_cancel_clicked(self) -> None:
@@ -1946,6 +2020,7 @@ class UpdateDialog(QDialog):
         self.close()
 
     def set_downloading(self, version: str, filename: str, dest_path: str) -> None:
+        self._ready_to_install = False
         self._downloading = True
         self.download_btn.setEnabled(False)
         self.download_btn.setText(self._tr("update_downloading_button"))
@@ -1956,7 +2031,7 @@ class UpdateDialog(QDialog):
         if dest_path:
             self.folder_label.setText(self._trf("update_saving_to", path=dest_path))
         self.status_label.setText(self._trf("update_downloading_version", version=version))
-        self.progress.setValue(1)
+        self.progress.setRange(0, 0)
         self.progress_meta.setText(self._tr("update_download_starting"))
         self.raise_()
         self.show()
@@ -1964,23 +2039,34 @@ class UpdateDialog(QDialog):
     def update_progress_payload(self, payload: Dict[str, Any]) -> None:
         stage = str(payload.get("stage") or "downloading")
         percent = int(payload.get("percent") or 0)
-        self.progress.setValue(max(0, min(100, percent)))
         if stage == "downloading":
             downloaded = payload.get("downloaded") or 0
             total = payload.get("total") or 0
             speed = payload.get("speed") or 0
             eta = payload.get("eta") or 0
             if total:
+                self.progress.setRange(0, 100)
+                self.progress.setValue(max(0, min(100, percent)))
                 self.status_label.setText(self._trf("update_download_percent", percent=percent))
                 self.progress_meta.setText(self._trf("update_download_meta", downloaded=_format_bytes(downloaded), total=_format_bytes(total), speed=_format_bytes(speed), eta=_format_eta(eta)))
             else:
+                self.progress.setRange(0, 0)
                 self.status_label.setText(self._tr("update_downloading_file"))
                 self.progress_meta.setText(self._trf("update_download_meta_unknown", downloaded=_format_bytes(downloaded), speed=_format_bytes(speed)))
         elif stage == "verifying":
+            self.progress.setRange(0, 100)
+            self.progress.setValue(max(95, min(99, percent)))
             self.status_label.setText(self._tr("update_verifying_file"))
             self.progress_meta.setText(str(payload.get("path") or ""))
         elif stage == "installing":
+            self.progress.setRange(0, 100)
+            self.progress.setValue(max(98, min(100, percent)))
             self.status_label.setText(self._tr("update_starting_installer"))
+            self.progress_meta.setText(str(payload.get("path") or ""))
+        elif stage == "verified":
+            self.progress.setRange(0, 100)
+            self.progress.setValue(100)
+            self.status_label.setText(self._tr("update_ready_to_install_status"))
             self.progress_meta.setText(str(payload.get("path") or ""))
         elif stage == "cancelled":
             self.set_failed(self._tr("update_download_cancelled"))
@@ -1988,7 +2074,9 @@ class UpdateDialog(QDialog):
             self.set_failed(str(payload.get("message") or self._tr("update_download_failed")))
 
     def set_failed(self, message: str) -> None:
+        self._ready_to_install = False
         self._downloading = False
+        self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.status_label.setText(message or self._tr("update_download_failed"))
         self.progress_meta.setText(self._tr("update_retry_or_release"))
@@ -1997,8 +2085,37 @@ class UpdateDialog(QDialog):
         self.cancel_btn.setEnabled(True)
         self.cancel_btn.setText(self._tr("close"))
 
-    def set_done(self, path: str) -> None:
+    def set_ready_to_install(self, path: str, publisher: str, version: str) -> None:
         self._downloading = False
+        self._ready_to_install = True
+        self.result["verified_path"] = path
+        self.result["verified_publisher"] = publisher
+        self.result["verified_version"] = version
+        self.progress.setRange(0, 100)
+        self.progress.setValue(100)
+        self.status_label.setText(self._tr("update_ready_to_install_status"))
+        self.progress_meta.setText(
+            self._trf("update_ready_to_install_meta", publisher=publisher or "—")
+        )
+        self.download_btn.setEnabled(True)
+        self.download_btn.setText(self._tr("update_install_now_button"))
+        self.download_btn.setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
+        self.cancel_btn.setEnabled(True)
+        self.cancel_btn.setText(self._tr("update_later"))
+
+    def set_launching(self, path: str) -> None:
+        self._ready_to_install = False
+        self._downloading = True
+        self.progress.setRange(0, 0)
+        self.status_label.setText(self._tr("update_starting_installer"))
+        self.progress_meta.setText(path or "")
+        self.download_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(False)
+
+    def set_done(self, path: str) -> None:
+        self._ready_to_install = False
+        self._downloading = False
+        self.progress.setRange(0, 100)
         self.progress.setValue(100)
         self.status_label.setText(self._tr("update_install_launched_status"))
         self.progress_meta.setText(path or "")
@@ -2023,6 +2140,8 @@ class FreeCleanerQt(QMainWindow):
         self.rows: Dict[str, TaskRow] = {}
         self.sections: Dict[str, UiTaskSection] = {}
         self.cancel_event = threading.Event()
+        self._closing = False
+        self._shutdown_started_at = 0.0
         self.thread: Optional[QThread] = None
         self.worker: Optional[Worker] = None
         self.background_jobs: List[Tuple[QThread, Worker]] = []
@@ -2137,22 +2256,48 @@ class FreeCleanerQt(QMainWindow):
 
     # ------------------------- config / i18n -------------------------
     def load_config(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
         for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
             try:
                 if path and os.path.isfile(path):
                     with open(path, "r", encoding="utf-8") as fh:
-                        data = json.load(fh)
-                    if isinstance(data, dict):
-                        return data
-            except Exception as exc:
+                        loaded = json.load(fh)
+                    if isinstance(loaded, dict):
+                        data = loaded
+                        break
+                    raise ValueError("configuration root must be a JSON object")
+            except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
                 log_app(f"config load failed for {path}: {exc}", level="ERROR")
                 try:
                     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    os.replace(path, f"{path}.corrupt_{stamp}")
-                    log_app(f"corrupt config moved to {path}.corrupt_{stamp}", level="WARNING")
-                except Exception as move_exc:
+                    corrupt_path = f"{path}.corrupt_{stamp}"
+                    os.replace(path, corrupt_path)
+                    log_app(f"corrupt config moved to {corrupt_path}", level="WARNING")
+                except OSError as move_exc:
                     log_app(f"could not move corrupt config {path}: {move_exc}", level="ERROR")
-        return {}
+
+        installer_state = os.path.join(get_user_data_dir(create=True), "installer-language.json")
+        try:
+            if os.path.isfile(installer_state):
+                with open(installer_state, "r", encoding="utf-8") as fh:
+                    state = json.load(fh)
+                if not isinstance(state, dict):
+                    raise ValueError("installer language state must be a JSON object")
+                requested = self.normalize_language_preference(str(state.get("language") or "auto"))
+                data["language"] = requested
+                try:
+                    os.remove(installer_state)
+                except OSError as exc:
+                    log_app(f"could not remove consumed installer language state: {exc}", level="WARNING")
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            log_app(f"installer language state load failed: {exc}", level="WARNING")
+            try:
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                os.replace(installer_state, f"{installer_state}.corrupt_{stamp}")
+            except OSError:
+                pass
+        return data
+
 
     def save_config(self) -> None:
         try:
@@ -2325,7 +2470,7 @@ class FreeCleanerQt(QMainWindow):
             QTimer.singleShot(150, self.start_program_scan)
         page = self.stack.currentWidget()
         if page is not None:
-            UiFx.fade_in(page, 140)
+            UiFx.soft_reveal(page, 170)
         self.repair_nav_icons()
 
     def repair_nav_icons(self) -> None:
@@ -2555,7 +2700,11 @@ class FreeCleanerQt(QMainWindow):
         tlay.addWidget(QLabel(self.tr("search_modules") if self.tr("search_modules") != "search_modules" else "Пошук"))
         self.search = QLineEdit()
         self.search.setPlaceholderText(self.tr("search_placeholder") if self.tr("search_placeholder") != "search_placeholder" else "Фільтр модулів")
-        self.search.textChanged.connect(self.apply_search)
+        self._cleaner_search_timer = QTimer(self)
+        self._cleaner_search_timer.setSingleShot(True)
+        self._cleaner_search_timer.setInterval(150)
+        self._cleaner_search_timer.timeout.connect(self.apply_search)
+        self.search.textChanged.connect(lambda _text: self._cleaner_search_timer.start())
         tlay.addWidget(self.search, 1)
         reset_search = QPushButton(self.tr("clear_search") if self.tr("clear_search") != "clear_search" else "Очистити")
         reset_search.clicked.connect(lambda: self.search.setText(""))
@@ -2569,13 +2718,13 @@ class FreeCleanerQt(QMainWindow):
     def build_optimizer_page(self, parent: QVBoxLayout) -> None:
         legend = QFrame()
         legend.setObjectName("LegendStrip")
-        l = QHBoxLayout(legend)
-        l.setContentsMargins(12, 8, 12, 8)
-        l.setSpacing(8)
-        l.addWidget(QLabel(self.tr("statuses_label")))
+        legend_layout = QHBoxLayout(legend)
+        legend_layout.setContentsMargins(12, 8, 12, 8)
+        legend_layout.setSpacing(8)
+        legend_layout.addWidget(QLabel(self.tr("statuses_label")))
         for text, tone in ((self.tr("registry_status_change_needed"), "Green"), (self.tr("registry_status_done"), "Blue"), (self.tr("registry_status_admin_only"), "Amber"), (self.tr("registry_status_unavailable"), "Grey")):
-            l.addWidget(Pill(text, tone))
-        l.addStretch(1)
+            legend_layout.addWidget(Pill(text, tone))
+        legend_layout.addStretch(1)
         parent.addWidget(legend)
 
         toolbar = QFrame()
@@ -2585,7 +2734,11 @@ class FreeCleanerQt(QMainWindow):
         tl.addWidget(QLabel(self.tr("search_tweaks")))
         self.optimizer_search = QLineEdit()
         self.optimizer_search.setPlaceholderText(self.tr("optimizer_search_placeholder"))
-        self.optimizer_search.textChanged.connect(self.apply_optimizer_search)
+        self._optimizer_search_timer = QTimer(self)
+        self._optimizer_search_timer.setSingleShot(True)
+        self._optimizer_search_timer.setInterval(150)
+        self._optimizer_search_timer.timeout.connect(self.apply_optimizer_search)
+        self.optimizer_search.textChanged.connect(lambda _text: self._optimizer_search_timer.start())
         tl.addWidget(self.optimizer_search, 1)
         clear = QPushButton(self.tr("clear_search"))
         clear.clicked.connect(lambda: self.optimizer_search.setText(""))
@@ -2696,7 +2849,11 @@ class FreeCleanerQt(QMainWindow):
 
         self.program_search = QLineEdit()
         self.program_search.setPlaceholderText(self.tr("programs_search_placeholder"))
-        self.program_search.textChanged.connect(self.filter_program_rows)
+        self._program_search_timer = QTimer(self)
+        self._program_search_timer.setSingleShot(True)
+        self._program_search_timer.setInterval(150)
+        self._program_search_timer.timeout.connect(self.filter_program_rows)
+        self.program_search.textChanged.connect(lambda _text: self._program_search_timer.start())
         layout.addWidget(self.program_search)
 
         self.program_tree = QTreeWidget()
@@ -3370,11 +3527,11 @@ class FreeCleanerQt(QMainWindow):
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
-        self.progress_anim = None
         self._progress_target_value = 0
-        self._progress_anim_timer = QTimer(self)
-        self._progress_anim_timer.setInterval(24)
-        self._progress_anim_timer.timeout.connect(self._tick_progress_animation)
+        self._progress_animation = QVariantAnimation(self)
+        self._progress_animation.setDuration(220)
+        self._progress_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._progress_animation.valueChanged.connect(lambda value: self.progress.setValue(int(value)))
         layout.addWidget(self.result_label)
         layout.addWidget(self.progress)
         actions = QHBoxLayout()
@@ -4143,6 +4300,8 @@ class FreeCleanerQt(QMainWindow):
         QTimer.singleShot(cooldown_ms + 50, self.refresh_optimizer_interactivity)
 
     def run_toggle_worker(self, key: str, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
+        if getattr(self, "_closing", False):
+            return
         if key in self.toggle_jobs:
             log_qa_event("toggle_worker_duplicate_blocked", key=key, active=list(self.toggle_jobs.keys()))
             self.show_toast(self.tr("toggle_busy"), "warning")
@@ -4248,7 +4407,7 @@ class FreeCleanerQt(QMainWindow):
         self.refresh_task_counts()
         self.refresh_backup_state()
         log_action({"toggle": key, "ok": ok, "requested_enabled": requested_enabled, "verified": verified_state})
-        self.show_toast("Тумблер застосовано" if ok else "Не вдалося застосувати тумблер", "success" if ok else "error")
+        self.show_toast(self.tr("toggle_applied") if ok else self.tr("toggle_apply_failed"), "success" if ok else "error")
         self.refresh_optimizer_interactivity()
         # Let QThread.quit()/deleteLater and power policy broadcasts settle before a full status probe.
         self.defer_status_sync(1400)
@@ -4323,7 +4482,7 @@ class FreeCleanerQt(QMainWindow):
                 ok = all(WindowsOps.apply_registry_values(specs) or [False])
             elif command:
                 result = command()
-                ok = bool(result) if isinstance(result, bool) else True
+                ok = _operation_result_ok(result, f"toggle:{key}")
             emit(100, f"{title}: {'OK' if ok else 'FAIL'}")
             return {
                 "op": "toggle",
@@ -4351,7 +4510,7 @@ class FreeCleanerQt(QMainWindow):
             visible = False
             for row in section.rows:
                 match = row.matches(query)
-                UiFx.set_visible(row, match, animated=True, duration=120)
+                row.setVisible(match)
                 visible = visible or match
             UiFx.set_visible(section.container, visible or not query, animated=True, duration=130)
 
@@ -4376,32 +4535,35 @@ class FreeCleanerQt(QMainWindow):
         safe_value = cls.safe_byte_count(value)
         return f"{safe_value / (1024 * 1024):.2f} MB"
 
-    def _tick_progress_animation(self) -> None:
+    def set_progress_indeterminate(self, enabled: bool) -> None:
         if not hasattr(self, "progress"):
             return
-        target = max(0, min(100, int(getattr(self, "_progress_target_value", self.progress.value()))))
-        current = int(self.progress.value())
-        if current == target:
-            try:
-                self._progress_anim_timer.stop()
-            except Exception:
-                pass
-            return
-        diff = target - current
-        step = max(1, abs(diff) // 4)
-        self.progress.setValue(current + (step if diff > 0 else -step))
+        if hasattr(self, "_progress_animation"):
+            self._progress_animation.stop()
+        if enabled:
+            self.progress.setRange(0, 0)
+        else:
+            self.progress.setRange(0, 100)
+            self.progress.setValue(max(0, min(100, int(getattr(self, "_progress_target_value", 0)))))
 
     def set_progress_value(self, value: int, *, animated: bool = True) -> None:
         if not hasattr(self, "progress"):
             return
+        if self.progress.minimum() == 0 and self.progress.maximum() == 0:
+            self.progress.setRange(0, 100)
         target = max(0, min(100, int(value)))
-        if not animated or not hasattr(self, "_progress_anim_timer"):
-            self._progress_target_value = target
+        self._progress_target_value = target
+        animation = getattr(self, "_progress_animation", None)
+        if not animated or not UiFx.enabled or animation is None:
+            if animation is not None:
+                animation.stop()
             self.progress.setValue(target)
             return
-        self._progress_target_value = target
-        if not self._progress_anim_timer.isActive():
-            self._progress_anim_timer.start()
+        animation.stop()
+        animation.setStartValue(int(self.progress.value()))
+        animation.setEndValue(target)
+        animation.start()
+
 
     def log(self, text: str) -> None:
         line = str(text or "").strip()
@@ -4467,22 +4629,33 @@ class FreeCleanerQt(QMainWindow):
         event = getattr(self, "_update_download_cancel_event", None)
         if event is not None:
             event.set()
-            self.log("Скасування завантаження оновлення…")
+            self.log(self.tr("cancel_update_log"))
 
-    def run_background_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
-        """Run lightweight background jobs without locking the cleaner UI."""
+    def run_background_worker(
+        self,
+        fn: Callable[[Callable[[int, str], None]], Dict[str, Any]],
+        *,
+        operation: str = "background",
+    ) -> bool:
+        """Submit a bounded background job and attach stable identity metadata."""
+        if getattr(self, "_closing", False):
+            log_qa_event("background_worker_rejected_closing", operation=operation)
+            return False
         limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
         if len(getattr(self, "background_jobs", [])) >= limit:
             self.show_toast(self.tr("background_diagnostics_busy"), "warning")
-            log_qa_event("background_worker_limit_blocked", active=len(getattr(self, "background_jobs", [])), limit=limit)
-            return
+            log_qa_event("background_worker_limit_blocked", active=len(getattr(self, "background_jobs", [])), limit=limit, operation=operation)
+            return False
         thread = QThread()
         worker = Worker(fn)
         worker.moveToThread(thread)
+        job_id = uuid.uuid4().hex
+        worker._fc_kind = "background"
+        worker._fc_operation = str(operation or "background")
+        worker._fc_job_id = job_id
+        worker._fc_thread = thread
         self.background_jobs.append((thread, worker))
         thread.started.connect(worker.run)
-        worker._fc_kind = "background"
-        worker._fc_thread = thread
         worker.progress.connect(self.on_background_worker_progress_router, Qt.QueuedConnection)
         worker.finished.connect(self.on_background_worker_finished_router, Qt.QueuedConnection)
         worker.failed.connect(self.on_background_worker_failed_router, Qt.QueuedConnection)
@@ -4491,6 +4664,9 @@ class FreeCleanerQt(QMainWindow):
         thread.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.start()
+        log_qa_event("background_worker_started", operation=worker._fc_operation, job_id=job_id)
+        return True
+
 
     def on_background_worker_finished(self, result: Dict[str, Any], thread: QThread, worker: Worker) -> None:
         try:
@@ -4509,12 +4685,12 @@ class FreeCleanerQt(QMainWindow):
                 latest = str(result.get("latest") or "")
                 self.log(self.trf("update_available_log", current=APP_VERSION, latest=latest))
                 if self.setting_bool("notify_on_finish", True):
-                    self.show_toast(f"Доступне оновлення: {latest}", "info")
+                    self.show_toast(self.trf("update_available_toast", version=latest), "info")
                 self.show_update_dialog(result)
             else:
-                text = "FreeCleaner актуальний"
+                text = self.tr("app_up_to_date")
                 if result.get("newer_local"):
-                    text = "Локальна збірка новіша за останній GitHub release"
+                    text = self.tr("local_build_newer")
                 self.log(text)
                 if self.setting_bool("notify_on_finish", True):
                     self.show_toast(text, "info")
@@ -4525,13 +4701,13 @@ class FreeCleanerQt(QMainWindow):
             path = str(result.get("path") or "")
             message = str(result.get("message") or "")
             dlg = getattr(self, "_update_progress_dialog", None)
-            if ok:
+            if ok and result.get("ready_to_install"):
+                publisher = str(result.get("publisher") or "")
+                version = str(result.get("version") or "")
                 if dlg is not None:
-                    dlg.set_done(path)
-                self.log(self.trf("update_install_started", path=path))
-                self.show_toast(self.tr("update_install_started_button"), "success")
-                if IS_WINDOWS:
-                    QTimer.singleShot(1800, QApplication.quit)
+                    dlg.set_ready_to_install(path, publisher, version)
+                self.log(self.trf("update_download_saved", path=path))
+                self.show_toast(self.tr("update_ready_to_install_status"), "success")
             else:
                 if dlg is not None:
                     if result.get("cancelled"):
@@ -4540,12 +4716,32 @@ class FreeCleanerQt(QMainWindow):
                         dlg.set_failed(self.trf("update_download_failed_reason", reason=message))
                 self.log(self.trf("update_download_failed_reason", reason=message))
                 self.show_toast(self.tr("update_download_cancelled") if result.get("cancelled") else self.tr("update_download_failed"), "warning" if result.get("cancelled") else "error")
+        elif op == "update_launch":
+            self._update_launch_running = False
+            ok = bool(result.get("ok"))
+            path = str(result.get("path") or "")
+            message = str(result.get("message") or "")
+            dlg = getattr(self, "_update_progress_dialog", None)
+            if ok:
+                pid = result.get("pid")
+                schedule_update_cleanup_after_install(pid)
+                if dlg is not None:
+                    dlg.set_done(path)
+                self.log(self.trf("update_install_started", path=path))
+                self.show_toast(self.tr("update_install_started_button"), "success")
+                if IS_WINDOWS:
+                    QTimer.singleShot(1800, QApplication.quit)
+            else:
+                if dlg is not None:
+                    dlg.set_failed(self.trf("update_install_failed_reason", reason=message))
+                self.log(self.trf("update_install_failed_reason", reason=message))
+                self.show_toast(self.tr("update_download_failed"), "error")
         elif op == "registry_backup":
             path = str(result.get("path") or "")
             if path:
                 self.log(self.trf("manual_registry_backup_ok", path=path))
                 self.refresh_backup_state()
-                self.show_toast("Registry backup створено", "success")
+                self.show_toast(self.tr("manual_registry_backup_created"), "success")
             else:
                 self.show_toast(self.tr("manual_registry_backup_fail"), "error")
         elif op == "registry_restore":
@@ -4554,7 +4750,7 @@ class FreeCleanerQt(QMainWindow):
             self.log(self.trf("registry_restore_ok" if ok else "registry_restore_fail", name=name))
             self.refresh_backup_state()
             self.sync_registry_toggle_states()
-            self.show_toast("Registry restore завершено" if ok else "Registry restore не вдався", "success" if ok else "error")
+            self.show_toast(self.tr("registry_restore_completed") if ok else self.tr("registry_restore_failed_short"), "success" if ok else "error")
         elif op == "diagnostic_report":
             title = str(result.get("title") or "Diagnostic report")
             report = result.get("report") or {}
@@ -4577,18 +4773,35 @@ class FreeCleanerQt(QMainWindow):
         try:
             if (thread, worker) in self.background_jobs:
                 self.background_jobs.remove((thread, worker))
-        except Exception:
+        except (AttributeError, ValueError):
             pass
-        self._update_check_running = False
-        self._update_download_running = False
-        self._update_dialog: Optional[UpdateDialog] = None
-        self._update_progress_dialog: Optional[UpdateDialog] = None
-        self._update_download_cancel_event: Optional[threading.Event] = None
-        self.log(f"Background job failed: {error}")
-        if hasattr(self, "toast"):
+        operation = str(getattr(worker, "_fc_operation", "background") or "background")
+        job_id = str(getattr(worker, "_fc_job_id", "") or "")
+        if operation == "update":
+            self._update_check_running = False
+        elif operation == "update_download":
+            self._update_download_running = False
+            event = getattr(self, "_update_download_cancel_event", None)
+            if event is not None:
+                event.set()
+            self._update_download_cancel_event = None
+            dialog = getattr(self, "_update_progress_dialog", None)
+            if dialog is not None:
+                dialog.set_failed(self.tr("update_download_failed"))
+        elif operation == "update_launch":
+            self._update_launch_running = False
+            dialog = getattr(self, "_update_progress_dialog", None)
+            if dialog is not None:
+                dialog.set_failed(self.tr("update_download_failed"))
+        self.log(f"Background job failed [{operation}:{job_id}]: {error}")
+        log_error(f"background job failed operation={operation} job_id={job_id}: {error}")
+        if hasattr(self, "toast") and not getattr(self, "_closing", False):
             self.show_toast(self.tr("background_action_failed"), "error")
 
+
     def run_worker(self, fn: Callable[[Callable[[int, str], None]], Dict[str, Any]]) -> None:
+        if getattr(self, "_closing", False):
+            return
         if self.thread is not None:
             self.show_toast(self.tr("wait_current_action"), "warning")
             return
@@ -4643,9 +4856,9 @@ class FreeCleanerQt(QMainWindow):
             if "freed" in result:
                 self.freed_bytes = self.safe_byte_count(result.get("freed"))
                 selected_before = self.safe_byte_count(result.get("selected_before", total))
-                self.result_label.setText(f"Звільнено: {self.human_mb(self.freed_bytes)} • Було обрано: {self.human_mb(selected_before)}")
+                self.result_label.setText(self.trf("freed_selected_fmt", freed=self.human_mb(self.freed_bytes), selected=self.human_mb(selected_before)))
             else:
-                self.result_label.setText(f"Знайдено: {self.human_mb(total)}")
+                self.result_label.setText(self.trf("found_size_fmt", size=self.human_mb(total)))
         self.set_progress_value(100, animated=True)
         for key in getattr(self, "_cleaning_keys", []):
             row = self.rows.get(key)
@@ -4655,21 +4868,24 @@ class FreeCleanerQt(QMainWindow):
         self._cleaning_keys = []
         if hasattr(self, "toast") and self.setting_bool("notify_on_finish", True):
             if op == "update":
-                self.show_toast("Перевірка оновлень завершена", "info")
+                self.show_toast(self.tr("update_check_completed"), "info")
             elif op == "toggle":
-                self.show_toast("Тумблер застосовано" if result.get("ok") else "Не вдалося застосувати тумблер", "success" if result.get("ok") else "error")
+                self.show_toast(self.tr("toggle_applied") if result.get("ok") else self.tr("toggle_apply_failed"), "success" if result.get("ok") else "error")
             elif "tweaks" in result:
-                self.show_toast(f"Застосовано твікiв: {int(result.get('tweaks') or 0)}", "success")
+                self.show_toast(self.trf("tweaks_applied_fmt", count=int(result.get("tweaks") or 0)), "success")
             elif "freed" in result:
-                self.show_toast(f"Очищення завершено: {self.human_mb(self.freed_bytes)}", "success")
+                self.show_toast(self.trf("clean_completed_fmt", size=self.human_mb(self.freed_bytes)), "success")
             else:
-                self.show_toast(f"Аналіз завершено: {self.human_mb(total)}", "info")
+                self.show_toast(self.trf("analysis_completed_fmt", size=self.human_mb(total)), "info")
         self.refresh_backup_state()
         self.refresh_system_drive_status()
 
     def on_worker_failed(self, error: str) -> None:
-        QMessageBox.critical(self, "FreeCleaner", error)
-        self.log(error)
+        error_id = uuid.uuid4().hex[:8].upper()
+        log_error(f"worker failure [{error_id}]: {error}")
+        message = self.trf("error_reference_fmt", error_id=error_id)
+        QMessageBox.critical(self, "FreeCleaner", message)
+        self.log(message)
         for key in getattr(self, "_cleaning_keys", []):
             row = self.rows.get(key)
             if row:
@@ -4779,7 +4995,6 @@ class FreeCleanerQt(QMainWindow):
                 emit(15, self.trf("registry_backup_created", path=backup) if backup else self.tr("registry_backup_failed"))
                 if not backup:
                     return {"total": total_before, "freed": 0, "selected_before": getattr(self, "_pre_clean_selected_bytes", total_before), "op": "clean"}
-            clean_workers = get_adaptive_workers("clean", CLEAN_WORKERS)
             step_base = 20
             count = max(1, len(dir_tasks))
             for idx, task in enumerate(dir_tasks, start=1):
@@ -4824,7 +5039,7 @@ class FreeCleanerQt(QMainWindow):
                     ok = all(WindowsOps.apply_registry_values(task.registry_values) or [False])
                 elif task.command:
                     res = task.command()
-                    ok = bool(res) if isinstance(res, bool) else True
+                    ok = _operation_result_ok(res, f"task:{task.key}")
                 emit(80 + int(idx / max(1, len(cmd_tasks)) * 18), f"{title}: {'OK' if ok else 'FAIL'}")
             return {"total": total_before, "freed": max(0, int(freed or 0)), "selected_before": getattr(self, "_pre_clean_selected_bytes", total_before), "op": "clean"}
         self.run_worker(job)
@@ -4861,7 +5076,7 @@ class FreeCleanerQt(QMainWindow):
                     ok = all(WindowsOps.apply_registry_values(task.registry_values) or [False])
                 elif task.command:
                     res = task.command()
-                    ok = bool(res) if isinstance(res, bool) else True
+                    ok = _operation_result_ok(res, f"task:{task.key}")
                 emit(10 + int(idx / count * 88), f"{title}: {'OK' if ok else 'FAIL'}")
             return {"total": self.analysis_total, "freed": 0, "tweaks": len(tasks), "op": "tweaks"}
 
@@ -4881,13 +5096,13 @@ class FreeCleanerQt(QMainWindow):
         if not keys:
             QMessageBox.information(self, "FreeCleaner", self.tr("manual_registry_backup_empty"))
             return
-        self.log("Registry backup: creating...")
+        self.log(self.tr("registry_backup_creating"))
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
-            emit(10, "Registry backup: creating...")
+            emit(10, self.tr("registry_backup_creating"))
             path = WindowsOps.backup_registry_keys(keys)
-            emit(100, "Registry backup: done" if path else "Registry backup: failed")
+            emit(100, self.tr("registry_backup_done") if path else self.tr("registry_backup_failed_short"))
             return {"op": "registry_backup", "path": path or ""}
-        self.run_background_worker(job)
+        self.run_background_worker(job, operation="registry_backup")
 
     def refresh_backup_state(self) -> None:
         if not hasattr(self, "backup_list"):
@@ -4917,13 +5132,13 @@ class FreeCleanerQt(QMainWindow):
         return dict(backups[row])
 
     def _confirm_registry_restore(self, backup: Dict[str, Any], *, latest: bool = False) -> bool:
-        title = "Відновити найновішу резервну копію?" if latest else "Відновити цю резервну копію?"
-        details = (
-            f"{title}\n\n"
-            f"Дата: {backup.get('created')}\n"
-            f"Папка: {backup.get('name')}\n"
-            f"Файлів: {backup.get('count')} .reg\n\n"
-            "Перед імпортом FreeCleaner створить pre-restore snapshot, щоб можна було відкотити відновлення."
+        title = self.tr("registry_restore_latest_title") if latest else self.tr("registry_restore_selected_title")
+        details = self.trf(
+            "registry_restore_confirm_details",
+            title=title,
+            date=backup.get("created"),
+            name=backup.get("name"),
+            count=backup.get("count"),
         )
         return QMessageBox.question(self, "FreeCleaner", details) == QMessageBox.Yes
 
@@ -4941,13 +5156,13 @@ class FreeCleanerQt(QMainWindow):
         if not backup_path:
             QMessageBox.warning(self, "FreeCleaner", self.tr("registry_restore_missing"))
             return
-        self.log(f"Registry restore: {backup_name}...")
+        self.log(self.trf("registry_restore_starting", name=backup_name))
         def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
-            emit(10, f"Registry restore: {backup_name}...")
+            emit(10, self.trf("registry_restore_starting", name=backup_name))
             ok = WindowsOps.restore_registry_backup_dir(backup_path)
             emit(100, "Registry restore: done" if ok else "Registry restore: failed")
             return {"op": "registry_restore", "ok": bool(ok), "name": backup_name}
-        self.run_background_worker(job)
+        self.run_background_worker(job, operation="registry_restore")
 
     def restore_latest_registry_backup(self) -> None:
         backups = WindowsOps.list_registry_backups()
@@ -5160,12 +5375,12 @@ class FreeCleanerQt(QMainWindow):
             return
         ok, message, pid = WindowsOps.run_as_admin()
         if not ok:
-            self.log(f"Не вдалося перезапустити від адміністратора: {message}", "error")
+            self.log(f"Не вдалося перезапустити від адміністратора: {message}")
             QMessageBox.warning(self, "FreeCleaner", f"Не вдалося запустити FreeCleaner від адміністратора.\n\n{message}")
             return
         self.log(self.tr("relaunching_admin"))
         try:
-            self.show_toast("FreeCleaner", "Запущено запит UAC. Поточне вікно закриється після старту нового процесу.", "info")
+            self.show_toast("Запущено запит UAC. Поточне вікно закриється після старту нового процесу.", "info")
         except Exception:
             pass
         # Do not quit immediately: the elevated copy needs a moment to pass UAC
@@ -5173,14 +5388,56 @@ class FreeCleanerQt(QMainWindow):
         QTimer.singleShot(1200, QApplication.quit)
 
 
-    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
-        try:
+    def shutdown_application(self) -> bool:
+        """Cancel owned work and report whether every QThread has stopped."""
+        if not self._closing:
+            self._closing = True
+            self._shutdown_started_at = time.monotonic()
+            self._status_sync_pending = False
             self._ui_watchdog_stop.set()
             self._estimate_cancel_event.set()
             self.cancel_event.set()
-        except Exception:
-            pass
-        super().closeEvent(event)
+            update_cancel = getattr(self, "_update_download_cancel_event", None)
+            if update_cancel is not None:
+                update_cancel.set()
+            for timer in self.findChildren(QTimer):
+                timer.stop()
+
+        threads: List[QThread] = []
+        if self.thread is not None:
+            threads.append(self.thread)
+        threads.extend(thread for thread, _worker in list(getattr(self, "background_jobs", [])))
+        threads.extend(thread for thread, _worker in list(getattr(self, "toggle_jobs", {}).values()))
+        unique_threads: List[QThread] = []
+        for thread in threads:
+            if thread is not None and thread not in unique_threads:
+                unique_threads.append(thread)
+        for thread in unique_threads:
+            try:
+                if thread.isRunning():
+                    thread.requestInterruption()
+                    thread.quit()
+                    thread.wait(60)
+            except RuntimeError:
+                continue
+        for thread in unique_threads:
+            try:
+                if thread.isRunning():
+                    return False
+            except RuntimeError:
+                continue
+        return True
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self.shutdown_application():
+            event.accept()
+            super().closeEvent(event)
+            return
+        event.ignore()
+        self.setEnabled(False)
+        self.setWindowTitle(f"FreeCleaner — {self.tr('closing_active_tasks')}")
+        QTimer.singleShot(100, self.close)
+
 
     def check_updates(self) -> None:
         if getattr(self, "_update_check_running", False):
@@ -5220,6 +5477,8 @@ class FreeCleanerQt(QMainWindow):
                 "release_url": info.html_url,
                 "download_url": info.download_url,
                 "asset_name": info.asset_name,
+                "asset_size": info.asset_size,
+                "asset_digest": info.asset_digest,
                 "published_at": info.published_at,
                 "body": info.changelog or info.body,
                 "changelog_count": info.changelog_count,
@@ -5233,7 +5492,8 @@ class FreeCleanerQt(QMainWindow):
             base["newer_local"] = cmp_result > 0
             return base
 
-        self.run_background_worker(job)
+        if not self.run_background_worker(job, operation="update"):
+            self._update_check_running = False
 
     def show_update_dialog(self, result: Dict[str, Any]) -> None:
         try:
@@ -5247,6 +5507,7 @@ class FreeCleanerQt(QMainWindow):
         dlg = UpdateDialog(self, result)
         self._update_dialog = dlg
         dlg.download_requested.connect(lambda: self.download_update_and_install(result, dlg), Qt.QueuedConnection)
+        dlg.install_requested.connect(lambda: self.confirm_and_launch_verified_update(dlg), Qt.QueuedConnection)
         dlg.release_requested.connect(lambda url: webbrowser.open(str(url or APP_UPDATE_LATEST_RELEASE_URL)), Qt.QueuedConnection)
         dlg.cancel_requested.connect(self.cancel_update_download, Qt.QueuedConnection)
         dlg.destroyed.connect(lambda _=None, ref=dlg: self._clear_update_dialog_ref(ref), Qt.QueuedConnection)
@@ -5269,6 +5530,11 @@ class FreeCleanerQt(QMainWindow):
         download_url = str(update.get("download_url") or "").strip()
         release_url = str(update.get("release_url") or APP_UPDATE_LATEST_RELEASE_URL).strip()
         asset_name = str(update.get("asset_name") or "").strip()
+        asset_digest = str(update.get("asset_digest") or "").strip()
+        try:
+            asset_size = max(0, int(update.get("asset_size") or 0))
+        except (TypeError, ValueError):
+            asset_size = 0
         latest = str(update.get("latest") or update.get("latest_name") or "update")
 
         if not download_url or not download_url.lower().startswith("https://"):
@@ -5285,6 +5551,13 @@ class FreeCleanerQt(QMainWindow):
                 self.show_toast(self.tr("update_release_page_opened"), "info")
             except Exception as exc:
                 self.show_toast(str(exc), "error")
+            return
+        normalized_digest = asset_digest.split(":", 1)[1].strip() if asset_digest.lower().startswith("sha256:") else asset_digest
+        if re.fullmatch(r"[0-9a-fA-F]{64}", normalized_digest or "") is None:
+            self.log("Update blocked: release asset has no trusted SHA-256 digest.")
+            if dialog is not None:
+                dialog.set_failed(self.tr("update_missing_digest"))
+            self.show_toast(self.tr("update_download_failed"), "error")
             return
 
         limit = max(1, int(getattr(self, "_max_background_jobs", 2) or 2))
@@ -5328,35 +5601,91 @@ class FreeCleanerQt(QMainWindow):
                     percent = max(1, min(94, int(downloaded * 94 / total)))
                     eta = max(0.0, float(total - downloaded) / speed) if speed > 0 else 0.0
                 else:
-                    percent = min(90, max(5, int((downloaded / max(downloaded + 1024 * 1024, 1)) * 90)))
+                    percent = 0
                     eta = 0.0
-                emit_payload(percent, stage="downloading", downloaded=downloaded, total=total or 0, speed=int(speed), eta=int(eta), message=self.trf("update_download_percent", percent=percent))
+                message = self.trf("update_download_percent", percent=percent) if total else self.tr("update_downloading_file")
+                emit_payload(percent, stage="downloading", downloaded=downloaded, total=total or 0, speed=int(speed), eta=int(eta), message=message)
 
-            emit_payload(2, stage="downloading", downloaded=0, total=0, speed=0, eta=0, message=self.trf("update_download_started", version=latest))
-            ok, message = download_url_to_file(download_url, dest_path, progress_cb=on_progress, cancel_event=cancel_event)
+            emit_payload(0, stage="downloading", downloaded=0, total=0, speed=0, eta=0, message=self.trf("update_download_started", version=latest))
+            ok, message = download_url_to_file(
+                download_url,
+                dest_path,
+                progress_cb=on_progress,
+                cancel_event=cancel_event,
+                expected_sha256=asset_digest,
+                expected_size=asset_size or None,
+                verify_signature=True,
+            )
             if not ok:
                 stage = "cancelled" if "cancel" in str(message).casefold() else "failed"
                 emit_payload(100, stage=stage, message=message)
                 return {"op": "update_download", "ok": False, "message": message, "path": dest_path, "cancelled": stage == "cancelled"}
 
             emit_payload(96, stage="verifying", path=dest_path, message=self.trf("update_download_saved", path=dest_path))
-            emit_payload(98, stage="installing", path=dest_path, message=self.trf("update_install_starting", path=dest_path))
-            install_ok, install_message, pid = launch_update_installer(dest_path)
-            result = {
+            signature_ok, signature_message, publisher = verify_authenticode_signature(dest_path)
+            if not signature_ok:
+                try:
+                    os.remove(dest_path)
+                except OSError:
+                    pass
+                emit_payload(100, stage="failed", message=signature_message)
+                return {"op": "update_download", "ok": False, "message": signature_message, "path": dest_path}
+            emit_payload(100, stage="verified", path=dest_path, message=self.tr("update_ready_to_install_status"))
+            return {
                 "op": "update_download",
-                "ok": bool(install_ok),
+                "ok": True,
+                "ready_to_install": True,
                 "path": dest_path,
+                "publisher": publisher,
+                "version": latest,
+                "message": signature_message,
+            }
+
+        if not self.run_background_worker(job, operation="update_download"):
+            self._update_download_running = False
+            self._update_download_cancel_event = None
+            if dialog is not None:
+                dialog.set_failed(self.tr("background_busy_retry_download"))
+
+    def confirm_and_launch_verified_update(self, dialog: UpdateDialog) -> None:
+        if getattr(self, "_update_launch_running", False):
+            return
+        path = str(dialog.result.get("verified_path") or "")
+        publisher = str(dialog.result.get("verified_publisher") or "")
+        version = str(dialog.result.get("verified_version") or dialog.result.get("latest") or "")
+        if not path or not os.path.isfile(path):
+            dialog.set_failed(self.tr("update_download_failed"))
+            return
+        details = self.trf(
+            "update_verified_ready_message",
+            version=version or "—",
+            publisher=publisher or "—",
+        )
+        if QMessageBox.question(
+            self,
+            self.tr("update_verified_ready_title"),
+            details,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        ) != QMessageBox.Yes:
+            return
+        dialog.set_launching(path)
+        self._update_launch_running = True
+
+        def job(emit: Callable[[int, str], None]) -> Dict[str, Any]:
+            emit(10, self.tr("update_starting_installer"))
+            install_ok, install_message, pid = launch_update_installer(path)
+            return {
+                "op": "update_launch",
+                "ok": bool(install_ok),
+                "path": path,
                 "message": install_message,
                 "pid": pid,
             }
-            if install_ok:
-                schedule_update_cleanup_after_install(pid)
-                emit_payload(100, stage="installing", path=dest_path, message=self.tr("update_install_started_button"))
-            else:
-                emit_payload(100, stage="failed", message=self.trf("update_install_failed_reason", reason=install_message))
-            return result
 
-        self.run_background_worker(job)
+        if not self.run_background_worker(job, operation="update_launch"):
+            self._update_launch_running = False
+            dialog.set_ready_to_install(path, publisher, version)
 
     def run_system_report(self) -> None:
         self.log("System check: collecting...")
@@ -5377,7 +5706,7 @@ class FreeCleanerQt(QMainWindow):
             }
             emit(100, "System check: done")
             return {"op": "diagnostic_report", "title": "System check", "report": report, "card": 0, "toast": "Системну перевірку завершено"}
-        self.run_background_worker(job)
+        self.run_background_worker(job, operation="diagnostic_system")
 
     def run_streaming_report(self) -> None:
         self.log("OBS/Streaming report: collecting...")
@@ -5386,7 +5715,7 @@ class FreeCleanerQt(QMainWindow):
             report = WindowsOps.collect_streaming_diagnostics()
             emit(100, "OBS/Streaming report: done")
             return {"op": "diagnostic_report", "title": "OBS/Streaming report", "report": report, "card": 2, "toast": "Streaming diagnostics зібрано"}
-        self.run_background_worker(job)
+        self.run_background_worker(job, operation="diagnostic_streaming")
 
     def run_gaming_report(self) -> None:
         self.log("Gaming compatibility report: collecting...")
@@ -5395,7 +5724,7 @@ class FreeCleanerQt(QMainWindow):
             report = WindowsOps.collect_gaming_compat_report()
             emit(100, "Gaming compatibility report: done")
             return {"op": "diagnostic_report", "title": "Gaming compatibility report", "report": report, "card": 1, "toast": "Gaming report зібрано"}
-        self.run_background_worker(job)
+        self.run_background_worker(job, operation="diagnostic_gaming")
 
     def run_onedrive_report(self) -> None:
         self.log("OneDrive report: collecting...")
@@ -5404,16 +5733,7 @@ class FreeCleanerQt(QMainWindow):
             report = WindowsOps.collect_onedrive_report()
             emit(100, "OneDrive report: done")
             return {"op": "diagnostic_report", "title": "OneDrive report", "report": report, "card": 3, "toast": "OneDrive report зібрано"}
-        self.run_background_worker(job)
-
-    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
-        self.cancel_event.set()
-        try:
-            self._estimate_cancel_event.set()
-        except Exception:
-            pass
-        self._status_sync_pending = False
-        super().closeEvent(event)
+        self.run_background_worker(job, operation="diagnostic_onedrive")
 
 
 def configure_high_dpi() -> None:

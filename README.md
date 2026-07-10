@@ -188,8 +188,8 @@ FreeCleaner/
 
 ## Requirements
 
-- Windows 10 or Windows 11
-- Python 3.x
+- Windows 10 or Windows 11, x64
+- Python 3.10–3.14 for source runs (the release workflow uses Python 3.13)
 - Administrator rights for registry, power policy, DISM, BCDEdit and system cleanup actions
 - Project dependencies required by the application
 
@@ -375,13 +375,13 @@ This project is licensed under the MIT License.
 
 See the `LICENSE` file for details.
 
-## Windows 32-bit / 64-bit builds
+## Supported Windows architecture
 
-FreeCleaner supports both Windows x86 and x64 targets for Windows 10/11 compatibility:
+FreeCleaner release builds support **64-bit Windows 10 and Windows 11 only**.
 
-- `*-win64.exe` is built with 64-bit Python and is intended for 64-bit Windows 10/11.
-
-The application also detects whether it is running as a 32-bit process on 64-bit Windows (WOW64), so path discovery can correctly distinguish native x64, native x86, and WOW64 environments.
+- `*-win64.exe` is built with 64-bit Python and Qt/PySide6.
+- 32-bit Windows is rejected because the current Qt/PySide6 package has no supported win32 build.
+- WOW64 detection is retained only for defensive path handling and diagnostics; it does not imply that a 32-bit release is produced.
 
 ## Windows installer builds
 
@@ -392,7 +392,7 @@ The release workflow now produces both portable EXE files and installable setup 
 
 The installer is built with Inno Setup and includes:
 
-- installation into `Program Files` / `Program Files (x86)` depending on architecture;
+- installation into 64-bit `Program Files`;
 - Start Menu shortcut;
 - optional Desktop shortcut;
 - uninstall entry in Windows “Programs and Features”;
@@ -427,9 +427,21 @@ The in-app updater selects the installer by the current Windows architecture:
 
 - 32-bit Windows is not supported by the PySide6/Qt build.
 - 64-bit Windows downloads `FreeCleaner-<version>-win64-setup.exe`.
-- 64-bit Windows downloads `FreeCleaner-<version>-win64-setup.exe`.
 
 The updater avoids downloading an incompatible `win64-setup.exe` on 32-bit Windows.
+
+### Update security
+
+Before an installer is launched, FreeCleaner now requires all of the following:
+
+- an HTTPS GitHub release-asset URL and an allowed final redirect host;
+- a bounded response size and a matching `Content-Length` when one is supplied;
+- a matching release asset size when GitHub provides it;
+- a matching SHA-256 digest when GitHub provides an asset digest;
+- a valid Authenticode signature from the configured FreeCleaner publisher;
+- successful atomic promotion from a temporary `.part` file.
+
+Release builds therefore require a code-signing certificate in GitHub Actions. Configure `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` repository secrets, and ensure the certificate subject contains the publisher expected by `FREECLEANER_UPDATE_PUBLISHER`/the packaged application setting.
 
 ## Adaptive scan/clean threading
 
@@ -438,7 +450,7 @@ FreeCleaner now chooses worker counts dynamically instead of using fixed limits:
 - Scan starts around half of logical CPU threads because scanning is mostly disk-bound.
 - Cleaning starts at logical CPU threads minus two to keep Windows responsive.
 - During work, each batch re-checks CPU and RAM pressure through Windows APIs and reduces workers on loaded systems.
-- No extra runtime dependency is required; the logic remains compatible with Python 3.8+ and Windows 10/11.
+- No extra runtime dependency is required in the packaged build; source runs require Python 3.10–3.14 on 64-bit Windows 10/11.
 
 ## Diagnostics dashboard
 
