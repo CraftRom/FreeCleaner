@@ -19,3 +19,12 @@ def test_installer_no_longer_edits_main_config_with_string_surgery():
     assert "ReplaceOrAddJsonLanguage" not in source
     assert "installer-language.json" in source
     assert "MinVersion=10.0" in source
+
+def test_runtime_dependencies_do_not_reintroduce_unused_pillow():
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    requirement_lines = [
+        line.strip().lower()
+        for line in requirements.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert not any(line.startswith("pillow") for line in requirement_lines)

@@ -598,3 +598,9 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Added clickable setting cards with hover/pressed states and lightweight fade-in polish.
 - Background diagnostics/update/registry job limit is now configurable from Settings instead of being hardcoded.
 - Compact event log mode now hides noisy helper command lines from the visible UI log while retaining full disk logs for QA.
+
+## Dependency security fix
+
+- Removed the unused Pillow runtime dependency after `pip-audit` reported vulnerabilities in Pillow 11.3.0.
+- FreeCleaner renders images through Qt and packages native `.ico` files, so Pillow is not required for the application or the Windows icon build path.
+- Added a source invariant test that prevents Pillow from being silently reintroduced without an explicit architectural need.
