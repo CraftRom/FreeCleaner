@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=8,<10
+pytest-qt>=4.4,<5
+ruff>=0.12,<1
+mypy>=1.15,<2
+pip-audit>=2.8,<3

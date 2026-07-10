@@ -107,3 +107,9 @@ updates/
 *.zip
 *.reg
 *.txt
+
+# Required project files are exceptions to the generic *.txt rule above.
+!requirements.txt
+!requirements-dev.txt
+!PRIVACY_POLICY.txt
+!version_info.txt
