@@ -441,7 +441,9 @@ Before an installer is launched, FreeCleaner now requires all of the following:
 - a valid Authenticode signature from the configured FreeCleaner publisher;
 - successful atomic promotion from a temporary `.part` file.
 
-Release builds therefore require a code-signing certificate in GitHub Actions. Configure `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` repository secrets, and ensure the certificate subject contains the publisher expected by `FREECLEANER_UPDATE_PUBLISHER`/the packaged application setting.
+Signed public releases require a code-signing certificate in GitHub Actions. Configure both `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` repository or protected-environment secrets, and ensure the certificate subject contains the publisher expected by `FREECLEANER_UPDATE_PUBLISHER`/the packaged application setting.
+
+When those secrets are absent, the workflow now completes as an **unsigned test build**: it uploads a workflow artifact whose name ends in `-unsigned`, includes `SIGNING_STATUS.txt`, and deliberately skips tag creation from manual dispatch and GitHub Release publication. Unsigned artifacts are for testing only and are rejected by the secure in-app updater.
 
 ## Adaptive scan/clean threading
 
@@ -598,9 +600,3 @@ The UI layer now uses PySide6/Qt instead of the old legacy UI frontend:
 - Added clickable setting cards with hover/pressed states and lightweight fade-in polish.
 - Background diagnostics/update/registry job limit is now configurable from Settings instead of being hardcoded.
 - Compact event log mode now hides noisy helper command lines from the visible UI log while retaining full disk logs for QA.
-
-## Dependency security fix
-
-- Removed the unused Pillow runtime dependency after `pip-audit` reported vulnerabilities in Pillow 11.3.0.
-- FreeCleaner renders images through Qt and packages native `.ico` files, so Pillow is not required for the application or the Windows icon build path.
-- Added a source invariant test that prevents Pillow from being silently reintroduced without an explicit architectural need.

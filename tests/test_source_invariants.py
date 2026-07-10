@@ -28,3 +28,14 @@ def test_runtime_dependencies_do_not_reintroduce_unused_pillow():
         if line.strip() and not line.lstrip().startswith("#")
     ]
     assert not any(line.startswith("pillow") for line in requirement_lines)
+
+
+def test_release_workflow_allows_unsigned_test_artifacts_but_not_unsigned_releases():
+    workflow = (ROOT / ".github" / "workflows" / "build-release-notify.yml").read_text(encoding="utf-8")
+    assert "throw 'WINDOWS_SIGNING_CERTIFICATE_BASE64 secret is required" not in workflow
+    assert "signing_available: ${{ steps.signing.outputs.signing_available }}" in workflow
+    assert "if: needs.version.outputs.signing_available == 'true'" in workflow
+    assert "UNSIGNED TEST BUILD - DO NOT PUBLISH AS A RELEASE" in workflow
+    assert "name: Create signed Release & Upload Assets" in workflow
+    assert "name: Unsigned build notice" in workflow
+    assert "-${{ needs.version.outputs.signing_label }}" in workflow

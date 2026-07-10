@@ -29,6 +29,8 @@ jobs:
       tag_name: ${{ steps.versioning.outputs.tag_name }}
       create_tag: ${{ steps.versioning.outputs.create_tag }}
       is_prerelease: ${{ steps.versioning.outputs.is_prerelease }}
+      signing_available: ${{ steps.signing.outputs.signing_available }}
+      signing_label: ${{ steps.signing.outputs.signing_label }}
     steps:
       - name: Determine version and release status
         id: versioning
@@ -84,6 +86,36 @@ jobs:
           "tag_name=$TagName" >> $env:GITHUB_OUTPUT
           "create_tag=$CreateTag" >> $env:GITHUB_OUTPUT
           "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Detect code-signing configuration
+        id: signing
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD)
+          $available = $hasCertificate -and $hasPassword
+
+          if ($hasCertificate -xor $hasPassword) {
+            Write-Warning 'Windows signing configuration is incomplete. Both WINDOWS_SIGNING_CERTIFICATE_BASE64 and WINDOWS_SIGNING_CERTIFICATE_PASSWORD are required; this run will produce unsigned test artifacts only.'
+          }
+
+          $availableText = $available.ToString().ToLowerInvariant()
+          $label = if ($available) { 'signed' } else { 'unsigned' }
+          "signing_available=$availableText" >> $env:GITHUB_OUTPUT
+          "signing_label=$label" >> $env:GITHUB_OUTPUT
+
+          if ($available) {
+            '### Code signing' >> $env:GITHUB_STEP_SUMMARY
+            'Windows signing secrets are configured. Executables and the installer will be signed, verified, and eligible for GitHub Release publication.' >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            '### Unsigned test build' >> $env:GITHUB_STEP_SUMMARY
+            'Windows signing secrets are not configured. The workflow will build and upload an **unsigned workflow artifact**, but it will not create or update a GitHub Release.' >> $env:GITHUB_STEP_SUMMARY
+            '' >> $env:GITHUB_STEP_SUMMARY
+            'Configure both repository or environment secrets `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` to publish a signed release.' >> $env:GITHUB_STEP_SUMMARY
+          }
 
 
   quality:
@@ -205,15 +237,13 @@ jobs:
           "PACKAGE_DIR=$PackageDir" >> $env:GITHUB_ENV
           "PACKAGE_EXE_PATH=$ExePath" >> $env:GITHUB_ENV
 
-      - name: Import required code-signing certificate
+      - name: Import code-signing certificate
+        if: needs.version.outputs.signing_available == 'true'
         shell: pwsh
         env:
           WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64)) {
-            throw 'WINDOWS_SIGNING_CERTIFICATE_BASE64 secret is required for secure releases.'
-          }
           $pfxPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.pfx'
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_BASE64))
           $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD -AsPlainText -Force
@@ -226,6 +256,7 @@ jobs:
           "SIGNING_CERT_SUBJECT=$($cert.Subject)" >> $env:GITHUB_ENV
 
       - name: Sign packaged executable
+        if: needs.version.outputs.signing_available == 'true'
         shell: pwsh
         run: |
           $cert = Get-Item "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
@@ -253,6 +284,7 @@ jobs:
           "INSTALLER_PATH=$($InstallerPath.FullName)" >> $env:GITHUB_ENV
 
       - name: Sign and verify installer
+        if: needs.version.outputs.signing_available == 'true'
         shell: pwsh
         run: |
           $cert = Get-Item "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
@@ -276,6 +308,22 @@ jobs:
           Copy-Item -Path "${{ env.INSTALLER_PATH }}" -Destination artifact-out -Force
           Copy-Item -Path $PortablePath -Destination artifact-out -Force
           Copy-Item -Path version_info.txt -Destination artifact-out -Force
+
+          if ('${{ needs.version.outputs.signing_available }}' -eq 'true') {
+            $signingStatus = @(
+              'SIGNED RELEASE CANDIDATE',
+              'The packaged executable and installer were signed and verified by the workflow.',
+              "Publisher: $env:SIGNING_CERT_SUBJECT"
+            )
+          } else {
+            $signingStatus = @(
+              'UNSIGNED TEST BUILD - DO NOT PUBLISH AS A RELEASE',
+              'Code-signing secrets were not available for this workflow run.',
+              'The in-app updater must reject these unsigned files.'
+            )
+          }
+          Set-Content -Path (Join-Path artifact-out 'SIGNING_STATUS.txt') -Value $signingStatus -Encoding utf8NoBOM
+
           $hashLines = Get-ChildItem -Path artifact-out -File | Where-Object { $_.Extension -in '.exe', '.zip' } | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
@@ -284,16 +332,28 @@ jobs:
           Set-Content -Path (Join-Path artifact-out 'SHA256SUMS.txt') -Value $hashLines -Encoding utf8NoBOM
           Get-ChildItem -Path artifact-out -File | Format-Table Name, Length
 
+      - name: Remove imported signing certificate
+        if: always() && needs.version.outputs.signing_available == 'true'
+        shell: pwsh
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_THUMBPRINT)) {
+            $certPath = "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
+            if (Test-Path $certPath) { Remove-Item -LiteralPath $certPath -Force }
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.pfx'
+          if (Test-Path $pfxPath) { Remove-Item -LiteralPath $pfxPath -Force }
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}
+          name: ${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}-${{ needs.version.outputs.signing_label }}
           path: artifact-out/*
           if-no-files-found: error
 
   release:
-    name: Create Release & Upload Assets
+    name: Create signed Release & Upload Assets
     needs: [version, build]
+    if: needs.version.outputs.signing_available == 'true'
     runs-on: windows-2022
     permissions:
       contents: write
@@ -316,7 +376,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           Get-ChildItem -Path downloaded-artifacts -Recurse -File | Format-Table FullName, Length
-          $releaseFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File | Where-Object { $_.Extension -in '.exe', '.zip' -or $_.Name -eq 'SHA256SUMS.txt' }
+          $releaseFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File | Where-Object { $_.Extension -in '.exe', '.zip' -or $_.Name -in 'SHA256SUMS.txt', 'SIGNING_STATUS.txt' }
           if (-not $releaseFiles -or $releaseFiles.Count -eq 0) {
             throw "No release files were downloaded from build artifacts."
           }
@@ -361,6 +421,23 @@ jobs:
             release-assets/*.exe
             release-assets/*.zip
             release-assets/SHA256SUMS.txt
+            release-assets/SIGNING_STATUS.txt
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  unsigned-build-notice:
+    name: Unsigned build notice
+    needs: [version, build]
+    if: needs.version.outputs.signing_available != 'true'
+    runs-on: windows-2022
+    steps:
+      - name: Explain why no GitHub Release was created
+        shell: pwsh
+        run: |
+          Write-Warning 'The build completed without Authenticode signing. Unsigned workflow artifacts were uploaded for testing, and GitHub Release publication was intentionally skipped.'
+          '### GitHub Release skipped' >> $env:GITHUB_STEP_SUMMARY
+          'The build succeeded, but the artifacts are unsigned. For security, the release job was skipped and no release assets were published.' >> $env:GITHUB_STEP_SUMMARY
+          '' >> $env:GITHUB_STEP_SUMMARY
+          'Add both `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` secrets, then run the workflow again to publish a signed release.' >> $env:GITHUB_STEP_SUMMARY
