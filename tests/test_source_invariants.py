@@ -41,3 +41,18 @@ def test_release_workflow_publishes_pinned_self_signed_releases():
     assert "UNSIGNED TEST BUILD" not in workflow
     assert "signing_available" not in workflow
     assert "self-signed" in workflow.lower()
+    assert "Get-PfxData" in workflow
+    assert "-CodeSigningCert" in workflow
+    assert "Required EKU: 1.3.6.1.5.5.7.3.3" in workflow
+    assert "exportable code-signing certificate with a private key" not in workflow
+
+
+def test_self_signed_generator_reimports_and_validates_pfx():
+    wrapper = (ROOT / "scripts" / "create_self_signed_release_certificate.bat").read_text(encoding="utf-8")
+    generator = (ROOT / "scripts" / "create_self_signed_release_certificate.ps1").read_text(encoding="utf-8")
+    assert "create_self_signed_release_certificate.ps1" in wrapper
+    assert "Remove-CertificateIfPresent -Thumbprint $createdThumbprint" in generator
+    assert "Import-PfxCertificate" in generator
+    assert "-CodeSigningCert" in generator
+    assert "1.3.6.1.5.5.7.3.3" in generator
+    assert "HasPrivateKey" in generator

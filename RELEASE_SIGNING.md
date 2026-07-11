@@ -27,6 +27,24 @@ scripts\create_self_signed_release_certificate.bat
 
 Copy the generated values to repository Actions secrets, then delete the local `signing-secrets` directory.
 
+
+## Fixing an invalid existing PFX
+
+The two GitHub secrets must come from the same generated PFX and password. A normal TLS certificate or a generic OpenSSL self-signed certificate is not sufficient: the certificate must contain the private key and the Code Signing extended key usage `1.3.6.1.5.5.7.3.3`.
+
+The current generator re-imports the exported PFX and verifies both requirements before writing the secret files. Run it again and replace **both** repository secrets when CI reports either a missing private key or a missing Code Signing EKU:
+
+```bat
+scripts\create_self_signed_release_certificate.bat
+```
+
+Copy the complete contents of these files, not their paths or filenames:
+
+- `signing-secrets\WINDOWS_SIGNING_CERTIFICATE_BASE64.txt` → `WINDOWS_SIGNING_CERTIFICATE_BASE64`
+- `signing-secrets\WINDOWS_SIGNING_CERTIFICATE_PASSWORD.txt` → `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`
+
+Replacing only one secret creates a password/PFX mismatch.
+
 ## Rotate to the verified certificate
 
 Before replacing the PFX secret, publish one transition release signed by the current certificate and set:

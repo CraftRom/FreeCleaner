@@ -465,7 +465,7 @@ To create the temporary self-signed release secrets without OpenSSL or third-par
 scripts\create_self_signed_release_certificate.bat
 ```
 
-Then copy the generated values into the repository Actions secrets and delete the local `signing-secrets` directory.
+The generator now removes the original certificate, re-imports the exported PFX, and verifies that the PFX still contains a private key and the Code Signing EKU before writing the secret files. Copy the complete contents of both generated files into the matching repository Actions secrets, replace both old values together, and then delete the local `signing-secrets` directory. Do not paste a filename or file path as a secret value.
 
 Before replacing the temporary self-signed certificate with the verified CA-issued certificate, publish one transition release signed by the current certificate while setting `WINDOWS_NEXT_SIGNING_CERTIFICATE_SHA256` to the SHA-256 fingerprint of the future certificate. That transition build embeds both pins, allowing the next release to rotate certificates without breaking in-app updates.
 
