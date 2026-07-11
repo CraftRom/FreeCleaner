@@ -34,6 +34,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional, Dict, List, Tuple, Union, Set
 
 from .default_lang_packs import DEFAULT_LANG_PACKS
+from .build_trust import UPDATE_SIGNING_CERT_SHA256, UPDATE_SIGNING_CERT_SHA256_PINS, UPDATE_SIGNING_CERT_SUBJECT
 from .runtime_logging import log_app, log_error, log_action, log_security, log_system_response, log_qa_event
 
 
@@ -50,7 +51,21 @@ APP_UPDATE_REPO = os.environ.get("FREECLEANER_UPDATE_REPO", "FreeCleaner").strip
 APP_UPDATE_REPO_URL = f"https://github.com/{APP_UPDATE_OWNER}/{APP_UPDATE_REPO}"
 APP_UPDATE_RELEASES_URL = f"{APP_UPDATE_REPO_URL}/releases"
 APP_UPDATE_LATEST_RELEASE_URL = f"{APP_UPDATE_RELEASES_URL}/latest"
-APP_UPDATE_PUBLISHER = os.environ.get("FREECLEANER_UPDATE_PUBLISHER", APP_NAME).strip() or APP_NAME
+APP_UPDATE_PUBLISHER = os.environ.get(
+    "FREECLEANER_UPDATE_PUBLISHER", UPDATE_SIGNING_CERT_SUBJECT or APP_NAME
+).strip() or APP_NAME
+APP_UPDATE_CERT_SHA256 = os.environ.get(
+    "FREECLEANER_UPDATE_CERT_SHA256", UPDATE_SIGNING_CERT_SHA256
+).strip().lower()
+APP_UPDATE_CERT_SHA256_PINS = tuple(
+    item
+    for item in (
+        APP_UPDATE_CERT_SHA256,
+        *UPDATE_SIGNING_CERT_SHA256_PINS,
+        *os.environ.get("FREECLEANER_UPDATE_CERT_SHA256_PINS", "").replace(";", ",").split(","),
+    )
+    if str(item or "").strip()
+)
 MAX_GITHUB_API_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_UPDATE_DOWNLOAD_BYTES = 512 * 1024 * 1024
 _ALLOWED_UPDATE_HOSTS = {
@@ -1142,6 +1157,20 @@ def _normalize_sha256(value: str) -> str:
     return text if re.fullmatch(r"[0-9a-f]{64}", text) else ""
 
 
+def _normalize_sha256_pins(value: Any) -> Set[str]:
+    if isinstance(value, str):
+        candidates = value.replace(";", ",").split(",")
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        candidates = list(value)
+    else:
+        candidates = [value]
+    return {
+        normalized
+        for candidate in candidates
+        if (normalized := _normalize_sha256(str(candidate or "")))
+    }
+
+
 def calculate_sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as fh:
@@ -1150,8 +1179,91 @@ def calculate_sha256(path: str) -> str:
     return digest.hexdigest()
 
 
-def verify_authenticode_signature(path: str, expected_publisher: str = APP_UPDATE_PUBLISHER) -> Tuple[bool, str, str]:
-    """Verify a PE/MSI signature with WinVerifyTrust and validate its publisher."""
+def _read_authenticode_signer_info(file_path: str) -> Dict[str, str]:
+    """Return signer metadata without changing the machine certificate stores."""
+    script = (
+        "$ErrorActionPreference='Stop';"
+        f"$s=Get-AuthenticodeSignature -LiteralPath {_powershell_literal(file_path)};"
+        "if (-not $s.SignerCertificate) { throw 'No signer certificate found.' };"
+        "$c=$s.SignerCertificate;"
+        "$sha=[System.Security.Cryptography.SHA256]::Create();"
+        "try { $hashBytes=$sha.ComputeHash($c.RawData) } finally { $sha.Dispose() };"
+        "$hash=($hashBytes | ForEach-Object { $_.ToString('x2') }) -join '';"
+        "[pscustomobject]@{"
+        "Status=[string]$s.Status;"
+        "StatusMessage=[string]$s.StatusMessage;"
+        "Subject=[string]$c.Subject;"
+        "Issuer=[string]$c.Issuer;"
+        "Thumbprint=[string]$c.Thumbprint;"
+        "CertificateSha256=$hash"
+        "} | ConvertTo-Json -Compress"
+    )
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        shell=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=20,
+        **WindowsOps.hidden_subprocess_kwargs(capture=True),
+    )
+    if completed.returncode != 0:
+        raise RuntimeError((completed.stderr or completed.stdout or "").strip() or "Could not read signer certificate.")
+    payload = json.loads((completed.stdout or "").strip())
+    if not isinstance(payload, dict):
+        raise RuntimeError("Signer metadata response is invalid.")
+    return {str(key): str(value or "").strip() for key, value in payload.items()}
+
+
+def _evaluate_authenticode_trust(
+    status: int,
+    signer_info: Dict[str, str],
+    *,
+    expected_publisher: str,
+    expected_cert_sha256: Any,
+) -> Tuple[bool, str, str]:
+    """Evaluate normal or pinned self-signed Authenticode trust."""
+    publisher = str(signer_info.get("Subject") or "").strip()
+    issuer = str(signer_info.get("Issuer") or "").strip()
+    cert_sha256 = _normalize_sha256(signer_info.get("CertificateSha256") or "")
+    expected_publisher_normalized = str(expected_publisher or "").strip().casefold()
+    expected_pins = _normalize_sha256_pins(expected_cert_sha256)
+
+    if not publisher:
+        return False, "The installer does not contain a signer certificate.", ""
+
+    if expected_publisher_normalized and expected_publisher_normalized not in publisher.casefold():
+        return False, "Installer publisher does not match the expected publisher.", publisher
+
+    if expected_pins:
+        if not cert_sha256:
+            return False, "Could not calculate the signer certificate fingerprint.", publisher
+        if cert_sha256 not in expected_pins:
+            return False, "Installer signer certificate does not match any pinned release certificate.", publisher
+
+    status_u32 = int(status) & 0xFFFFFFFF
+    if status == 0:
+        return True, "Authenticode signature is valid.", publisher
+
+    # CERT_E_UNTRUSTEDROOT. During the interim self-signed release phase,
+    # accept only the exact build-pinned certificate, never a subject-only match.
+    if (
+        status_u32 == 0x800B0109
+        and expected_pins
+        and publisher.casefold() == issuer.casefold()
+        and cert_sha256 in expected_pins
+    ):
+        return True, "Authenticode signature is valid and matches the pinned self-signed release certificate.", publisher
+
+    return False, f"Authenticode verification failed ({status}).", publisher
+
+
+def verify_authenticode_signature(
+    path: str,
+    expected_publisher: str = APP_UPDATE_PUBLISHER,
+    expected_cert_sha256: Any = APP_UPDATE_CERT_SHA256_PINS,
+) -> Tuple[bool, str, str]:
+    """Verify a PE/MSI signature and enforce publisher/certificate pinning."""
     if not IS_WINDOWS:
         return False, "Authenticode verification is only available on Windows.", ""
     file_path = os.path.abspath(path or "")
@@ -1200,31 +1312,26 @@ def verify_authenticode_signature(path: str, expected_publisher: str = APP_UPDAT
         win_verify_trust(ctypes.c_void_p(-1), ctypes.byref(action), ctypes.byref(trust_data))
     except OSError:
         pass
-    if status != 0:
-        log_security(f"Authenticode verification failed for {file_path}: {status}", level="WARNING")
-        return False, f"Authenticode verification failed ({status}).", ""
 
-    publisher = ""
-    script = f"$s=Get-AuthenticodeSignature -LiteralPath {_powershell_literal(file_path)}; if ($s.SignerCertificate) {{ $s.SignerCertificate.Subject }}"
     try:
-        completed = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-            shell=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=20,
-            **WindowsOps.hidden_subprocess_kwargs(capture=True),
+        signer_info = _read_authenticode_signer_info(file_path)
+    except (OSError, subprocess.SubprocessError, RuntimeError, json.JSONDecodeError) as exc:
+        log_security(f"Could not read Authenticode signer metadata for {file_path}: {exc}", level="WARNING")
+        return False, f"Could not read signer certificate: {exc}", ""
+
+    valid, message, publisher = _evaluate_authenticode_trust(
+        status,
+        signer_info,
+        expected_publisher=expected_publisher,
+        expected_cert_sha256=expected_cert_sha256,
+    )
+    if not valid:
+        log_security(
+            f"Authenticode verification failed for {file_path}: status={status}, "
+            f"publisher={publisher!r}, cert_sha256={signer_info.get('CertificateSha256', '')!r}",
+            level="WARNING",
         )
-        if completed.returncode == 0:
-            publisher = (completed.stdout or "").strip()
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"Could not read signer publisher: {exc}", ""
-    expected = str(expected_publisher or "").strip().casefold()
-    if expected and expected not in publisher.casefold():
-        log_security(f"Update publisher mismatch: expected={expected_publisher!r}, actual={publisher!r}", level="WARNING")
-        return False, "Installer publisher does not match the expected publisher.", publisher
-    return True, "Authenticode signature is valid.", publisher
+    return valid, message, publisher
 
 
 def _shell_execute_with_process(file_path: str, parameters: str = "", verb: str = "open", working_dir: Optional[str] = None) -> Tuple[bool, str, Optional[int]]:

@@ -113,3 +113,10 @@ updates/
 !requirements-dev.txt
 !PRIVACY_POLICY.txt
 !version_info.txt
+
+# Local signing material
+signing-secrets/
+*.pfx
+*.p12
+*.cer
+*.pem

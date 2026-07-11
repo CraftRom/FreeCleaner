@@ -385,10 +385,14 @@ FreeCleaner release builds support **64-bit Windows 10 and Windows 11 only**.
 
 ## Windows installer builds
 
-The release workflow now produces both portable EXE files and installable setup files:
+The release workflow produces a portable package and an installable setup file:
 
-- `FreeCleaner-<version>-win64.exe` — portable 64-bit executable.
-- `FreeCleaner-<version>-win64-setup.exe` — installer for 64-bit Windows only.
+- `FreeCleaner-<version>-win64-portable.zip` — the complete PyInstaller one-directory package;
+- `FreeCleaner-<version>-win64-setup.exe` — installer for 64-bit Windows only;
+- `SHA256SUMS.txt` — release asset checksums;
+- `SIGNING_STATUS.txt` — publisher and certificate-pin metadata.
+
+The executable is intentionally not published alone because the current PyInstaller profile is a one-directory build and requires the adjacent Qt/Python runtime files.
 
 The installer is built with Inno Setup and includes:
 
@@ -403,7 +407,7 @@ Manual installer build after PyInstaller:
 
 ```powershell
 .\scripts\build_installer.ps1 `
-  -ExePath "dist\FreeCleaner-0.2.0.0-build-1-win64.exe" `
+  -ExePath "dist\FreeCleaner\FreeCleaner.exe" `
   -Arch "win64" `
   -Version "0.2.0.0-build-1" `
   -OutputDir "dist"
@@ -441,9 +445,29 @@ Before an installer is launched, FreeCleaner now requires all of the following:
 - a valid Authenticode signature from the configured FreeCleaner publisher;
 - successful atomic promotion from a temporary `.part` file.
 
-Signed public releases require a code-signing certificate in GitHub Actions. Configure both `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` repository or protected-environment secrets, and ensure the certificate subject contains the publisher expected by `FREECLEANER_UPDATE_PUBLISHER`/the packaged application setting.
+Every release build requires `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` GitHub Actions secrets. Missing signing material stops the workflow; unsigned release assets are never published.
 
-When those secrets are absent, the workflow now completes as an **unsigned test build**: it uploads a workflow artifact whose name ends in `-unsigned`, includes `SIGNING_STATUS.txt`, and deliberately skips tag creation from manual dispatch and GitHub Release publication. Unsigned artifacts are for testing only and are rejected by the secure in-app updater.
+During the current verification transition, the workflow supports the project self-signed code-signing certificate as a normal release certificate:
+
+- the certificate is imported into the isolated runner and temporarily trusted only for build-time signature verification;
+- the EXE and installer are both Authenticode-signed and validated before publication;
+- the certificate SHA-256 fingerprint and subject are embedded into the packaged updater;
+- on user machines, the updater accepts an otherwise-untrusted self-signed chain only when the exact embedded SHA-256 certificate pin, self-signed subject/issuer, and expected publisher all match;
+- a same-name replacement certificate is rejected because publisher-name matching alone is never sufficient;
+- the release contains `SIGNING_STATUS.txt` and `SHA256SUMS.txt`;
+- GitHub Release publication proceeds normally after signature and checksum verification.
+
+Windows SmartScreen can still warn about a self-signed certificate because it is not part of the public Windows trust chain. This does not weaken FreeCleaner's certificate pinning, but the certificate should be replaced with the verified CA-issued key once verification is complete.
+
+To create the temporary self-signed release secrets without OpenSSL or third-party programs, run:
+
+```bat
+scripts\create_self_signed_release_certificate.bat
+```
+
+Then copy the generated values into the repository Actions secrets and delete the local `signing-secrets` directory.
+
+Before replacing the temporary self-signed certificate with the verified CA-issued certificate, publish one transition release signed by the current certificate while setting `WINDOWS_NEXT_SIGNING_CERTIFICATE_SHA256` to the SHA-256 fingerprint of the future certificate. That transition build embeds both pins, allowing the next release to rotate certificates without breaking in-app updates.
 
 ## Adaptive scan/clean threading
 

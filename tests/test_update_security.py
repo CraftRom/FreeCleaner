@@ -208,6 +208,70 @@ def test_plain_403_is_not_retried(monkeypatch):
     assert calls["count"] == 1
 
 
+
+def test_pinned_self_signed_certificate_is_accepted_only_for_untrusted_root():
+    pin = "a" * 64
+    signer = {
+        "Subject": "CN=FreeCleaner",
+        "Issuer": "CN=FreeCleaner",
+        "CertificateSha256": pin,
+    }
+    ok, message, publisher = logic._evaluate_authenticode_trust(
+        -2146762487,
+        signer,
+        expected_publisher="FreeCleaner",
+        expected_cert_sha256=pin,
+    )
+    assert ok
+    assert "pinned self-signed" in message
+    assert publisher == "CN=FreeCleaner"
+
+
+def test_pinned_self_signed_certificate_rejects_wrong_fingerprint():
+    signer = {
+        "Subject": "CN=FreeCleaner",
+        "Issuer": "CN=FreeCleaner",
+        "CertificateSha256": "b" * 64,
+    }
+    ok, message, _publisher = logic._evaluate_authenticode_trust(
+        -2146762487,
+        signer,
+        expected_publisher="FreeCleaner",
+        expected_cert_sha256="a" * 64,
+    )
+    assert not ok
+    assert "pinned" in message.lower()
+
+
+
+def test_certificate_rotation_accepts_any_explicitly_pinned_fingerprint():
+    signer = {
+        "Subject": "CN=FreeCleaner",
+        "Issuer": "CN=Verified Issuer",
+        "CertificateSha256": "b" * 64,
+    }
+    ok, _message, _publisher = logic._evaluate_authenticode_trust(
+        0,
+        signer,
+        expected_publisher="FreeCleaner",
+        expected_cert_sha256=("a" * 64, "b" * 64),
+    )
+    assert ok
+
+def test_untrusted_self_signed_certificate_without_pin_is_rejected():
+    signer = {
+        "Subject": "CN=FreeCleaner",
+        "Issuer": "CN=FreeCleaner",
+        "CertificateSha256": "a" * 64,
+    }
+    ok, _message, _publisher = logic._evaluate_authenticode_trust(
+        -2146762487,
+        signer,
+        expected_publisher="FreeCleaner",
+        expected_cert_sha256="",
+    )
+    assert not ok
+
 def test_safe_fs_rejects_root_and_symlink_ancestor(tmp_path):
     assert not logic.SafeFS.is_safe_clean_target(str(Path(tmp_path).anchor))
     real = tmp_path / "real"

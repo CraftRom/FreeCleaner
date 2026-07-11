@@ -12,6 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     errors: list[str] = []
+    required_files = (
+        Path(".github/workflows/build-release-notify.yml"),
+        Path(".github/workflows/quality.yml"),
+        Path("requirements-dev.txt"),
+        Path("freecleaner/build_trust.py"),
+    )
+    for relative_path in required_files:
+        if not (ROOT / relative_path).is_file():
+            errors.append(f"required source file is missing: {relative_path}")
     for path in ROOT.rglob("*"):
         if path.is_dir() and path.name in {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}:
             errors.append(f"generated directory: {path.relative_to(ROOT)}")

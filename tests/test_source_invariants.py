@@ -30,12 +30,14 @@ def test_runtime_dependencies_do_not_reintroduce_unused_pillow():
     assert not any(line.startswith("pillow") for line in requirement_lines)
 
 
-def test_release_workflow_allows_unsigned_test_artifacts_but_not_unsigned_releases():
+def test_release_workflow_publishes_pinned_self_signed_releases():
     workflow = (ROOT / ".github" / "workflows" / "build-release-notify.yml").read_text(encoding="utf-8")
-    assert "throw 'WINDOWS_SIGNING_CERTIFICATE_BASE64 secret is required" not in workflow
-    assert "signing_available: ${{ steps.signing.outputs.signing_available }}" in workflow
-    assert "if: needs.version.outputs.signing_available == 'true'" in workflow
-    assert "UNSIGNED TEST BUILD - DO NOT PUBLISH AS A RELEASE" in workflow
-    assert "name: Create signed Release & Upload Assets" in workflow
-    assert "name: Unsigned build notice" in workflow
-    assert "-${{ needs.version.outputs.signing_label }}" in workflow
+    assert "WINDOWS_SIGNING_CERTIFICATE_BASE64 secret is required" in workflow
+    assert "Cert:\\CurrentUser\\Root" in workflow
+    assert "Cert:\\CurrentUser\\TrustedPublisher" in workflow
+    assert "SIGNING_CERT_SHA256" in workflow
+    assert "freecleaner/build_trust.py" in workflow
+    assert "name: Create Release & Upload Assets" in workflow
+    assert "UNSIGNED TEST BUILD" not in workflow
+    assert "signing_available" not in workflow
+    assert "self-signed" in workflow.lower()

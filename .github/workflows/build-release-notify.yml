@@ -1,140 +1,155 @@
-name: Build, Release and Notify
+name: Build, Sign and Release
 
 on:
   push:
     tags:
-      - '*'
+      - "v*"
   workflow_dispatch:
     inputs:
-      base_version:
-        description: 'Base version (examples: 1.2, 1.2.0, 1.2.0.0)'
+      version:
+        description: "Release version or tag, for example 1.4, v1.4-beta2, or v1.4-build-75"
         required: true
-        type: string
-        default: '1.2.0.0'
-      is_prerelease:
-        description: 'Mark release as pre-release'
-        required: true
-        type: boolean
-        default: true
+        default: "1.4"
+      build_number:
+        description: "Optional build number; defaults to the GitHub Actions run number"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: freecleaner-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   version:
-    name: Prepare version
+    name: Resolve release metadata
     runs-on: windows-2022
     outputs:
-      build_number: ${{ steps.versioning.outputs.build_number }}
-      base_version: ${{ steps.versioning.outputs.base_version }}
-      windows_version: ${{ steps.versioning.outputs.windows_version }}
-      full_version: ${{ steps.versioning.outputs.full_version }}
-      tag_name: ${{ steps.versioning.outputs.tag_name }}
-      create_tag: ${{ steps.versioning.outputs.create_tag }}
-      is_prerelease: ${{ steps.versioning.outputs.is_prerelease }}
-      signing_available: ${{ steps.signing.outputs.signing_available }}
-      signing_label: ${{ steps.signing.outputs.signing_label }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      base_version: ${{ steps.version.outputs.base_version }}
+      windows_version: ${{ steps.version.outputs.windows_version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      full_version: ${{ steps.version.outputs.full_version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
-      - name: Determine version and release status
-        id: versioning
-        shell: pwsh
-        run: |
-          function Normalize-Version([string]$Version) {
-            if ([string]::IsNullOrWhiteSpace($Version)) { throw 'Version cannot be empty.' }
-            $clean = $Version.Trim()
-            if ($clean.StartsWith('v')) { $clean = $clean.Substring(1) }
-            $parts = $clean.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
-            if ($parts.Count -lt 1 -or $parts.Count -gt 4) { throw "Version '$Version' must contain 1-4 numeric parts." }
-            foreach ($p in $parts) { if ($p -notmatch '^\d+$') { throw "Version '$Version' contains a non-numeric part: $p" } }
-            return ($parts -join '.')
-          }
-          function Convert-ToWindowsVersion([string]$Version) {
-            $parts = $Version.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
-            $result = @()
-            for ($i = 0; $i -lt 4; $i++) {
-              if ($i -lt $parts.Count) { $result += [string][int]$parts[$i] } else { $result += '0' }
-            }
-            return ($result -join '.')
-          }
-          if ('${{ github.ref_type }}' -eq 'tag') {
-            $TagName = '${{ github.ref_name }}'
-            $TagPattern = '^v(?<base>\d+(?:\.\d+){0,3})(?:-(?<pre>alpha\d*|beta\d*|rc\d*))?(?:-build-(?<build>\d+))?$'
-            $TagMatch = [regex]::Match($TagName, $TagPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-            if (-not $TagMatch.Success) {
-              throw "Release tag '$TagName' must use v<version>[-alphaN|-betaN|-rcN][-build-<number>]."
-            }
-            $BaseVersion = Normalize-Version $TagMatch.Groups['base'].Value
-            if ($TagMatch.Groups['build'].Success) {
-              $BuildNumber = [int]$TagMatch.Groups['build'].Value
-            } else {
-              # Short release tags such as v1.4 use the immutable Actions run number
-              # as the Windows build component while the GitHub release stays on v1.4.
-              $BuildNumber = [int]'${{ github.run_number }}'
-            }
-            $CreateTag = 'false'
-            $IsPrerelease = if ($TagMatch.Groups['pre'].Success) { 'true' } else { 'false' }
-          } else {
-            $BuildNumber = [int]'${{ github.run_number }}'
-            $BaseVersion = Normalize-Version '${{ github.event.inputs.base_version }}'
-            $CreateTag = 'true'
-            $IsPrerelease = if ('${{ github.event.inputs.is_prerelease }}' -eq 'true') { 'true' } else { 'false' }
-            $TagName = "v$BaseVersion-build-$BuildNumber"
-          }
-          $WindowsVersion = Convert-ToWindowsVersion $BaseVersion
-          $FullVersion = "$WindowsVersion-build-$BuildNumber"
-          "build_number=$BuildNumber" >> $env:GITHUB_OUTPUT
-          "base_version=$BaseVersion" >> $env:GITHUB_OUTPUT
-          "windows_version=$WindowsVersion" >> $env:GITHUB_OUTPUT
-          "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
-          "tag_name=$TagName" >> $env:GITHUB_OUTPUT
-          "create_tag=$CreateTag" >> $env:GITHUB_OUTPUT
-          "is_prerelease=$IsPrerelease" >> $env:GITHUB_OUTPUT
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Detect code-signing configuration
-        id: signing
+      - name: Resolve canonical version
+        id: version
         shell: pwsh
         env:
-          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
-          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64)
-          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD)
-          $available = $hasCertificate -and $hasPassword
+          $ErrorActionPreference = 'Stop'
 
-          if ($hasCertificate -xor $hasPassword) {
-            Write-Warning 'Windows signing configuration is incomplete. Both WINDOWS_SIGNING_CERTIFICATE_BASE64 and WINDOWS_SIGNING_CERTIFICATE_PASSWORD are required; this run will produce unsigned test artifacts only.'
+          function Normalize-Version([string]$Version) {
+            $parts = $Version.Split('.')
+            if ($parts.Count -lt 1 -or $parts.Count -gt 4) {
+              throw "Version '$Version' must contain between one and four numeric parts."
+            }
+            $normalized = @()
+            foreach ($part in $parts) {
+              if ($part -notmatch '^\d+$') {
+                throw "Version '$Version' contains a non-numeric part."
+              }
+              $normalized += [int]$part
+            }
+            while ($normalized.Count -lt 4) {
+              $normalized += 0
+            }
+            return ($normalized -join '.')
           }
 
-          $availableText = $available.ToString().ToLowerInvariant()
-          $label = if ($available) { 'signed' } else { 'unsigned' }
-          "signing_available=$availableText" >> $env:GITHUB_OUTPUT
-          "signing_label=$label" >> $env:GITHUB_OUTPUT
-
-          if ($available) {
-            '### Code signing' >> $env:GITHUB_STEP_SUMMARY
-            'Windows signing secrets are configured. Executables and the installer will be signed, verified, and eligible for GitHub Release publication.' >> $env:GITHUB_STEP_SUMMARY
+          $rawTag = if ($env:EVENT_NAME -eq 'push') {
+            $env:REF_NAME
           } else {
-            '### Unsigned test build' >> $env:GITHUB_STEP_SUMMARY
-            'Windows signing secrets are not configured. The workflow will build and upload an **unsigned workflow artifact**, but it will not create or update a GitHub Release.' >> $env:GITHUB_STEP_SUMMARY
-            '' >> $env:GITHUB_STEP_SUMMARY
-            'Configure both repository or environment secrets `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` to publish a signed release.' >> $env:GITHUB_STEP_SUMMARY
+            $env:INPUT_VERSION.Trim()
           }
 
+          if ([string]::IsNullOrWhiteSpace($rawTag)) {
+            throw 'A release version is required.'
+          }
+          if (-not $rawTag.StartsWith('v', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $rawTag = "v$rawTag"
+          }
+
+          $pattern = '^v(?<base>\d+(?:\.\d+){0,3})(?:-(?<pre>alpha\d*|beta\d*|rc\d*))?(?:-build-(?<build>\d+))?$'
+          $match = [regex]::Match($rawTag, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+          if (-not $match.Success) {
+            throw "Release tag '$rawTag' must use v<version>[-alphaN|-betaN|-rcN][-build-<number>]."
+          }
+
+          $baseVersion = $match.Groups['base'].Value
+          $preLabel = $match.Groups['pre'].Value
+          $embeddedBuild = $match.Groups['build'].Value
+
+          if (-not [string]::IsNullOrWhiteSpace($embeddedBuild)) {
+            $buildNumber = [int]$embeddedBuild
+            if (-not [string]::IsNullOrWhiteSpace($env:INPUT_BUILD_NUMBER) -and [int]$env:INPUT_BUILD_NUMBER -ne $buildNumber) {
+              throw "Embedded build number '$buildNumber' conflicts with workflow input '$($env:INPUT_BUILD_NUMBER)'."
+            }
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:INPUT_BUILD_NUMBER)) {
+            $buildNumber = [int]$env:INPUT_BUILD_NUMBER
+          } else {
+            $buildNumber = [int]$env:RUN_NUMBER
+          }
+
+          if ($buildNumber -lt 1) {
+            throw 'Build number must be greater than zero.'
+          }
+
+          $windowsVersion = Normalize-Version $baseVersion
+          $fullVersion = "$windowsVersion-build-$buildNumber"
+
+          if ($env:EVENT_NAME -eq 'push') {
+            $tagName = $rawTag
+          } else {
+            $prePart = if ([string]::IsNullOrWhiteSpace($preLabel)) { '' } else { "-$preLabel" }
+            $tagName = "v$baseVersion$prePart-build-$buildNumber"
+          }
+
+          $isPrerelease = -not [string]::IsNullOrWhiteSpace($preLabel)
+
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          "base_version=$baseVersion" >> $env:GITHUB_OUTPUT
+          "windows_version=$windowsVersion" >> $env:GITHUB_OUTPUT
+          "build_number=$buildNumber" >> $env:GITHUB_OUTPUT
+          "full_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+          Write-Host "Tag: $tagName"
+          Write-Host "Full version: $fullVersion"
+          Write-Host "Prerelease: $isPrerelease"
+
+      - name: Validate resolved release metadata
+        shell: pwsh
+        run: |
+          python scripts/validate_release_metadata.py `
+            --tag "${{ steps.version.outputs.tag_name }}" `
+            --build-number "${{ steps.version.outputs.build_number }}" `
+            --full-version "${{ steps.version.outputs.full_version }}"
 
   quality:
-    name: Quality gate
+    name: Quality and dependency audit
     runs-on: windows-2022
-    permissions:
-      contents: read
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
-      QT_QPA_PLATFORM: offscreen
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-          architecture: x64
+          python-version: "3.13"
+          architecture: "x64"
           cache: pip
 
       - name: Install validation dependencies
@@ -143,60 +158,180 @@ jobs:
           python -m pip install --upgrade pip wheel setuptools
           python -m pip install -r requirements-dev.txt
 
-      - name: Validate, lint and test
+      - name: Validate source tree
+        run: python -B scripts/validate_source_tree.py
+
+      - name: Validate translations
+        run: python -B scripts/validate_translations.py
+
+      - name: Ruff
+        run: python -m ruff check . --no-cache
+
+      - name: Unit and Qt tests
         shell: pwsh
-        run: |
-          python -B scripts/validate_source_tree.py
-          python -B scripts/validate_translations.py
-          ruff check . --no-cache
-          mypy freecleaner/models.py scripts/validate_release_metadata.py scripts/validate_source_tree.py scripts/validate_translations.py --no-incremental
-          python -B -m pytest -q -p no:cacheprovider
-          pip-audit -r requirements.txt --progress-spinner off
-          python -m compileall -q .
-          Get-ChildItem -Path . -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -B -m pytest -q -p no:cacheprovider
+
+      - name: Dependency security audit
+        run: python -m pip_audit -r requirements.txt --progress-spinner off
 
   build:
-    name: Build ${{ matrix.arch }} EXE
+    name: Build x64 EXE and installer
     needs: [version, quality]
     runs-on: windows-2022
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            python_arch: x64
-            asset_suffix: win64
-            original_filename: FreeCleaner-win64.exe
     env:
       APP_NAME: FreeCleaner
       COMPANY_NAME: FreeCleaner
       INTERNAL_NAME: FreeCleaner
-      FILE_DESCRIPTION: FreeCleaner Windows cleaner, auto system language, and persistent language preference
+      FILE_DESCRIPTION: FreeCleaner Windows system cleaner
       SPEC_FILE: FreeCleaner.spec
-      PYTHON_VERSION: '3.13'
+      PYTHON_VERSION: "3.13"
+      EXPECTED_SIGNING_SUBJECT: FreeCleaner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python ${{ matrix.python_arch }}
+      - name: Set up Python x64
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          architecture: ${{ matrix.python_arch }}
+          architecture: x64
           cache: pip
 
-      - name: Install dependencies
+      - name: Install build dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade wheel setuptools
-          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install -r requirements.txt
 
-      - name: Generate version_info.txt
+      - name: Require release signing secrets
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64)) {
+            throw 'WINDOWS_SIGNING_CERTIFICATE_BASE64 secret is required for releases.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD)) {
+            throw 'WINDOWS_SIGNING_CERTIFICATE_PASSWORD secret is required for releases.'
+          }
+
+      - name: Import and trust release signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.pfx'
+          $cerPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.cer'
+          $base64 = $env:WINDOWS_SIGNING_CERTIFICATE_BASE64 -replace '\s', ''
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($base64))
+
+          $securePassword = ConvertTo-SecureString `
+            $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD `
+            -AsPlainText `
+            -Force
+
+          $imported = @(
+            Import-PfxCertificate `
+              -FilePath $pfxPath `
+              -CertStoreLocation 'Cert:\CurrentUser\My' `
+              -Password $securePassword `
+              -Exportable
+          )
+
+          $cert = $imported |
+            Where-Object {
+              $ekuOids = @($_.EnhancedKeyUsageList | ForEach-Object { $_.ObjectId.Value })
+              $_.HasPrivateKey -and ($ekuOids -contains '1.3.6.1.5.5.7.3.3')
+            } |
+            Select-Object -First 1
+
+          if (-not $cert) {
+            throw 'The PFX does not contain an exportable code-signing certificate with a private key.'
+          }
+
+          if ($cert.Subject -notlike "*$env:EXPECTED_SIGNING_SUBJECT*") {
+            throw "Certificate subject '$($cert.Subject)' does not contain '$env:EXPECTED_SIGNING_SUBJECT'."
+          }
+
+          $isSelfSigned = $cert.Subject -eq $cert.Issuer
+          if (-not $isSelfSigned) {
+            Write-Host 'A CA-issued certificate was supplied; normal chain trust will be used.'
+          } else {
+            Write-Host 'Self-signed release certificate detected. Adding temporary trust to this isolated runner.'
+
+            Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
+            Import-Certificate `
+              -FilePath $cerPath `
+              -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+            Import-Certificate `
+              -FilePath $cerPath `
+              -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
+          }
+
+          $sha = [System.Security.Cryptography.SHA256]::Create()
+          try {
+            $hashBytes = $sha.ComputeHash($cert.RawData)
+          } finally {
+            $sha.Dispose()
+          }
+          $certSha256 = ($hashBytes | ForEach-Object { $_.ToString('x2') }) -join ''
+
+          "SIGNING_CERT_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+          "SIGNING_CERT_SHA256=$certSha256" >> $env:GITHUB_ENV
+          "SIGNING_CERT_SUBJECT=$($cert.Subject)" >> $env:GITHUB_ENV
+          "SIGNING_CERT_SELF_SIGNED=$($isSelfSigned.ToString().ToLowerInvariant())" >> $env:GITHUB_ENV
+          "SIGNING_PFX_PATH=$pfxPath" >> $env:GITHUB_ENV
+          "SIGNING_CER_PATH=$cerPath" >> $env:GITHUB_ENV
+
+          Write-Host "Publisher: $($cert.Subject)"
+          Write-Host "Thumbprint: $($cert.Thumbprint)"
+          Write-Host "SHA-256 certificate pin: $certSha256"
+
+      - name: Embed release certificate pin in updater
+        shell: pwsh
+        env:
+          WINDOWS_NEXT_SIGNING_CERTIFICATE_SHA256: ${{ secrets.WINDOWS_NEXT_SIGNING_CERTIFICATE_SHA256 }}
+        run: |
+          $subject = $env:SIGNING_CERT_SUBJECT.Replace('\', '\\').Replace('"', '\"')
+          $pins = @($env:SIGNING_CERT_SHA256)
+          $nextPin = ($env:WINDOWS_NEXT_SIGNING_CERTIFICATE_SHA256 -replace '^sha256:', '').Trim().ToLowerInvariant()
+          if (-not [string]::IsNullOrWhiteSpace($nextPin)) {
+            if ($nextPin -notmatch '^[0-9a-f]{64}$') {
+              throw 'WINDOWS_NEXT_SIGNING_CERTIFICATE_SHA256 must contain a 64-character SHA-256 fingerprint.'
+            }
+            if ($pins -notcontains $nextPin) {
+              $pins += $nextPin
+            }
+          }
+          $pinTuple = ($pins | ForEach-Object { '"{0}"' -f $_ }) -join ', '
+          if ($pins.Count -eq 1) {
+            $pinTuple += ','
+          }
+          $module = @"
+          """Build-time update trust anchors generated by GitHub Actions."""
+
+          UPDATE_SIGNING_CERT_SHA256 = "$env:SIGNING_CERT_SHA256"
+          UPDATE_SIGNING_CERT_SHA256_PINS = ($pinTuple)
+          UPDATE_SIGNING_CERT_SUBJECT = "$subject"
+          "@
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD 'freecleaner/build_trust.py'),
+            $module.TrimStart(),
+            [Text.UTF8Encoding]::new($false)
+          )
+          Get-Content freecleaner/build_trust.py
+
+      - name: Generate Windows version metadata
         shell: pwsh
         run: |
           python scripts/generate_version_info.py `
@@ -205,67 +340,52 @@ jobs:
             --product-name "${{ env.APP_NAME }}" `
             --company-name "${{ env.COMPANY_NAME }}" `
             --internal-name "${{ env.INTERNAL_NAME }}" `
-            --original-filename "${{ matrix.original_filename }}" `
-            --file-description "${{ env.FILE_DESCRIPTION }} (${{ matrix.arch }})" `
+            --original-filename "FreeCleaner.exe" `
+            --file-description "${{ env.FILE_DESCRIPTION }} (x64)" `
             --output version_info.txt
 
-      - name: Validate release metadata
-        shell: pwsh
-        run: |
           python scripts/validate_release_metadata.py `
             --tag "${{ needs.version.outputs.tag_name }}" `
             --build-number "${{ needs.version.outputs.build_number }}" `
             --full-version "${{ needs.version.outputs.full_version }}" `
             --version-info version_info.txt
 
-      - name: Validate source tree and translations
-        shell: pwsh
-        run: |
-          python -B scripts/validate_source_tree.py
-          python -B scripts/validate_translations.py
-
       - name: Build executable with PyInstaller
         shell: pwsh
-        run: pyinstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
-
-      - name: Locate packaged application
-        shell: pwsh
         run: |
-          $PackageDir = Join-Path 'dist' '${{ env.APP_NAME }}'
-          $ExePath = Join-Path $PackageDir '${{ env.APP_NAME }}.exe'
-          if (-not (Test-Path $ExePath)) { throw "Built package executable not found: $ExePath" }
-          "PACKAGE_DIR=$PackageDir" >> $env:GITHUB_ENV
-          "PACKAGE_EXE_PATH=$ExePath" >> $env:GITHUB_ENV
-
-      - name: Import code-signing certificate
-        if: needs.version.outputs.signing_available == 'true'
-        shell: pwsh
-        env:
-          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
-          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
-        run: |
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.pfx'
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_BASE64))
-          $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD -AsPlainText -Force
-          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword
-          if (-not $cert) { throw 'Could not import the code-signing certificate.' }
-          if ($cert.Subject -notlike "*${env:COMPANY_NAME}*") {
-            throw "Code-signing certificate publisher '$($cert.Subject)' does not contain expected publisher '${env:COMPANY_NAME}'."
+          python -m PyInstaller "${{ env.SPEC_FILE }}" --noconfirm --clean
+          $packageDir = Join-Path $PWD 'dist\FreeCleaner'
+          $exePath = Join-Path $packageDir 'FreeCleaner.exe'
+          if (-not (Test-Path -LiteralPath $exePath)) {
+            throw "Built executable was not found: $exePath"
           }
-          "SIGNING_CERT_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
-          "SIGNING_CERT_SUBJECT=$($cert.Subject)" >> $env:GITHUB_ENV
+          "PACKAGE_DIR=$packageDir" >> $env:GITHUB_ENV
+          "PACKAGE_EXE_PATH=$exePath" >> $env:GITHUB_ENV
+          Get-Item -LiteralPath $exePath | Format-List FullName, Length
 
-      - name: Sign packaged executable
-        if: needs.version.outputs.signing_available == 'true'
+      - name: Sign and verify packaged executable
         shell: pwsh
         run: |
-          $cert = Get-Item "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
-          $signature = Set-AuthenticodeSignature `
-            -FilePath "${{ env.PACKAGE_EXE_PATH }}" `
+          $ErrorActionPreference = 'Stop'
+          $cert = Get-Item -LiteralPath "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
+
+          $result = Set-AuthenticodeSignature `
+            -FilePath $env:PACKAGE_EXE_PATH `
             -Certificate $cert `
             -TimestampServer 'http://timestamp.digicert.com' `
             -HashAlgorithm SHA256
-          if ($signature.Status -ne 'Valid') { throw "Executable signature is not valid: $($signature.StatusMessage)" }
+
+          if ($result.Status -ne 'Valid') {
+            throw "Executable signing failed: $($result.Status) — $($result.StatusMessage)"
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $env:PACKAGE_EXE_PATH
+          if ($signature.Status -ne 'Valid') {
+            throw "Executable signature is not valid: $($signature.Status) — $($signature.StatusMessage)"
+          }
+          if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_CERT_THUMBPRINT) {
+            throw 'Executable was signed with an unexpected certificate.'
+          }
 
       - name: Install Inno Setup
         shell: pwsh
@@ -274,170 +394,154 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          .\\scripts\\build_installer.ps1 `
-            -ExePath "${{ env.PACKAGE_EXE_PATH }}" `
-            -Arch "${{ matrix.asset_suffix }}" `
+          .\scripts\build_installer.ps1 `
+            -ExePath "$env:PACKAGE_EXE_PATH" `
+            -Arch "win64" `
             -Version "${{ needs.version.outputs.full_version }}" `
             -OutputDir "dist"
-          $InstallerPath = Get-ChildItem -Path dist -Filter "${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}-setup.exe" | Select-Object -First 1
-          if (-not $InstallerPath) { throw "Installer was not generated." }
-          "INSTALLER_PATH=$($InstallerPath.FullName)" >> $env:GITHUB_ENV
+
+          $installer = Get-ChildItem `
+            -Path dist `
+            -File `
+            -Filter "FreeCleaner-${{ needs.version.outputs.full_version }}-win64-setup.exe" |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw 'Installer was not generated.'
+          }
+          "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_ENV
 
       - name: Sign and verify installer
-        if: needs.version.outputs.signing_available == 'true'
         shell: pwsh
         run: |
-          $cert = Get-Item "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
-          $signature = Set-AuthenticodeSignature `
-            -FilePath "${{ env.INSTALLER_PATH }}" `
+          $ErrorActionPreference = 'Stop'
+          $cert = Get-Item -LiteralPath "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
+
+          $result = Set-AuthenticodeSignature `
+            -FilePath $env:INSTALLER_PATH `
             -Certificate $cert `
             -TimestampServer 'http://timestamp.digicert.com' `
             -HashAlgorithm SHA256
-          if ($signature.Status -ne 'Valid') { throw "Installer signature is not valid: $($signature.StatusMessage)" }
-          $verified = Get-AuthenticodeSignature -LiteralPath "${{ env.INSTALLER_PATH }}"
-          if ($verified.Status -ne 'Valid') { throw "Installer post-sign verification failed: $($verified.StatusMessage)" }
 
-      - name: Stage release files
+          if ($result.Status -ne 'Valid') {
+            throw "Installer signing failed: $($result.Status) — $($result.StatusMessage)"
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $env:INSTALLER_PATH
+          if ($signature.Status -ne 'Valid') {
+            throw "Installer signature is not valid: $($signature.Status) — $($signature.StatusMessage)"
+          }
+          if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_CERT_THUMBPRINT) {
+            throw 'Installer was signed with an unexpected certificate.'
+          }
+
+      - name: Stage signed release files
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path artifact-out | Out-Null
-          $PortableName = "${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}-portable.zip"
-          $PortablePath = Join-Path 'dist' $PortableName
-          if (Test-Path $PortablePath) { Remove-Item $PortablePath -Force }
-          Compress-Archive -Path (Join-Path "${{ env.PACKAGE_DIR }}" '*') -DestinationPath $PortablePath -CompressionLevel Optimal
-          Copy-Item -Path "${{ env.INSTALLER_PATH }}" -Destination artifact-out -Force
-          Copy-Item -Path $PortablePath -Destination artifact-out -Force
-          Copy-Item -Path version_info.txt -Destination artifact-out -Force
 
-          if ('${{ needs.version.outputs.signing_available }}' -eq 'true') {
-            $signingStatus = @(
-              'SIGNED RELEASE CANDIDATE',
-              'The packaged executable and installer were signed and verified by the workflow.',
-              "Publisher: $env:SIGNING_CERT_SUBJECT"
-            )
-          } else {
-            $signingStatus = @(
-              'UNSIGNED TEST BUILD - DO NOT PUBLISH AS A RELEASE',
-              'Code-signing secrets were not available for this workflow run.',
-              'The in-app updater must reject these unsigned files.'
-            )
+          $portableName = "FreeCleaner-${{ needs.version.outputs.full_version }}-win64-portable.zip"
+          $portablePath = Join-Path (Resolve-Path artifact-out) $portableName
+          Compress-Archive -Path (Join-Path $env:PACKAGE_DIR '*') -DestinationPath $portablePath -CompressionLevel Optimal -Force
+
+          Copy-Item -LiteralPath $env:INSTALLER_PATH -Destination artifact-out -Force
+          Copy-Item -LiteralPath version_info.txt -Destination artifact-out -Force
+
+          $statusLines = @(
+            'FreeCleaner signed release',
+            "Publisher: $env:SIGNING_CERT_SUBJECT",
+            "Certificate SHA-256: $env:SIGNING_CERT_SHA256",
+            "Self-signed transition certificate: $env:SIGNING_CERT_SELF_SIGNED",
+            'The in-app updater pins the exact certificate SHA-256 fingerprint.'
+          )
+          [IO.File]::WriteAllLines(
+            (Join-Path (Resolve-Path artifact-out) 'SIGNING_STATUS.txt'),
+            $statusLines,
+            [Text.UTF8Encoding]::new($false)
+          )
+
+          $releaseFiles = Get-ChildItem artifact-out -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
+          $hashLines = foreach ($file in $releaseFiles) {
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
           }
-          Set-Content -Path (Join-Path artifact-out 'SIGNING_STATUS.txt') -Value $signingStatus -Encoding utf8NoBOM
+          [IO.File]::WriteAllLines(
+            (Join-Path (Resolve-Path artifact-out) 'SHA256SUMS.txt'),
+            $hashLines,
+            [Text.UTF8Encoding]::new($false)
+          )
 
-          $hashLines = Get-ChildItem -Path artifact-out -File | Where-Object { $_.Extension -in '.exe', '.zip' } | Sort-Object Name | ForEach-Object {
-            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-            "$hash  $($_.Name)"
-          }
-          if (-not $hashLines) { throw 'No release files were available for SHA-256 manifest generation.' }
-          Set-Content -Path (Join-Path artifact-out 'SHA256SUMS.txt') -Value $hashLines -Encoding utf8NoBOM
-          Get-ChildItem -Path artifact-out -File | Format-Table Name, Length
+          Get-ChildItem artifact-out -File | Format-Table Name, Length
 
-      - name: Remove imported signing certificate
-        if: always() && needs.version.outputs.signing_available == 'true'
-        shell: pwsh
-        run: |
-          if (-not [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_THUMBPRINT)) {
-            $certPath = "Cert:\CurrentUser\My\$env:SIGNING_CERT_THUMBPRINT"
-            if (Test-Path $certPath) { Remove-Item -LiteralPath $certPath -Force }
-          }
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'freecleaner-signing.pfx'
-          if (Test-Path $pfxPath) { Remove-Item -LiteralPath $pfxPath -Force }
-
-      - name: Upload workflow artifact
+      - name: Upload signed workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ needs.version.outputs.full_version }}-${{ matrix.asset_suffix }}-${{ needs.version.outputs.signing_label }}
+          name: FreeCleaner-${{ needs.version.outputs.full_version }}-win64-signed
           path: artifact-out/*
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove imported signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          $thumbprint = $env:SIGNING_CERT_THUMBPRINT
+          if (-not [string]::IsNullOrWhiteSpace($thumbprint)) {
+            foreach ($store in @('My', 'Root', 'TrustedPublisher')) {
+              $path = "Cert:\CurrentUser\$store\$thumbprint"
+              if (Test-Path -LiteralPath $path) {
+                Remove-Item -LiteralPath $path -Force
+              }
+            }
+          }
+          foreach ($file in @($env:SIGNING_PFX_PATH, $env:SIGNING_CER_PATH)) {
+            if (-not [string]::IsNullOrWhiteSpace($file) -and (Test-Path -LiteralPath $file)) {
+              Remove-Item -LiteralPath $file -Force
+            }
+          }
 
   release:
-    name: Create signed Release & Upload Assets
+    name: Create Release & Upload Assets
     needs: [version, build]
-    if: needs.version.outputs.signing_available == 'true'
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      APP_NAME: FreeCleaner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download built artifacts
+      - name: Download signed artifacts
         uses: actions/download-artifact@v4
         with:
-          path: downloaded-artifacts
-          merge-multiple: false
+          name: FreeCleaner-${{ needs.version.outputs.full_version }}-win64-signed
+          path: release-assets
 
-      - name: Stage release assets
-        shell: pwsh
+      - name: Verify release asset manifest
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          Get-ChildItem -Path downloaded-artifacts -Recurse -File | Format-Table FullName, Length
-          $releaseFiles = Get-ChildItem -Path downloaded-artifacts -Recurse -File | Where-Object { $_.Extension -in '.exe', '.zip' -or $_.Name -in 'SHA256SUMS.txt', 'SIGNING_STATUS.txt' }
-          if (-not $releaseFiles -or $releaseFiles.Count -eq 0) {
-            throw "No release files were downloaded from build artifacts."
-          }
-          foreach ($file in $releaseFiles) {
-            Copy-Item -Path $file.FullName -Destination (Join-Path release-assets $file.Name) -Force
-          }
-          $stagedFiles = Get-ChildItem -Path release-assets -File | Where-Object { $_.Extension -in '.exe', '.zip' }
-          if (-not $stagedFiles -or $stagedFiles.Count -eq 0) {
-            throw "release-assets did not receive any installer or portable archive."
-          }
-          $stagedFiles | Format-Table Name, Length
-
-      - name: Create Git Tag
-        if: needs.version.outputs.create_tag == 'true'
-        shell: pwsh
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag "${{ needs.version.outputs.tag_name }}"
-          git push origin "${{ needs.version.outputs.tag_name }}"
-
-      - name: Generate release notes
-        id: git_cliff
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip header
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          OUTPUT: RELEASE_NOTES.md
-          GITHUB_REPO: ${{ github.repository }}
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check SHA256SUMS.txt
+          test -f "FreeCleaner-${{ needs.version.outputs.full_version }}-win64-setup.exe"
+          test -f "FreeCleaner-${{ needs.version.outputs.full_version }}-win64-portable.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
-          name: ${{ env.APP_NAME }} ${{ needs.version.outputs.full_version }}
-          body_path: RELEASE_NOTES.md
+          name: FreeCleaner ${{ needs.version.outputs.full_version }}
           prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
           files: |
-            release-assets/*.exe
-            release-assets/*.zip
+            release-assets/FreeCleaner-${{ needs.version.outputs.full_version }}-win64-setup.exe
+            release-assets/FreeCleaner-${{ needs.version.outputs.full_version }}-win64-portable.zip
             release-assets/SHA256SUMS.txt
             release-assets/SIGNING_STATUS.txt
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-  unsigned-build-notice:
-    name: Unsigned build notice
-    needs: [version, build]
-    if: needs.version.outputs.signing_available != 'true'
-    runs-on: windows-2022
-    steps:
-      - name: Explain why no GitHub Release was created
-        shell: pwsh
-        run: |
-          Write-Warning 'The build completed without Authenticode signing. Unsigned workflow artifacts were uploaded for testing, and GitHub Release publication was intentionally skipped.'
-          '### GitHub Release skipped' >> $env:GITHUB_STEP_SUMMARY
-          'The build succeeded, but the artifacts are unsigned. For security, the release job was skipped and no release assets were published.' >> $env:GITHUB_STEP_SUMMARY
-          '' >> $env:GITHUB_STEP_SUMMARY
-          'Add both `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` secrets, then run the workflow again to publish a signed release.' >> $env:GITHUB_STEP_SUMMARY
