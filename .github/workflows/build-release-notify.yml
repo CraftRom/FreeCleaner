@@ -325,6 +325,15 @@ jobs:
               throw "certutil failed to add the certificate to the enterprise Root store (exit $LASTEXITCODE): $certutilOutput"
             }
 
+            # Reading the store (as opposed to writing to it) never triggers
+            # the CryptUI trust prompt, so this check is safe to run and
+            # confirms the enterprise-store import actually took effect.
+            $rootCert = Get-ChildItem -Path 'Cert:\CurrentUser\Root' |
+              Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
+            if (-not $rootCert) {
+              throw 'Certificate was not found in Cert:\CurrentUser\Root after the certutil enterprise import.'
+            }
+
             Import-Certificate `
               -FilePath $cerPath `
               -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
