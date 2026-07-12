@@ -334,9 +334,22 @@ jobs:
               throw 'Certificate was not found in Cert:\CurrentUser\Root after the certutil enterprise import.'
             }
 
-            Import-Certificate `
-              -FilePath $cerPath `
-              -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
+            # Import-Certificate against Cert:\CurrentUser\TrustedPublisher can
+            # throw E_ACCESSDENIED on a fresh runner profile, because the
+            # per-user SystemCertificates\TrustedPublisher registry subtree
+            # hasn't been initialized yet and the cmdlet does not create it.
+            # certutil does not have this limitation, so use the same
+            # mechanism here as for Root.
+            $certutilTrustedPublisherOutput = & certutil.exe -addstore -enterprise -f 'TrustedPublisher' $cerPath 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              throw "certutil failed to add the certificate to the enterprise TrustedPublisher store (exit $LASTEXITCODE): $certutilTrustedPublisherOutput"
+            }
+
+            $trustedPublisherCert = Get-ChildItem -Path 'Cert:\CurrentUser\TrustedPublisher' |
+              Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
+            if (-not $trustedPublisherCert) {
+              throw 'Certificate was not found in Cert:\CurrentUser\TrustedPublisher after the certutil enterprise import.'
+            }
           }
 
           $sha = [System.Security.Cryptography.SHA256]::Create()
