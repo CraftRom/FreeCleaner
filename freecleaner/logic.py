@@ -3112,6 +3112,7 @@ class WindowsOps:
             backup_dir = WindowsOps.backup_registry_keys(backup_keys) or ""
             if not backup_dir:
                 return {
+                    "ok": False,
                     "found": len(key_items) + len(value_items),
                     "removed": 0,
                     "failed": len(key_items) + len(value_items),
@@ -3135,6 +3136,7 @@ class WindowsOps:
             else:
                 failed += 1
         return {
+            "ok": failed == 0,
             "found": len(key_items) + len(value_items),
             "removed": keys_removed + values_removed,
             "failed": failed,
