@@ -224,6 +224,7 @@ jobs:
 
       - name: Import and trust release signing certificate
         shell: powershell
+        timeout-minutes: 5
         env:
           WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
@@ -312,9 +313,18 @@ jobs:
             Write-Host 'Self-signed release certificate detected. Adding temporary trust to this isolated runner.'
 
             Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
-            Import-Certificate `
-              -FilePath $cerPath `
-              -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+
+            # Import-Certificate (and the equivalent .NET X509Store.Add call)
+            # routes Root-store additions through CryptUI's "install this
+            # certificate?" confirmation, which has no one to answer it on a
+            # runner and hangs until the job hits its timeout. certutil's
+            # -enterprise store bypasses that interactive trust prompt while
+            # still making the runner treat the certificate as trusted.
+            $certutilOutput = & certutil.exe -addstore -enterprise -f 'Root' $cerPath 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              throw "certutil failed to add the certificate to the enterprise Root store (exit $LASTEXITCODE): $certutilOutput"
+            }
+
             Import-Certificate `
               -FilePath $cerPath `
               -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
