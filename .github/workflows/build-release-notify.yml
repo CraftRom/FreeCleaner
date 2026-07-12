@@ -457,12 +457,12 @@ jobs:
             -HashAlgorithm SHA256
 
           if ($result.Status -ne 'Valid') {
-            throw "Executable signing failed: $($result.Status) — $($result.StatusMessage)"
+            throw "Executable signing failed: $($result.Status) - $($result.StatusMessage)"
           }
 
           $signature = Get-AuthenticodeSignature -LiteralPath $env:PACKAGE_EXE_PATH
           if ($signature.Status -ne 'Valid') {
-            throw "Executable signature is not valid: $($signature.Status) — $($signature.StatusMessage)"
+            throw "Executable signature is not valid: $($signature.Status) - $($signature.StatusMessage)"
           }
           if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_CERT_THUMBPRINT) {
             throw 'Executable was signed with an unexpected certificate.'
@@ -510,12 +510,12 @@ jobs:
             -HashAlgorithm SHA256
 
           if ($result.Status -ne 'Valid') {
-            throw "Installer signing failed: $($result.Status) — $($result.StatusMessage)"
+            throw "Installer signing failed: $($result.Status) - $($result.StatusMessage)"
           }
 
           $signature = Get-AuthenticodeSignature -LiteralPath $env:INSTALLER_PATH
           if ($signature.Status -ne 'Valid') {
-            throw "Installer signature is not valid: $($signature.Status) — $($signature.StatusMessage)"
+            throw "Installer signature is not valid: $($signature.Status) - $($signature.StatusMessage)"
           }
           if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_CERT_THUMBPRINT) {
             throw 'Installer was signed with an unexpected certificate.'
