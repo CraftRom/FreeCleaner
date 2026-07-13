@@ -225,18 +225,6 @@ def get_update_asset_suffix() -> str:
     return "win64" if get_os_architecture() == "x64" else "win32"
 
 
-def _asset_name_matches_update_arch(asset_name: str, suffix: Optional[str] = None) -> bool:
-    name = (asset_name or "").strip().lower()
-    wanted = (suffix or get_update_asset_suffix()).lower()
-    return name.startswith(f"{APP_NAME.lower()}-") and name.endswith(f"-{wanted}-setup.exe")
-
-
-def _asset_name_is_compatible_fallback(asset_name: str) -> bool:
-    # The Qt/PySide6 build is x64-only.  Keep this helper for older update
-    # metadata, but do not select win32 assets on modern releases.
-    return False
-
-
 def is_update_asset_compatible(asset_name: str) -> bool:
     """Return True if the release asset can be installed on this machine."""
     name = (asset_name or "").strip().lower()
